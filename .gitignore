@@ -39,6 +39,17 @@ graviers/gravierci_production.sql
 **/ios/Pods/
 **/ios/.symlinks/
 
+# Config locale de l'outil Claude Code (propre à la machine, ne pas versionner)
+.claude/
+
+# Artefacts de build et archives locales (ne pas versionner)
+*.apk
+/apigravier.zip
+/graviers.zip
+/mon_gravier_mobile_apporteur.zip
+/mon_gravier_mobile_client.zip
+/mon_gravier_mobile_livreur.zip
+
 # Divers
 ~$*
 *.log
