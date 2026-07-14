@@ -1,0 +1,1 @@
+{{number_format(Help::totalEnleveParClient(Auth::user()->client) - Help::totalPaiementClient(Auth::user()->client),'0','',' ')}}

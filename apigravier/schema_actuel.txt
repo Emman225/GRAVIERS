@@ -1,0 +1,95 @@
+TABLE | COLONNES\n------------------------------------------------------------------------------------------------------------------------
+users: id(bigint unsigned), nom_prenoms(varchar(255)), email(varchar(150)), contact(varchar(15)), login(varchar(150)), password(varchar(255)), photo(varchar(255)), adresse(varchar(255)), pays_id(bigint unsigned), ville_id(bigint unsigned), type_user_id(bigint unsigned), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), token(varchar(255))
+
+client: id(bigint unsigned), user_id(bigint unsigned), nom(varchar(255)), prenom(varchar(255)), email(varchar(150)), contact1(varchar(255)), contact2(varchar(255)), code_parrain(varchar(20)), rccm_clt(varchar(50)), ncc_clt(varchar(50)), regime_imposition(varchar(255)), dfe(varchar(255)), registre_commerce(varchar(255)), parrain_id(bigint unsigned), type_client(enum('PARTICULIER','ENTREPRISE')), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), applique_tva(tinyint(1)), client_a_terme(tinyint(1)), point(double(8,2))
+
+apporteur: id(bigint unsigned), user_id(bigint unsigned), code(varchar(20)), solde(double), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), pourcentage(double(8,2)), piece_recto(varchar(255)), piece_verso(varchar(255)), numero_piece(varchar(50) null), mode_paiement_id(bigint unsigned null)
+
+livreur: id(bigint unsigned), user_id(bigint unsigned), num_piece_identite(varchar(255)), piece_recto(varchar(255)), piece_verso(varchar(255)), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), solde(double), cout_livraison(double)
+
+fournisseur: id(bigint unsigned), user_id(bigint unsigned), nom_prenoms(varchar(150)), nom(varchar(100)), prenom(varchar(100)), email(varchar(100)), contact1(varchar(15)), contact2(varchar(15)), adresse_geo(varchar(180)), adresse_postale(varchar(100)), longitude(varchar(20)), latitude(varchar(20)), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), solde(double), contact(varchar(200)), adresse(varchar(200))
+
+commande: id(bigint unsigned), numero(varchar(20)), devis_id(bigint unsigned), client_id(bigint unsigned), mode_paiement_id(bigint unsigned), adresse_livraison_id(bigint unsigned), date_commande(datetime), montant_total(double), etat_commande(enum('EN ATTENTE','EN TRAITEMENT','TERMINEE')), date_livraison(datetime), date_fin_livraison(datetime), statut(smallint), note(varchar(255)), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), remise(double), type_livraison_id(bigint unsigned), type_livraison(varchar(255)), cout_livraison_client(double), cout_reduction(double), fichier_bl(varchar(255)), numero_bl(varchar(255))
+
+devis: id(bigint unsigned), numero(varchar(15)), client_id(bigint unsigned), montant(double), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), libelle(varchar(100))
+
+detail_commande: id(bigint unsigned), produit_id(bigint unsigned), commande_id(bigint unsigned), qte(double(8,2)), prix(double), etat_livraison(enum('EN ATTENTE','EN TRAITEMENT','LIVREE')), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), qte_livree(int)
+
+detail_devis: id(bigint unsigned), produit_id(bigint unsigned), devis_id(bigint unsigned), qte(double(8,2)), prix(double), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp)
+
+detail_livraison: id(bigint unsigned), nom_produit(varchar(255)), qte(double(8,2)), unite(varchar(30)), description(mediumtext), demande_livraison_id(bigint unsigned), etat_livraison(enum('EN ATTENTE','EN TRAITEMENT','LIVREE')), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), unite_produit_id(bigint unsigned), user_id(bigint unsigned)
+
+detail_location: id(bigint unsigned), produit_id(bigint unsigned), location_id(bigint unsigned), qte(double(8,2)), debut(datetime), fin(datetime), prix(double), etat_location(enum('EN ATTENTE','EN COURS','TERMINE')), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), nombre_jour(int)
+
+livraison: id(bigint unsigned), numero(varchar(20)), livreur_id(bigint unsigned), client_id(bigint unsigned), detail_commande_id(bigint unsigned), detail_livraison_id(bigint unsigned), adresse_livraison_id(bigint unsigned), cout_livraison(int unsigned), date_livraison(date), qte(double(8,2)), note_livreur(varchar(255)), etat_livraison(enum('EN ATTENTE','EN TRAITEMENT','LIVREE')), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), provenance(enum('COMMANDE','LIVRAISON')), vehicule_id(bigint unsigned), type_livraison_id(bigint unsigned), accepte(int), date_accord(datetime), date_affectation_livreur(datetime)
+
+paiement: id(bigint unsigned), client_id(bigint unsigned), devis_id(bigint unsigned), code(varchar(20)), libelle(varchar(255)), montant_total(double), montant_restant(double), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), service_id(bigint unsigned), service(enum('COMMANDE','LOCATION','LIVRAISON')), facture_id(bigint unsigned)
+
+ligne_paiement: id(bigint unsigned), paiement_id(bigint unsigned), mode_paiement_id(bigint unsigned), reference(varchar(20)), moyen_paiement(varchar(30)), date_paiement(datetime), montant(double), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), user_id(bigint unsigned), code_paiement(varchar(20)), service_id(bigint unsigned), service(enum('COMMANDE','LOCATION','LIVRAISON'))
+
+facture: id(bigint unsigned), numero(varchar(30)), numero_fne(varchar(50)), user_id(bigint unsigned), client_id(bigint unsigned), montant(double), service(varchar(255)), service_id(bigint unsigned), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp)
+
+produit: id(bigint unsigned), reference(varchar(10)), nom(varchar(155)), abreviation(varchar(10)), unite(varchar(30)), description(mediumtext), prix_moyen(double), prix_reduction(double), meilleur_note(smallint), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), unite_produit_id(bigint unsigned), type_affaire(enum('LOCATION','VENTE')), prix_fournisseur(double)
+
+image_produit: id(bigint unsigned), image(varchar(255)), produit_id(bigint unsigned), defaut(tinyint(1)), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp)
+
+categorie: id(bigint unsigned), image(varchar(255)), nom(varchar(50)), description(varchar(255)), parent_id(bigint unsigned), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), icon(varchar(255))
+
+banniere: id(bigint unsigned), titre(varchar(20)), sous_titre(varchar(80)), image(varchar(255)), num_ordre(smallint unsigned), type_banniere(enum('TOP','FLASH','BOTTOM')), date_heure_decompte(datetime), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp)
+
+configuration: id(bigint unsigned), tva(double(8,2)), created_at(timestamp), updated_at(timestamp), montant_point(double(8,2)), devise(varchar(5)), email_tresorier(varchar(50)), email_directeur_marketing(varchar(50)), gestionnaire1_id(bigint unsigned), gestionnaire2_id(bigint unsigned), raison_sociale(varchar(255)), ncc(varchar(255)), regime_imposition(varchar(255)), centre_impots(varchar(255)), rccm(varchar(255)), ref_bancaires(varchar(255)), cnps(varchar(255)), capital_social(varchar(255)), adresse_siege(varchar(255)), telephone(varchar(255)), email_entreprise(varchar(255)), nom_etablissement(varchar(255)), nom_pdv(varchar(255))
+
+adresse_livraison: id(bigint unsigned), client_id(bigint unsigned), pays_id(bigint unsigned), ville_id(bigint unsigned), affichage(varchar(50)), complement_adresse(varchar(255)), defaut(tinyint(1)), longitude(varchar(255)), latitude(varchar(255)), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp)
+
+code_resets: id(bigint unsigned), code(int), email(varchar(255)), created_at(timestamp), updated_at(timestamp), user_id(bigint unsigned), type_code(smallint unsigned), expiration_date(datetime), utilise(tinyint(1))
+
+mode_paiement: id(bigint unsigned), libelle(varchar(255)), description(varchar(255)), statut(smallint), en_ligne(tinyint(1)), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp)
+
+type_livraison: id(bigint unsigned), libelle(varchar(255)), statut(smallint), created_at(timestamp), updated_at(timestamp)
+
+type_user: id(bigint unsigned), nom(varchar(50)), statut(smallint), created_at(timestamp), updated_at(timestamp)
+
+unite_produit: id(bigint unsigned), abreviation(varchar(10)), libelle(varchar(255)), created_at(timestamp), updated_at(timestamp)
+
+pays: id(bigint unsigned), nom(varchar(50)), code(varchar(5)), indicatif(varchar(4)), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp)
+
+ville: id(bigint unsigned), nom(varchar(50)), pays_id(bigint unsigned), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp)
+
+regions: id(bigint unsigned), nom(varchar(255)), description(varchar(255)), long(double(8,2)), lat(double(8,2)), user_id(int), created_at(timestamp), updated_at(timestamp)
+
+vehicule: id(bigint unsigned), immatriculation(varchar(15)), nom(varchar(255)), description(varchar(255)), type_vehicule_id(bigint unsigned), livreur_id(bigint unsigned), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), disponible(tinyint(1)), capacite(double(8,2)), marque(varchar(30)), modele(varchar(70))
+
+stock_produit: id(bigint unsigned), fournisseur_id(bigint unsigned), produit_id(bigint unsigned), qte(double(8,2)), prix(double), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), seuil_alert(int)
+
+tva_commande: id(bigint unsigned), client_id(bigint unsigned), commande_id(bigint unsigned), montant(double), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), type_affaire(enum('LOCATION','VENTE'))
+
+bl_client: id(bigint unsigned), numero(varchar(20)), client_id(bigint unsigned), fichier(varchar(200)), montant(double), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), commande_id(bigint unsigned)
+
+cout_livraison: id(bigint unsigned), unite_produit_id(bigint unsigned), distance_min_km(double), distance_max_km(double), prix_km(double), created_at(timestamp), updated_at(timestamp), unite_min(double(8,2)), unite_max(double(8,2))
+
+commission_apporteur: id(bigint unsigned), apporteur_id(bigint unsigned), commande_id(bigint unsigned), montant(double), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), type_affaire(enum('LOCATION','VENTE'))
+
+demande_paiement: id(bigint unsigned), montant(double), mode_paiement_id(bigint unsigned), user_id(bigint unsigned), user_valide_id(bigint unsigned), date_validation(datetime), paye(tinyint(1)), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), user_valide2_id(bigint unsigned)
+
+location: id(bigint unsigned), numero(varchar(20)), client_id(bigint unsigned), mode_paiement_id(bigint unsigned), adresse_livraison_id(bigint unsigned), date_location(datetime), montant_total(double), etat_location(enum('EN ATTENTE','EN COURS','TERMINE')), note(varchar(255)), remise(double), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp)
+
+enlevement: id(bigint unsigned), fournisseur_id(bigint unsigned), livraison_id(bigint unsigned), qte(double(8,2)), produit_id(bigint unsigned), livreur_id(bigint unsigned), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), code_enleve(varchar(20)), livreur_validation(datetime), fournisseur_validation(datetime), vehicule_id(bigint unsigned), prix_fournisseur(double), fature_id(bigint unsigned), qte_servi(int unsigned), gestionnaire_id(bigint unsigned)
+
+note_produit: id(bigint unsigned), produit_id(bigint unsigned), client_id(bigint unsigned), avis(varchar(255)), note(smallint), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp)
+
+reduction: id(bigint unsigned), code(varchar(6)), libelle(varchar(100)), debut(date), fin(date), est_utilise(tinyint(1)), taux_reduction(smallint), client_id(bigint unsigned), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp)
+
+interval_point: id(bigint unsigned), montant_de(double), montant_a(double), nombre_point(double(8,2)), created_at(timestamp), updated_at(timestamp)
+
+interval_commission: id(bigint unsigned), montant_de(double), montant_a(double), pourcentage(double(8,2)), created_at(timestamp), updated_at(timestamp)
+
+type_vehicule: id(bigint unsigned), libelle(varchar(50)), created_at(timestamp), updated_at(timestamp)
+
+demande_livraison: id(bigint unsigned), numero(varchar(20)), libelle(varchar(255)), description(mediumtext), client_id(bigint unsigned), adresse_livraison_pec_id(bigint unsigned), adresse_livraison_dest_id(bigint unsigned), montantTotal(double), etat_commande(enum('EN ATTENTE','EN TRAITEMENT','TERMINEE')), date_livraison(datetime), date_fin_livraison(datetime), remise(double), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), mode_paiement_id(bigint unsigned), type_livraison_id(bigint unsigned)
+
+demande_annulation_commande: id(bigint unsigned), client_id(bigint unsigned), user_id(bigint unsigned), commande_id(bigint unsigned), motif(mediumtext), est_traite(tinyint(1)), note(mediumtext), statut(smallint), deleted_at(timestamp), created_at(timestamp), updated_at(timestamp), type_affaire(enum('LOCATION','VENTE'))
+
+likes: id(bigint unsigned), produit_id(bigint unsigned), client_id(bigint unsigned), created_at(timestamp), updated_at(timestamp)
+
+logs: id(bigint unsigned), fn(varchar(255)), titre(varchar(255)), details(text), user_id(bigint unsigned), created_at(timestamp), updated_at(timestamp)
+

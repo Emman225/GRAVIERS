@@ -1,0 +1,112 @@
+@include('layout.head')
+@section('title', 'Connexion')
+@if (session('success'))
+<div class="alert alert-success container-fluid">
+    {{session('success')}}
+</div>
+
+@endif
+
+<div class="card mt-200 mx-auto" style="margin: auto; width: 30rem; height: 40rem">
+    <div class="img" style="display:flex; align-item:center; justify-content: center">
+        <img class="img-lg center" src="{{ asset('backend/assets/imgs/theme/logooBlanc.svg') }}" alt="User" />
+    </div>
+    <div class="card-body" style="">
+        <h4 class="card-title mb-4 text-center ">
+            Connectez-vous ! <br>
+            @if (session('modified'))
+                <div class="alert alert-success">
+                    {{ session('modified') }}
+                </div>
+            @endif
+        </h4>
+        @if (session('fail'))
+            <div class="alert alert-danger">
+                {{ session('fail') }}
+            </div>
+        @endif
+        <form method="post" action="{{route('client.loginClient')}}">
+            @csrf
+            <div class="mb-3">
+                <input class="form-control" name="email" placeholder="Email" type="text" />
+            </div>
+            <!-- form-group// -->
+            <div class="mb-3">
+                <input class="form-control" name="password" placeholder="Mot de passe" type="password" />
+            </div>
+            <!-- form-group// -->
+            <div class="mb-4">
+                <button type="submit" class="btn btn-primary w-100">Connexion</button>
+            </div>
+            <div class="mb-3">
+                <a href="{{ route('demandeEmail') }}" class="float-end font-sm text-muted">Mot de passe oublié?</a>
+                {{-- <label class="form-check">
+                    <input type="checkbox" class="form-check-input" checked="" />
+                    <span class="form-check-label">Se souvenir de moi</span>
+                </label> --}}
+                <a href="{{ route('client.register') }}" class="float-start font-sm text-muted">Créer un compte</a>
+            </div>
+            <!-- form-group form-check .// -->
+
+            <!-- form-group// -->
+        </form>
+
+        {{-- <p class="text-center mb-4">Vous n'avez pas de compte? <a href="{{ route('show.register') }}">Créez un
+                compte</a></p> --}}
+    </div>
+</div>
+
+@include('layout.footer')
+
+@extends('layout.main')
+@section('title', 'Ajoutez une adresse')
+@section('contenu')
+    @if (session('succes'))
+        <div class="alert alert-success text-center">
+            {{ session('succes') }}
+        </div>
+    @endif
+    <div class="card mx-auto "style=" width: 40rem; ">
+        <div class="card-body">
+            <h4 class="card-title mb-4">Veuillez ajouter une adresse</h4>
+            <form action="{{route('client.devisCommande',$devis)}}" method="post" enctype="multipart/form-data">
+                @csrf
+                <div class="mb-3">
+
+                    <div class="row gx-2">
+                        <div class="col-8"><input value="" class="form-control" type="text" name="pays" placeholder="Pays" /></div>
+                        <div class="col-4"><input name="code" class="form-control" value="" type="number" placeholder="Code ou indicatif" /></div>
+                        <span class="text-danger">
+                            @error('contact')
+                                {{ $message }}
+                            @enderror
+                        </span>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Ville : <span class="text-danger">*</span></label>
+                    <input class="form-control" value="" name="ville" placeholder= "Ville" type="text" />
+                    <span class="text-danger">
+                        @error('ville')
+                            {{ $message }}
+                        @enderror
+                    </span>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Complement de l'adresse : <span class="text-danger">*</span></label>
+                    <textarea class="form-control" id="adresseGeo" name="complement"></textarea>
+                    <span class="text-danger">
+                        @error('adresse_geo')
+                            {{ $message }}
+                        @enderror
+                    </span>
+                </div>
+                <div class="mb-4">
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                </div>
+                <!-- form-group// -->
+            </form>
+        </div>
+    </div>
+@endsection
+

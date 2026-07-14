@@ -1,0 +1,31 @@
+{
+    "font awesome 6 brands": {
+        "normal": "font_awesome_6_brands_normal_5aa91754f1b8ab9921ec65040d0398d7"
+    },
+    "font awesome 6 free": {
+        "normal": "D:\\NEW DOC MANU 11102025\\DALAKOUN SARL\\GRAVIERS\\DOC_LWS_VERSION2\\graviers\\storage\\fonts\/font_awesome_6_free_normal_8f1c1da98dac9c284cefb97b004bd96e",
+        "900": "font_awesome_6_free_900_85a3b14fbfc79f50bc9c42a8003db748"
+    },
+    "font awesome 5 brands": {
+        "normal": "font_awesome_5_brands_normal_5aa91754f1b8ab9921ec65040d0398d7"
+    },
+    "font awesome 5 free": {
+        "900": "D:\\NEW DOC MANU 11102025\\DALAKOUN SARL\\GRAVIERS\\DOC_LWS_VERSION2\\graviers\\storage\\fonts\/font_awesome_5_free_900_85a3b14fbfc79f50bc9c42a8003db748",
+        "normal": "font_awesome_5_free_normal_8f1c1da98dac9c284cefb97b004bd96e"
+    },
+    "fontawesome": {
+        "normal": "fontawesome_normal_7a14673ce35632e39e645a3d6f1a41c1"
+    },
+    "material symbols outlined": {
+        "100": "D:\\NEW DOC MANU 11102025\\DALAKOUN SARL\\GRAVIERS\\DOC_LWS_VERSION2\\graviers\\storage\\fonts\/material_symbols_outlined_100_c49c87ab832563269571ea646b2ccd43",
+        "200": "D:\\NEW DOC MANU 11102025\\DALAKOUN SARL\\GRAVIERS\\DOC_LWS_VERSION2\\graviers\\storage\\fonts\/material_symbols_outlined_200_f991a86c7dbef76d8f71fac358526ed7",
+        "300": "D:\\NEW DOC MANU 11102025\\DALAKOUN SARL\\GRAVIERS\\DOC_LWS_VERSION2\\graviers\\storage\\fonts\/material_symbols_outlined_300_c4e27fe23e7cde83d512ae3f18fa3285",
+        "normal": "D:\\NEW DOC MANU 11102025\\DALAKOUN SARL\\GRAVIERS\\DOC_LWS_VERSION2\\graviers\\storage\\fonts\/material_symbols_outlined_normal_c14684950647b0c3187beaec858ee248",
+        "500": "D:\\NEW DOC MANU 11102025\\DALAKOUN SARL\\GRAVIERS\\DOC_LWS_VERSION2\\graviers\\storage\\fonts\/material_symbols_outlined_500_b976d07219e9d4baf61d0d804df043f2",
+        "600": "D:\\NEW DOC MANU 11102025\\DALAKOUN SARL\\GRAVIERS\\DOC_LWS_VERSION2\\graviers\\storage\\fonts\/material_symbols_outlined_600_db8c9b5f92091760fdf4e7976d9d57df",
+        "bold": "material_symbols_outlined_bold_17f64d981d5d8cc0751ffb3cb383a584"
+    },
+    "material icons round": {
+        "normal": "material_icons_round_normal_1c8ce7931480e6056fa8d6ae528f78a4"
+    }
+}

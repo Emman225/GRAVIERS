@@ -1,0 +1,46 @@
+# Secrets — ne jamais committer
+.env
+.env.*
+!.env.example
+
+# Laravel (apigravier, graviers)
+vendor/
+node_modules/
+storage/*.key
+apigravier/storage/logs/*.log
+graviers/storage/logs/*.log
+apigravier/storage/framework/cache/data/
+apigravier/storage/framework/sessions/
+apigravier/storage/framework/views/
+graviers/storage/framework/cache/data/
+graviers/storage/framework/sessions/
+graviers/storage/framework/views/
+apigravier/public/storage
+graviers/public/storage
+public/hot
+
+# Fichiers temporaires générés/uploadés
+graviers/public/public/storage/temp_pdfs/
+
+# Dumps de base de données de production (données sensibles)
+graviers/bd.sql
+graviers/gravierci_production.sql
+
+# Flutter (mobile apporteur / client / livreur)
+**/build/
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/android/.gradle/
+**/android/local.properties
+**/android/key.properties
+**/*.keystore
+**/*.jks
+**/ios/Pods/
+**/ios/.symlinks/
+
+# Divers
+~$*
+*.log
+.DS_Store
+Thumbs.db

@@ -1,0 +1,382 @@
+/* =================================================================
+   PARTIE COMPTE CLIENT - Design premium
+   Sidebar sombre + tableaux + cards modernes
+   ================================================================= */
+
+/* ==============================================================
+   DASHBOARD MENU CLIENT - Sidebar sombre
+   ============================================================== */
+.dashboard-menu {
+    background: #1e2436 !important;
+    border-radius: 16px !important;
+    padding: 18px 12px !important;
+    box-shadow: 0 10px 25px rgba(10, 37, 64, 0.15);
+    border: 1px solid #2a3047 !important;
+    overflow: hidden;
+    position: sticky;
+    top: 100px;
+}
+
+.dashboard-menu .nav.flex-column {
+    gap: 4px;
+}
+
+.dashboard-menu .nav-item {
+    margin: 0 !important;
+    border: none !important;
+    border-radius: 10px !important;
+    overflow: hidden;
+}
+
+.dashboard-menu .nav-link {
+    color: #cdd2dd !important;
+    background: transparent !important;
+    font-weight: 500 !important;
+    font-size: 0.92rem !important;
+    padding: 12px 16px !important;
+    border-radius: 10px !important;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex !important;
+    align-items: center;
+    gap: 10px;
+    border: none !important;
+    text-decoration: none !important;
+}
+
+.dashboard-menu .nav-link i,
+.dashboard-menu .nav-link [class^="fi-"] {
+    color: #8b94ad !important;
+    font-size: 1.05rem !important;
+    transition: all 0.25s ease;
+}
+
+.dashboard-menu .nav-link:hover {
+    background: #2a3047 !important;
+    color: #ffffff !important;
+    transform: translateX(2px);
+}
+
+.dashboard-menu .nav-link:hover i,
+.dashboard-menu .nav-link:hover [class^="fi-"] {
+    color: #ffffff !important;
+}
+
+.dashboard-menu .nav-link.active {
+    background: linear-gradient(135deg, #1c57a3 0%, #134380 100%) !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 12px rgba(28, 87, 163, 0.4);
+}
+
+.dashboard-menu .nav-link.active i,
+.dashboard-menu .nav-link.active [class^="fi-"] {
+    color: #ffffff !important;
+}
+
+/* ==============================================================
+   DASHBOARD CONTENT - Cards & Tabs
+   ============================================================== */
+.dashboard-content {
+    border-radius: 16px !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+    border: 1px solid #e5e7eb;
+}
+
+.dashboard-content .card {
+    border-radius: 12px !important;
+    border: 1px solid #e5e7eb !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    transition: all 0.25s ease;
+}
+
+.dashboard-content .card:hover {
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.dashboard-content .card-header {
+    background: linear-gradient(180deg, #fafbfc 0%, #f5f7fb 100%) !important;
+    border-bottom: 1px solid #e5e7eb !important;
+    padding: 18px 22px !important;
+    font-weight: 600 !important;
+}
+
+.dashboard-content h3, .dashboard-content h4, .dashboard-content h5 {
+    color: #0A2540 !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.02em;
+}
+
+/* ==============================================================
+   TABLEAUX CLIENT (Mon compte, Mes commandes, etc.)
+   IMPORTANT : pas d'overflow:hidden sinon les dropdowns d'actions sont clippés.
+   ============================================================== */
+.dashboard-content .table,
+main.pages .table,
+main.main.pages .table {
+    background: #ffffff !important;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+    width: 100% !important;
+    margin-bottom: 0 !important;
+}
+
+.dashboard-content .table thead tr th:first-child,
+main.pages .table thead tr th:first-child {
+    border-top-left-radius: 12px !important;
+}
+.dashboard-content .table thead tr th:last-child,
+main.pages .table thead tr th:last-child {
+    border-top-right-radius: 12px !important;
+}
+
+/* Dropdowns toujours visibles dans les tableaux */
+.dashboard-content .table .dropdown-menu,
+main.pages .table .dropdown-menu {
+    z-index: 1050 !important;
+}
+
+.dashboard-content .table thead,
+main.pages .table thead {
+    background: linear-gradient(135deg, #1c57a3 0%, #0A2540 100%) !important;
+}
+
+.dashboard-content .table thead th,
+main.pages .table thead th {
+    background: transparent !important;
+    color: #ffffff !important;
+    font-weight: 600 !important;
+    font-size: 0.78rem !important;
+    letter-spacing: 0.05em !important;
+    text-transform: uppercase !important;
+    padding: 14px 12px !important;
+    border: none !important;
+    white-space: nowrap;
+}
+
+.dashboard-content .table tbody tr,
+main.pages .table tbody tr {
+    transition: all 0.2s ease;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.dashboard-content .table tbody tr:hover,
+main.pages .table tbody tr:hover {
+    background: #f8fafc !important;
+    box-shadow: inset 4px 0 0 #1c57a3;
+}
+
+.dashboard-content .table.table-striped tbody tr:nth-of-type(odd),
+main.pages .table.table-striped tbody tr:nth-of-type(odd) {
+    background-color: #fafbfc;
+}
+
+.dashboard-content .table tbody td,
+main.pages .table tbody td {
+    padding: 12px !important;
+    vertical-align: middle !important;
+    border-top: none !important;
+    color: #1f2937 !important;
+    font-size: 0.9rem !important;
+}
+
+/* ==============================================================
+   DATATABLES CLIENT
+   ============================================================== */
+.dashboard-content .dataTables_wrapper input,
+.dashboard-content .dataTables_wrapper select,
+main.pages .dataTables_wrapper input,
+main.pages .dataTables_wrapper select {
+    border-radius: 8px !important;
+    border: 1.5px solid #e5e7eb !important;
+    padding: 8px 14px !important;
+    transition: all 0.25s ease;
+    font-size: 0.9rem;
+    background: white !important;
+}
+
+.dashboard-content .dataTables_wrapper input:focus,
+.dashboard-content .dataTables_wrapper select:focus,
+main.pages .dataTables_wrapper input:focus,
+main.pages .dataTables_wrapper select:focus {
+    border-color: #1c57a3 !important;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(28, 87, 163, 0.1);
+}
+
+.dashboard-content .dataTables_paginate .paginate_button,
+main.pages .dataTables_paginate .paginate_button {
+    padding: 6px 12px !important;
+    margin: 0 2px !important;
+    border-radius: 8px !important;
+    border: 1px solid #e5e7eb !important;
+    background: white !important;
+    color: #1f2937 !important;
+    transition: all 0.25s ease;
+    font-size: 0.85rem;
+}
+
+.dashboard-content .dataTables_paginate .paginate_button:hover,
+main.pages .dataTables_paginate .paginate_button:hover {
+    background: #1c57a3 !important;
+    color: white !important;
+    border-color: #1c57a3 !important;
+    transform: translateY(-1px);
+}
+
+.dashboard-content .dataTables_paginate .paginate_button.current,
+main.pages .dataTables_paginate .paginate_button.current {
+    background: linear-gradient(135deg, #1c57a3 0%, #0A2540 100%) !important;
+    color: white !important;
+    border-color: #1c57a3 !important;
+    box-shadow: 0 4px 12px rgba(28, 87, 163, 0.3);
+}
+
+/* ==============================================================
+   BADGES CLIENT
+   ============================================================== */
+.dashboard-content .badge,
+main.pages .badge {
+    border-radius: 6px !important;
+    font-weight: 600 !important;
+    padding: 5px 10px !important;
+    font-size: 0.72rem !important;
+    letter-spacing: 0.03em !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+/* ==============================================================
+   BOUTONS COMPTE CLIENT
+   ============================================================== */
+.dashboard-content .btn,
+main.pages .btn {
+    border-radius: 10px !important;
+    font-weight: 500;
+    padding: 8px 18px;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    border: none;
+}
+
+.dashboard-content .btn:hover,
+main.pages .btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.1);
+}
+
+.dashboard-content .btn-primary,
+main.pages .btn-primary {
+    background: linear-gradient(135deg, #1c57a3 0%, #0A2540 100%) !important;
+    color: white !important;
+}
+
+.dashboard-content .btn-success,
+main.pages .btn-success {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+    color: white !important;
+}
+
+.dashboard-content .btn-danger,
+main.pages .btn-danger {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+    color: white !important;
+}
+
+/* ==============================================================
+   ALERTES CLIENT
+   ============================================================== */
+.dashboard-content .alert,
+main.pages .alert {
+    border-radius: 10px !important;
+    border: none !important;
+    padding: 14px 18px !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    border-left: 4px solid !important;
+    font-weight: 500;
+}
+
+.dashboard-content .alert-success,
+main.pages .alert-success {
+    background: #ecfdf5 !important;
+    color: #065f46 !important;
+    border-left-color: #10b981 !important;
+}
+
+.dashboard-content .alert-danger,
+main.pages .alert-danger {
+    background: #fef2f2 !important;
+    color: #991b1b !important;
+    border-left-color: #ef4444 !important;
+}
+
+.dashboard-content .alert-info,
+main.pages .alert-info {
+    background: #eff6ff !important;
+    color: #1e40af !important;
+    border-left-color: #3b82f6 !important;
+}
+
+/* ==============================================================
+   STAT CARDS CLIENT
+   ============================================================== */
+.dashboard-content .card.bg-primary,
+main.pages .card.bg-primary {
+    background: linear-gradient(135deg, #1c57a3 0%, #0A2540 100%) !important;
+    border: none !important;
+    color: white !important;
+}
+
+.dashboard-content .card.bg-success,
+main.pages .card.bg-success {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+    border: none !important;
+    color: white !important;
+}
+
+.dashboard-content .card.bg-danger,
+main.pages .card.bg-danger {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+    border: none !important;
+    color: white !important;
+}
+
+.dashboard-content .card.bg-warning,
+main.pages .card.bg-warning {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+    border: none !important;
+    color: white !important;
+}
+
+/* ==============================================================
+   FORMULAIRES CLIENT
+   ============================================================== */
+.dashboard-content .form-control,
+.dashboard-content .form-select,
+main.pages .form-control,
+main.pages .form-select {
+    border-radius: 10px !important;
+    border: 1.5px solid #e5e7eb !important;
+    padding: 10px 14px !important;
+    transition: all 0.25s ease;
+    background: white !important;
+}
+
+.dashboard-content .form-control:focus,
+.dashboard-content .form-select:focus,
+main.pages .form-control:focus,
+main.pages .form-select:focus {
+    border-color: #1c57a3 !important;
+    outline: none !important;
+    box-shadow: 0 0 0 3px rgba(28, 87, 163, 0.1) !important;
+}
+
+/* Animations supprimées pour éviter tout saut visuel au chargement */
+
+/* ==============================================================
+   RESPONSIVE
+   ============================================================== */
+@media (max-width: 991px) {
+    .dashboard-menu {
+        position: relative !important;
+        top: 0 !important;
+        margin-bottom: 20px;
+    }
+}

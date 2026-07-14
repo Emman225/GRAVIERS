@@ -1,0 +1,418 @@
+.border-bleu
+{
+    border: 2px solid #1C57A3 !important;
+    margin: 0 6px 15px 0;
+    background: #fff;
+    font-size: 16px;
+    font-weight: 700;
+    color: #1C57A3;
+    border-radius: 5px;
+    padding: 11px 20px 11px 30px;
+}
+
+#map{
+    height: 500px;
+    width: 70%;
+    margin: auto;
+}
+
+.off{
+    display: none;
+    transition: .5s ease;
+}
+
+.sup{
+    z-index: 10;
+}
+
+/* ============================================
+   STYLES FORMULAIRES GLOBAUX - BACKEND
+   ============================================ */
+
+/* --- Inputs, selects, textareas --- */
+.form-control:not(.select-active),
+.form-select:not(.select-active),
+form input[type="text"],
+form input[type="email"],
+form input[type="password"],
+form input[type="number"],
+form input[type="tel"],
+form input[type="url"],
+form input[type="date"],
+form input[type="datetime-local"],
+form input[type="time"],
+form input[type="file"],
+form select:not(.select-active),
+form textarea {
+    border: 1px solid #ced4da !important;
+    border-radius: 8px !important;
+    padding: 10px 14px !important;
+    font-size: 14px !important;
+    color: #333 !important;
+    background-color: #fff !important;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+    width: 100%;
+}
+
+.form-control:not(.select-active):focus,
+.form-select:not(.select-active):focus,
+form input:focus,
+form select:not(.select-active):focus,
+form textarea:focus {
+    border-color: #1C57A3 !important;
+    box-shadow: 0 0 0 3px rgba(28, 87, 163, 0.12) !important;
+    outline: none !important;
+}
+
+/* --- Labels --- */
+.form-label,
+form label:not(.form-check-label):not(.btn) {
+    font-weight: 600 !important;
+    font-size: 13.5px !important;
+    color: #344054 !important;
+    margin-bottom: 6px !important;
+    display: inline-block;
+}
+
+/* --- Form groups spacing --- */
+.form-group,
+.mb-3,
+.mb-4 {
+    margin-bottom: 16px !important;
+}
+
+/* --- Cards contenant des formulaires --- */
+.card {
+    border: none !important;
+    border-radius: 12px !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06) !important;
+}
+
+.card-header {
+    background-color: #f8fafc !important;
+    border-bottom: 1px solid #e9ecef !important;
+    border-radius: 12px 12px 0 0 !important;
+    padding: 16px 20px !important;
+    font-weight: 600;
+}
+
+.card-body {
+    padding: 24px !important;
+}
+
+/* --- Boutons principaux --- */
+.btn-primary,
+.btn-heading,
+.btn-fill-out {
+    background-color: #1C57A3 !important;
+    border-color: #1C57A3 !important;
+    border-radius: 8px !important;
+    padding: 10px 24px !important;
+    font-weight: 600 !important;
+    font-size: 14px !important;
+    transition: background-color 0.2s ease, transform 0.1s ease !important;
+}
+
+.btn-primary:hover,
+.btn-heading:hover,
+.btn-fill-out:hover {
+    background-color: #164a8a !important;
+    border-color: #164a8a !important;
+    transform: translateY(-1px);
+}
+
+.btn-primary:active,
+.btn-heading:active,
+.btn-fill-out:active {
+    transform: translateY(0);
+}
+
+/* --- Boutons secondaires --- */
+.btn-light,
+.btn-outline-primary {
+    border-radius: 8px !important;
+    padding: 10px 24px !important;
+    font-weight: 600 !important;
+    font-size: 14px !important;
+}
+
+/* --- Alertes --- */
+.alert {
+    border-radius: 8px !important;
+    border: none !important;
+    font-size: 14px;
+}
+
+.alert-success {
+    background-color: #d1fae5 !important;
+    color: #065f46 !important;
+}
+
+.alert-danger {
+    background-color: #fee2e2 !important;
+    color: #991b1b !important;
+}
+
+.alert-info {
+    background-color: #dbeafe !important;
+    color: #1e40af !important;
+}
+
+/* --- Checkboxes & Radios --- */
+.form-check-input {
+    border-radius: 4px !important;
+    border: 2px solid #ced4da !important;
+    width: 18px !important;
+    height: 18px !important;
+    cursor: pointer;
+}
+
+.form-check-input[type="radio"] {
+    border-radius: 50% !important;
+}
+
+.form-check-input:checked {
+    background-color: #1C57A3 !important;
+    border-color: #1C57A3 !important;
+}
+
+.form-check-label {
+    font-size: 14px;
+    cursor: pointer;
+    padding-left: 4px;
+}
+
+/* --- Texte d'erreur validation --- */
+.text-danger {
+    font-size: 12.5px !important;
+}
+
+/* --- Titres de page / contenu --- */
+.content-title,
+.card-title {
+    color: #1C57A3 !important;
+    font-weight: 700 !important;
+}
+
+/* --- Tables dans les formulaires --- */
+.table {
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.table thead th {
+    background-color: #f8fafc;
+    color: #344054;
+    font-weight: 600;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    border-bottom: 2px solid #e9ecef;
+    padding: 12px 16px;
+}
+
+.table tbody td {
+    padding: 12px 16px;
+    font-size: 14px;
+    vertical-align: middle;
+    border-bottom: 1px solid #f1f3f5;
+}
+
+.table tbody tr:hover {
+    background-color: #f8fafc;
+}
+
+/* --- Select2 override --- */
+.select2-container--default .select2-selection--single {
+    border: 1px solid #ced4da !important;
+    border-radius: 8px !important;
+    height: 42px !important;
+    padding: 6px 12px !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: 40px !important;
+}
+
+/* --- Badges --- */
+.badge {
+    border-radius: 6px !important;
+    font-weight: 500;
+    padding: 5px 10px;
+}
+
+/* ==============================================================
+   SIDEBAR - THÈME SOMBRE
+   ============================================================== */
+.navbar-aside {
+    background-color: #1e2436 !important;
+    border-right: 1px solid #2a3047 !important;
+}
+
+.navbar-aside .aside-top {
+    background-color: #161a28 !important;
+    border-bottom: 1px solid #2a3047 !important;
+}
+
+.navbar-aside .btn-aside-minimize i {
+    color: #adb5bd !important;
+}
+
+.navbar-aside nav .col-12.bg-primary {
+    background-color: #2a3047 !important;
+    color: #fff !important;
+    border-bottom: 1px solid #3a4263;
+}
+
+/* Liens du menu (niveau 1) */
+.menu-aside .menu-link {
+    color: #cdd2dd !important;
+    transition: all 0.2s ease;
+}
+.menu-aside .menu-link .icon,
+.menu-aside .menu-link i.material-icons {
+    color: #8b94ad !important;
+}
+.menu-aside .menu-link:hover {
+    background-color: #2a3047 !important;
+    color: #ffffff !important;
+}
+.menu-aside .menu-link:hover .icon,
+.menu-aside .menu-link:hover i.material-icons {
+    color: #ffffff !important;
+}
+
+/* Caret du has-submenu */
+.menu-aside .menu-item.has-submenu > .menu-link:after {
+    border-top-color: #8b94ad !important;
+}
+
+/* État ACTIF (niveau 1) */
+.menu-aside .menu-item.active > .menu-link {
+    background-color: #1c57a3 !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 8px rgba(28, 87, 163, 0.4);
+}
+.menu-aside .menu-item.active > .menu-link .icon,
+.menu-aside .menu-item.active > .menu-link i.material-icons {
+    color: #ffffff !important;
+}
+.menu-aside .menu-item.active > .menu-link:after {
+    border-top-color: #ffffff !important;
+}
+
+/* Sous-menus (niveau 2 et 3) */
+.menu-aside .submenu {
+    background: transparent;
+}
+.menu-aside .submenu a {
+    color: #9ea7c0 !important;
+    transition: all 0.2s ease;
+}
+.menu-aside .submenu a:before {
+    background-color: #6c7693 !important;
+}
+.menu-aside .submenu a:hover {
+    color: #ffffff !important;
+}
+.menu-aside .submenu a:hover:before {
+    background-color: #ffffff !important;
+}
+.menu-aside .submenu a.active,
+.menu-aside .submenu a.is-active {
+    color: #4fa3ff !important;
+    font-weight: 600;
+}
+.menu-aside .submenu a.active:before,
+.menu-aside .submenu a.is-active:before {
+    background-color: #4fa3ff !important;
+    width: 7px;
+    height: 7px;
+}
+
+/* Sous-menus imbriqués (niveau 2 - has-submenu dans .submenu) */
+.menu-aside .submenu .menu-item.has-submenu {
+    margin: 4px 0;
+}
+.menu-aside .submenu .menu-item.has-submenu > .menu-link {
+    padding: 6px 0 6px 15px;
+    font-weight: 700;
+    color: #c0c7d8 !important;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    position: relative;
+    font-size: 13px;
+    background-color: transparent !important;
+    box-shadow: none !important;
+}
+.menu-aside .submenu .menu-item.has-submenu > .menu-link:before {
+    content: "";
+    width: 5px;
+    height: 5px;
+    position: absolute;
+    background-color: #6c7693;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    border-radius: 50%;
+}
+.menu-aside .submenu .menu-item.has-submenu > .menu-link:after {
+    content: "\25BE";
+    margin-left: auto;
+    color: #6c7693 !important;
+    border: none;
+    position: static;
+    margin-top: 0;
+    font-size: 12px;
+}
+.menu-aside .submenu .menu-item.has-submenu > .menu-link:hover {
+    color: #ffffff !important;
+    background-color: rgba(255, 255, 255, 0.05) !important;
+}
+.menu-aside .submenu .menu-item.has-submenu > .menu-link:hover:before,
+.menu-aside .submenu .menu-item.has-submenu > .menu-link:hover:after {
+    color: #ffffff !important;
+    background-color: #ffffff;
+}
+
+/* État ACTIF niveau 2 (parent d'un lien actif) */
+.menu-aside .submenu .menu-item.has-submenu.active > .menu-link {
+    color: #4fa3ff !important;
+    background-color: rgba(28, 87, 163, 0.15) !important;
+}
+.menu-aside .submenu .menu-item.has-submenu.active > .menu-link:before {
+    background-color: #4fa3ff;
+}
+.menu-aside .submenu .menu-item.has-submenu.active > .menu-link:after {
+    color: #4fa3ff !important;
+}
+
+/* Sous-sous-menu (niveau 3) - styles d'arborescence */
+.menu-aside .submenu .submenu {
+    margin-left: 20px;
+    margin-top: 4px;
+    padding-left: 5px;
+    border-left: 1px dashed #3a4263;
+}
+.menu-aside .submenu .submenu a {
+    font-size: 12px;
+    padding-left: 12px;
+}
+
+/* Auto-expand quand le menu est actif (sans !important pour permettre le slideToggle JS) */
+.menu-aside .menu-item.active > .submenu,
+.menu-aside .submenu .menu-item.has-submenu.active > .submenu {
+    display: block;
+}
+
+/* Séparateur dans la sidebar */
+.navbar-aside hr {
+    border-color: #2a3047 !important;
+    opacity: 0.6;
+}
+
+/* Footer label de type de compte */
+.menu-aside li hr {
+    margin: 0;
+}

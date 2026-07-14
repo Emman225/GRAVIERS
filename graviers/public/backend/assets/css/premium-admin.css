@@ -1,0 +1,640 @@
+/* =================================================================
+   PREMIUM ADMIN UI - GRAVIER.COM
+   Design moderne, fluide, professionnel
+   - DataTables refondues
+   - Cards & boutons modernisés
+   - Badges, formulaires, tableaux harmonisés
+   ================================================================= */
+
+:root {
+    --premium-primary: #1c57a3;
+    --premium-primary-light: #4fa3ff;
+    --premium-primary-dark: #134380;
+    --premium-secondary: #6c7693;
+    --premium-success: #10b981;
+    --premium-warning: #f59e0b;
+    --premium-danger: #ef4444;
+    --premium-info: #3b82f6;
+    --premium-bg: #f5f7fb;
+    --premium-card-bg: #ffffff;
+    --premium-text: #1f2937;
+    --premium-text-muted: #6b7280;
+    --premium-border: #e5e7eb;
+    --premium-radius: 12px;
+    --premium-radius-sm: 8px;
+    --premium-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+    --premium-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+    --premium-shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+    --premium-shadow-blue: 0 4px 12px rgba(28, 87, 163, 0.15);
+    --premium-transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ==============================================================
+   BACKGROUND GLOBAL - juste lissage typo, pas de changement structurel
+   ============================================================== */
+body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* ==============================================================
+   CARDS PREMIUM - PAS d'overflow:hidden sinon les dropdowns sont clippés
+   ============================================================== */
+.card {
+    background: var(--premium-card-bg) !important;
+    border: 1px solid var(--premium-border) !important;
+    border-radius: var(--premium-radius) !important;
+    box-shadow: var(--premium-shadow-sm) !important;
+    transition: var(--premium-transition);
+}
+
+.card:hover {
+    box-shadow: var(--premium-shadow) !important;
+}
+
+.card-header {
+    background: linear-gradient(180deg, #fafbfc 0%, #f5f7fb 100%) !important;
+    border-bottom: 1px solid var(--premium-border) !important;
+    font-weight: 600;
+}
+
+/* En-tête de page : garder le layout original, juste typo */
+.content-title {
+    color: var(--premium-text);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+/* ==============================================================
+   BOUTONS PREMIUM
+   ============================================================== */
+.btn {
+    border-radius: var(--premium-radius-sm) !important;
+    font-weight: 500;
+    padding: 8px 16px;
+    transition: var(--premium-transition);
+    border: none;
+    letter-spacing: 0.01em;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--premium-shadow);
+}
+
+.btn:active {
+    transform: translateY(0);
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--premium-primary) 0%, var(--premium-primary-dark) 100%) !important;
+    color: white !important;
+}
+.btn-primary:hover {
+    background: linear-gradient(135deg, var(--premium-primary-dark) 0%, var(--premium-primary) 100%) !important;
+    box-shadow: var(--premium-shadow-blue) !important;
+}
+
+.btn-success {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+    color: white !important;
+}
+.btn-danger {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+    color: white !important;
+}
+.btn-warning {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+    color: white !important;
+}
+.btn-info {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+    color: white !important;
+}
+.btn-secondary, .btn-light {
+    background: #f3f4f6 !important;
+    color: var(--premium-text) !important;
+    border: 1px solid var(--premium-border) !important;
+}
+.btn-secondary:hover, .btn-light:hover {
+    background: #e5e7eb !important;
+}
+
+.btn-sm {
+    padding: 4px 10px !important;
+    font-size: 0.78rem !important;
+}
+
+.btn .material-icons {
+    font-size: 18px;
+}
+
+/* ==============================================================
+   TABLEAUX & DATATABLES PREMIUM
+   IMPORTANT : pas d'overflow:hidden/auto sur table/wrapper sinon les
+   menus dropdown des actions sont clippés.
+   ============================================================== */
+.table {
+    background: white;
+    border-collapse: separate !important;
+    border-spacing: 0;
+    width: 100%;
+}
+
+.table thead th {
+    background: linear-gradient(135deg, var(--premium-primary) 0%, var(--premium-primary-dark) 100%) !important;
+    color: white !important;
+    font-weight: 600;
+    font-size: 0.82rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 14px 12px !important;
+    border: none !important;
+    white-space: nowrap;
+}
+
+/* Coins arrondis sur thead first/last (visuel seul, sans overflow:hidden) */
+.table thead tr th:first-child { border-top-left-radius: var(--premium-radius-sm); }
+.table thead tr th:last-child  { border-top-right-radius: var(--premium-radius-sm); }
+
+.table tbody tr {
+    transition: var(--premium-transition);
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.table tbody tr:hover {
+    background-color: #f8fafc !important;
+    box-shadow: inset 4px 0 0 var(--premium-primary-light);
+}
+
+.table.table-striped tbody tr:nth-of-type(odd) {
+    background-color: #fafbfc;
+}
+
+.table.table-striped tbody tr:nth-of-type(odd):hover {
+    background-color: #f1f5fc !important;
+}
+
+.table tbody td {
+    padding: 12px !important;
+    vertical-align: middle !important;
+    border-top: none !important;
+    color: var(--premium-text);
+    font-size: 0.9rem;
+}
+
+.table tfoot {
+    background: linear-gradient(180deg, #f5f7fb 0%, #e8eef7 100%) !important;
+    border-top: 2px solid var(--premium-primary);
+}
+
+.table tfoot td {
+    font-weight: 700 !important;
+    color: var(--premium-primary-dark) !important;
+    padding: 14px 12px !important;
+}
+
+/* Tables petites */
+.table.table-sm thead th { padding: 10px 8px !important; font-size: 0.75rem; }
+.table.table-sm tbody td { padding: 8px !important; font-size: 0.85rem; }
+
+/* DataTables Wrapper */
+.dataTables_wrapper {
+    padding-top: 10px;
+}
+
+.dataTables_wrapper .dataTables_length,
+.dataTables_wrapper .dataTables_filter,
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_paginate {
+    color: var(--premium-text-muted);
+    font-size: 0.85rem;
+    margin-bottom: 12px;
+}
+
+.dataTables_wrapper .dataTables_filter input {
+    border-radius: var(--premium-radius-sm) !important;
+    border: 1.5px solid var(--premium-border) !important;
+    padding: 8px 14px !important;
+    transition: var(--premium-transition);
+    font-size: 0.9rem;
+    background: white;
+    margin-left: 8px;
+}
+
+.dataTables_wrapper .dataTables_filter input:focus {
+    border-color: var(--premium-primary) !important;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(28, 87, 163, 0.1);
+}
+
+.dataTables_wrapper .dataTables_length select {
+    border-radius: var(--premium-radius-sm) !important;
+    border: 1.5px solid var(--premium-border) !important;
+    padding: 6px 10px !important;
+    background: white;
+    transition: var(--premium-transition);
+}
+
+.dataTables_wrapper .dataTables_length select:focus {
+    border-color: var(--premium-primary) !important;
+    outline: none;
+}
+
+/* DataTables pagination */
+.dataTables_paginate .paginate_button {
+    padding: 6px 12px !important;
+    margin: 0 2px !important;
+    border-radius: var(--premium-radius-sm) !important;
+    border: 1px solid var(--premium-border) !important;
+    background: white !important;
+    color: var(--premium-text) !important;
+    transition: var(--premium-transition);
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.dataTables_paginate .paginate_button:hover {
+    background: var(--premium-primary) !important;
+    color: white !important;
+    border-color: var(--premium-primary) !important;
+    transform: translateY(-1px);
+    box-shadow: var(--premium-shadow-blue);
+}
+
+.dataTables_paginate .paginate_button.current,
+.dataTables_paginate .paginate_button.current:hover {
+    background: linear-gradient(135deg, var(--premium-primary) 0%, var(--premium-primary-dark) 100%) !important;
+    color: white !important;
+    border-color: var(--premium-primary) !important;
+    box-shadow: var(--premium-shadow-blue);
+}
+
+.dataTables_paginate .paginate_button.disabled,
+.dataTables_paginate .paginate_button.disabled:hover {
+    background: #f9fafb !important;
+    color: #d1d5db !important;
+    border-color: #f3f4f6 !important;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.dataTables_processing {
+    border-radius: var(--premium-radius-sm) !important;
+    background: white !important;
+    box-shadow: var(--premium-shadow-lg) !important;
+    color: var(--premium-primary) !important;
+    font-weight: 600;
+}
+
+/* Tableau responsive : scroll horizontal SUR TOUS LES ÉCRANS si nécessaire,
+   tout en laissant les dropdowns d'actions s'afficher correctement.
+   Astuce : overflow-x:auto + overflow-y:visible permet aux dropdowns
+   de descendre sous la table sans être coupés (supporté Chrome/Firefox/Edge). */
+.table-responsive {
+    background: transparent;
+    overflow-x: auto;
+    overflow-y: visible;
+}
+
+/* z-index élevé pour les dropdowns d'actions */
+.dropdown-menu {
+    z-index: 1055;
+}
+
+/* Bouton Actions dans les tables : plus visible et bien dimensionné */
+.table tbody td .dropdown {
+    display: inline-flex;
+    align-items: center;
+}
+.table tbody td .dropdown > .btn,
+.table tbody td .dropdown > a.btn {
+    background: #f0f6ff !important;
+    color: var(--premium-primary) !important;
+    border: 1px solid #d6e4f5 !important;
+    font-weight: 500 !important;
+    padding: 6px 14px !important;
+    font-size: 0.82rem !important;
+    border-radius: 8px !important;
+    box-shadow: 0 1px 2px rgba(28, 87, 163, 0.05) !important;
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.table tbody td .dropdown > .btn:hover,
+.table tbody td .dropdown > a.btn:hover {
+    background: var(--premium-primary) !important;
+    color: white !important;
+    border-color: var(--premium-primary) !important;
+    transform: translateY(-1px);
+    box-shadow: var(--premium-shadow-blue) !important;
+}
+.table tbody td .dropdown > .btn .material-icons {
+    font-size: 16px;
+    color: inherit;
+}
+
+/* ==============================================================
+   BADGES PREMIUM
+   ============================================================== */
+.badge {
+    border-radius: 6px !important;
+    font-weight: 600 !important;
+    padding: 5px 10px !important;
+    font-size: 0.72rem !important;
+    letter-spacing: 0.03em;
+    text-transform: none;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.badge.bg-success { background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important; }
+.badge.bg-danger  { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important; }
+.badge.bg-warning { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important; }
+.badge.bg-info    { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important; }
+.badge.bg-primary { background: linear-gradient(135deg, var(--premium-primary) 0%, var(--premium-primary-dark) 100%) !important; }
+.badge.bg-secondary { background: #6b7280 !important; }
+.badge.bg-dark    { background: #1f2937 !important; }
+.badge.bg-light   {
+    background: #f3f4f6 !important;
+    color: var(--premium-text) !important;
+    border: 1px solid var(--premium-border);
+}
+
+/* ==============================================================
+   FORMULAIRES PREMIUM
+   ============================================================== */
+.form-control,
+.form-select,
+form input[type="text"],
+form input[type="email"],
+form input[type="password"],
+form input[type="number"],
+form input[type="tel"],
+form input[type="url"],
+form input[type="date"],
+form input[type="datetime-local"],
+form input[type="time"],
+form select,
+form textarea {
+    border-radius: var(--premium-radius-sm) !important;
+    border: 1.5px solid var(--premium-border) !important;
+    padding: 9px 14px !important;
+    transition: var(--premium-transition);
+    font-size: 0.92rem !important;
+    background: white !important;
+    color: var(--premium-text) !important;
+}
+
+.form-control:focus,
+.form-select:focus,
+form input:focus,
+form select:focus,
+form textarea:focus {
+    border-color: var(--premium-primary) !important;
+    outline: none !important;
+    box-shadow: 0 0 0 3px rgba(28, 87, 163, 0.1) !important;
+}
+
+.form-label {
+    font-weight: 600;
+    color: var(--premium-text);
+    margin-bottom: 6px !important;
+    font-size: 0.86rem;
+}
+
+/* ==============================================================
+   ALERTS PREMIUM
+   ============================================================== */
+.alert {
+    border-radius: var(--premium-radius-sm) !important;
+    border: none !important;
+    padding: 14px 18px !important;
+    box-shadow: var(--premium-shadow-sm);
+    font-weight: 500;
+    border-left: 4px solid !important;
+}
+
+.alert-success {
+    background: #ecfdf5 !important;
+    color: #065f46 !important;
+    border-left-color: var(--premium-success) !important;
+}
+.alert-danger {
+    background: #fef2f2 !important;
+    color: #991b1b !important;
+    border-left-color: var(--premium-danger) !important;
+}
+.alert-warning {
+    background: #fffbeb !important;
+    color: #92400e !important;
+    border-left-color: var(--premium-warning) !important;
+}
+.alert-info {
+    background: #eff6ff !important;
+    color: #1e40af !important;
+    border-left-color: var(--premium-info) !important;
+}
+
+/* ==============================================================
+   MODALES PREMIUM
+   ============================================================== */
+.modal-content {
+    border: none !important;
+    border-radius: var(--premium-radius) !important;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
+    overflow: hidden;
+}
+
+.modal-header {
+    padding: 18px 24px !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+.modal-header.bg-primary {
+    background: linear-gradient(135deg, var(--premium-primary) 0%, var(--premium-primary-dark) 100%) !important;
+}
+
+.modal-body { padding: 22px 24px !important; }
+
+.modal-footer {
+    padding: 16px 24px !important;
+    background: #fafbfc;
+    border-top: 1px solid var(--premium-border) !important;
+}
+
+/* ==============================================================
+   MODALES — SCROLL VERTICAL GLOBAL
+   Tous les modals scrollent verticalement quand leur contenu
+   dépasse la hauteur de la fenêtre. Le header et le footer
+   restent visibles, seul le corps (modal-body) scrolle.
+   ============================================================== */
+.modal-dialog {
+    max-height: calc(100vh - 2 * var(--bs-modal-margin, 1rem));
+}
+
+.modal-dialog.modal-dialog-centered {
+    min-height: calc(100% - 2 * var(--bs-modal-margin, 1rem));
+}
+
+.modal-dialog .modal-content {
+    max-height: calc(100vh - 2 * var(--bs-modal-margin, 1rem));
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-dialog .modal-content > .modal-header,
+.modal-dialog .modal-content > form > .modal-header {
+    flex-shrink: 0;
+}
+
+.modal-dialog .modal-content > .modal-footer,
+.modal-dialog .modal-content > form > .modal-footer {
+    flex-shrink: 0;
+}
+
+.modal-dialog .modal-content > .modal-body,
+.modal-dialog .modal-content > form > .modal-body {
+    overflow-y: auto;
+    min-height: 0;
+    flex: 1 1 auto;
+}
+
+/* Cas spécifique : un <form> enveloppe header/body/footer
+   (ex: encaissements). On reproduit le flex sur le form pour
+   que la scrollabilité du body fonctionne. */
+.modal-dialog .modal-content > form {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+}
+
+/* ==============================================================
+   DROPDOWNS PREMIUM
+   ============================================================== */
+.dropdown-menu {
+    border: none !important;
+    border-radius: var(--premium-radius-sm) !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1) !important;
+    padding: 6px !important;
+    min-width: 200px;
+}
+
+.dropdown-item {
+    border-radius: 6px !important;
+    padding: 8px 12px !important;
+    margin: 2px 0;
+    font-size: 0.88rem;
+    transition: var(--premium-transition);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dropdown-item:hover {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%) !important;
+    color: var(--premium-primary-dark) !important;
+}
+
+.dropdown-item.text-danger:hover {
+    background: #fef2f2 !important;
+    color: #dc2626 !important;
+}
+
+/* ==============================================================
+   STATCARDS / INDICATEURS (Synthèses)
+   ============================================================== */
+.card.bg-primary, .card.bg-success, .card.bg-danger, .card.bg-warning, .card.bg-info {
+    border: none !important;
+    box-shadow: var(--premium-shadow) !important;
+    transition: var(--premium-transition);
+}
+
+.card.bg-primary:hover, .card.bg-success:hover, .card.bg-danger:hover,
+.card.bg-warning:hover, .card.bg-info:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--premium-shadow-lg) !important;
+}
+
+.card.bg-primary { background: linear-gradient(135deg, var(--premium-primary) 0%, var(--premium-primary-dark) 100%) !important; }
+.card.bg-success { background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important; }
+.card.bg-danger  { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important; }
+.card.bg-warning { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important; }
+.card.bg-info    { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important; }
+
+/* ==============================================================
+   TYPOGRAPHIE
+   ============================================================== */
+h1, h2, h3, h4, h5, h6 {
+    color: var(--premium-text);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+a { transition: var(--premium-transition); }
+a:hover { text-decoration: none; }
+
+.text-muted { color: var(--premium-text-muted) !important; }
+
+/* ==============================================================
+   MAIN WRAP / CONTENT - élargir l'espace pour les datatables
+   Le template d'origine utilise padding 30px 3% sur .content-main,
+   ET il y a 2 .content-main imbriqués (= 6% de marge horizontale).
+   On réduit le padding horizontal pour donner plus de place aux tableaux.
+   ============================================================== */
+.main-wrap {
+    background-color: var(--premium-bg);
+}
+
+/* Réduire le padding horizontal du conteneur principal */
+.main-wrap > .content-main {
+    padding-left: 1.5% !important;
+    padding-right: 1.5% !important;
+}
+
+/* L'inner .content-main n'a plus besoin de padding (parent en a déjà) */
+.main-wrap > .content-main > .content-main {
+    padding: 0 !important;
+}
+
+/* ==============================================================
+   SCROLLBAR (WebKit)
+   ============================================================== */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #f1f5f9; }
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 5px;
+    transition: var(--premium-transition);
+}
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Animations désactivées pour éviter tout saut visuel au chargement */
+
+/* ==============================================================
+   RESPONSIVE
+   ============================================================== */
+@media (max-width: 768px) {
+    .content-header { flex-direction: column; align-items: flex-start; }
+    .content-title { font-size: 1.2rem; }
+    .table thead th { font-size: 0.7rem; padding: 10px 8px !important; }
+    .table tbody td { padding: 10px 8px !important; }
+    .card-body { padding: 16px !important; }
+}
+
+/* ==============================================================
+   IMPRESSION
+   ============================================================== */
+@media print {
+    body { background: white !important; }
+    .navbar-aside, .main-header, .content-header > div, footer { display: none !important; }
+    .card { box-shadow: none !important; border: 1px solid #ddd !important; }
+}

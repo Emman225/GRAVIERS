@@ -1,0 +1,53 @@
+// Le bloc buildscript (AGP 8.1.0 / Kotlin 1.9.10) a été déplacé dans le bloc
+// plugins de settings.gradle (migration au schéma déclaratif Flutter).
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.buildDir = '../build'
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+subprojects {
+    project.pluginManager.withPlugin("com.android.library") {
+        def manifest = file("${project.projectDir}/src/main/AndroidManifest.xml")
+        if (manifest.exists()) {
+            // Classe qualifiée : groovy.util.XmlParser n'existe plus en Groovy 4 (Gradle 9+)
+            def pkg = new groovy.xml.XmlParser().parse(manifest).attribute("package")
+            if (pkg != null && project.android.namespace == null) {
+                project.android.namespace = pkg
+            }
+        }
+    }
+    // Alignement Java 17 en afterEvaluate : certains plugins (ex. shared_preferences_android)
+    // fixent Java 11 dans LEUR script, qui s'exécute APRÈS pluginManager.withPlugin ->
+    // "Inconsistent JVM Target (Java 11 / Kotlin 17)". afterEvaluate passe en dernier.
+    project.afterEvaluate {
+        if (project.plugins.hasPlugin("com.android.library") || project.plugins.hasPlugin("com.android.application")) {
+            project.android.compileOptions {
+                sourceCompatibility JavaVersion.VERSION_17
+                targetCompatibility JavaVersion.VERSION_17
+            }
+            // Certains plugins anciens (ex. flutter_compass) déclarent un compileSdk < 31
+            // -> "resource android:attr/lStar not found" avec les androidx récentes.
+            // On aligne tous les modules sur le compileSdk de l'app.
+            project.android.compileSdkVersion 35
+        }
+    }
+    project.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+        kotlinOptions {
+            jvmTarget = "17"
+        }
+    }
+}
+subprojects {
+    project.evaluationDependsOn(':app')
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}
