@@ -21,4 +21,7 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 
 Route::post('callBackPaiement', [PaiementEnLigne::class, 'callBackPaiement'])->name("callBackPaiement");
 // Vérification (pull) du statut d'un paiement — filet de sécurité si le callback se perd.
-Route::post('verifierPaiement', [PaiementEnLigne::class, 'verifierPaiement'])->name("verifierPaiement");
+// Throttle dédié (plus strict que throttle:api) : la route est publique et chaque
+// appel déclenche une requête sortante vers PaySecure -> limite l'amplification
+// et l'énumération de codePaiement.
+Route::post('verifierPaiement', [PaiementEnLigne::class, 'verifierPaiement'])->middleware('throttle:10,1')->name("verifierPaiement");

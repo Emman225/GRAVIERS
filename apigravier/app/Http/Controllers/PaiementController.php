@@ -210,6 +210,18 @@ class PaiementController extends Controller
                             $l->statut = 3; //Annulé
                             $l->save();
 
+                            // Un échec de paiement de FACTURE n'annule que la TENTATIVE
+                            // de paiement : la commande/location sous-jacente a déjà été
+                            // facturée (souvent livrée) et ne doit surtout pas être
+                            // désactivée. Le switch ci-dessous ne concerne que les
+                            // paiements initiés À LA CRÉATION du service.
+                            $paiement = Paiement::lire($l->paiement_id);
+                            if ($paiement->facture_id > 0) {
+                                $paiement->statut = 3; //Annulé (tentative)
+                                $paiement->save();
+                                continue;
+                            }
+
                             switch ($l->service) {
                                 case Help::$COMMANDE:
                                     $com = Commande::lire($l->service_id);
@@ -270,7 +282,6 @@ class PaiementController extends Controller
                             }
 
                             //modifier le statut du paiement = 3 --> Annulé
-                            $paiement = Paiement::lire($l->paiement_id);
                             $paiement->statut = 3; //Annulé
                             $paiement->save();
                         }
@@ -376,7 +387,21 @@ class PaiementController extends Controller
         $statut = self::interrogerStatutPaiement($code);
         if ($statut === 'paye') {
             $this->callBackPaiement(new Request(['codePaiement' => $code, 'code' => 200]));
-            return response()->json(['code' => 200, 'statut' => 'paye', 'message' => 'Paiement confirmé']);
+
+            // On ne répond "payé" que si la régularisation a RÉELLEMENT été
+            // appliquée en base : callBackPaiement re-vérifie lui-même le statut
+            // auprès de PaySecure et peut n'avoir rien fait (échec transitoire du
+            // 2e appel). Répondre 200 sur la seule foi du 1er appel ferait sortir
+            // l'app de son état "en attente" alors que rien n'est soldé.
+            $lignesApres = LignePaiement::listeSurCode($code);
+            $regle = count($lignesApres) > 0;
+            foreach ($lignesApres as $l) {
+                if ($l->statut != Help::$STATUT_ACTIF) { $regle = false; break; }
+            }
+            if ($regle) {
+                return response()->json(['code' => 200, 'statut' => 'paye', 'message' => 'Paiement confirmé']);
+            }
+            return response()->json(['code' => 202, 'statut' => 'en_attente', 'message' => 'Paiement confirmé par la passerelle, régularisation en cours. Veuillez réessayer.']);
         }
         if ($statut === 'echec') {
             return response()->json(['code' => 402, 'statut' => 'echec', 'message' => 'Paiement non abouti']);
@@ -731,39 +756,49 @@ class PaiementController extends Controller
                             $ligne->save();
                         }
                     } else {
-                        if ($client->client_a_terme == true) {
-                            //Client a terme
-                            $leMontant = $montantTotal;
-                            foreach ($factures as $f) {
-                                $paiement = Paiement::lireSurFacture($f->id);
-                                $paiement->client_id = $client->id;
-                                $paiement->devis_id = null;
-                                $paiement->service_id = $f->service_id;
-                                $paiement->service = $f->service;
-                                $paiement->code = $f->numero;
-                                $paiement->libelle = "Paiement de facture N° ".$f->numero;
-                                $paiement->montant_total = $montantTotal;
-                                $paiement->montant_restant = 0;
-                                $paiement->statut = Help::$STATUT_INACTIF;
-                                $paiement->save();
+                        // Paiement de FACTURES : valable pour TOUT client (à terme ou BE).
+                        // Avant, seul le client à terme était traité : un client BE
+                        // obtenait une URL de paiement mais AUCUN Paiement/LignePaiement
+                        // n'était enregistré -> le callback ne trouvait rien à solder
+                        // (argent encaissé, factures jamais réglées).
+                        $leMontant = $montantTotal;
+                        foreach ($factures as $f) {
+                            $paiement = Paiement::lireSurFacture($f->id);
+                            $paiement->client_id = $client->id;
+                            $paiement->devis_id = null;
+                            // facture_id explicite : lireSurFacture peut renvoyer un
+                            // Paiement NEUF (aucun existant) ; sans ce champ, le callback
+                            // ne marquait jamais la facture comme payée.
+                            $paiement->facture_id = $f->id;
+                            $paiement->service_id = $f->service_id;
+                            $paiement->service = $f->service;
+                            $paiement->code = $f->numero;
+                            $paiement->libelle = "Paiement de facture N° ".$f->numero;
+                            // Le dû du paiement = le montant de SA facture, pas le total
+                            // du panier : avec l'ancien montant_total = total global, un
+                            // paiement multi-factures n'était JAMAIS soldé au callback
+                            // (restant = total global − ligne de la facture > 0).
+                            $paiement->montant_total = $f->montant;
+                            $paiement->montant_restant = 0;
+                            $paiement->statut = Help::$STATUT_INACTIF;
+                            $paiement->save();
 
-                                $ligne = new LignePaiement();
-                                $ligne->service_id = $f->service_id;
-                                $ligne->service = $f->service;
-                                $ligne->paiement_id = $paiement->id;
-                                $ligne->mode_paiement_id = $modePaiement;
-                                $ligne->date_paiement = date("Y-m-d H:i:s");
-                                $ligne->statut = Help::$STATUT_INACTIF;
-                                $ligne->code_paiement = $codePaiement;
-                                if ($leMontant - $f->montant >= 0) {
-                                    $ligne->montant = $f->montant;
-                                    $ligne->save();
-                                    $leMontant -= $f->montant;
-                                } else {
-                                    $ligne->montant = $leMontant;
-                                    $ligne->save();
-                                    $leMontant = 0;
-                                }
+                            $ligne = new LignePaiement();
+                            $ligne->service_id = $f->service_id;
+                            $ligne->service = $f->service;
+                            $ligne->paiement_id = $paiement->id;
+                            $ligne->mode_paiement_id = $modePaiement;
+                            $ligne->date_paiement = date("Y-m-d H:i:s");
+                            $ligne->statut = Help::$STATUT_INACTIF;
+                            $ligne->code_paiement = $codePaiement;
+                            if ($leMontant - $f->montant >= 0) {
+                                $ligne->montant = $f->montant;
+                                $ligne->save();
+                                $leMontant -= $f->montant;
+                            } else {
+                                $ligne->montant = $leMontant;
+                                $ligne->save();
+                                $leMontant = 0;
                             }
                         }
                     }

@@ -73,7 +73,10 @@ Route::post('demande-annuler-location/{id}', [LocationController::class, 'demand
 
 Route::post('callBackPaiement', [PaiementController::class, 'callBackPaiement'])->name("callBackPaiement");
 // Vérification (pull) du statut d'un paiement — filet de sécurité si le callback se perd.
-Route::post('verifierPaiement', [PaiementController::class, 'verifierPaiement'])->name("verifierPaiement");
+// Throttle dédié (plus strict que throttle:api) : la route est publique et chaque
+// appel déclenche une requête sortante vers PaySecure -> limite l'amplification
+// et l'énumération de codePaiement.
+Route::post('verifierPaiement', [PaiementController::class, 'verifierPaiement'])->middleware('throttle:10,1')->name("verifierPaiement");
 Route::post('liste-facture', [PaiementController::class, 'listeFacture'])->name("listeFacture");
 Route::post('liste-paiement', [PaiementController::class, 'listePaiement'])->name("listePaiement");
 Route::post('obtenir-lien-paiement', [PaiementController::class, 'obtenirLienPaiement'])->name("obtenirLienPaiement");

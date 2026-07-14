@@ -178,7 +178,15 @@ class LivreurController extends Controller
                         return response()->json($retour);
                     }
 
-                    if ($codeReset->code == $request->otp) {
+                    // hash_equals : comparaison stricte et à temps constant. On
+                    // normalise les deux valeurs à 4 chiffres (str_pad) car la colonne
+                    // `code` est un entier : un OTP « 0123 » est stocké « 123 », alors
+                    // que l'email envoie « 0123 » -> sans padding, hash_equals échouerait
+                    // sur la différence de longueur (~10 % des codes, ceux à zéro en tête).
+                    if (hash_equals(
+                        str_pad((string) $codeReset->code, 4, '0', STR_PAD_LEFT),
+                        str_pad((string) $request->otp, 4, '0', STR_PAD_LEFT)
+                    )) {
 
                         RateLimiter::clear($rlKey);
 
@@ -376,7 +384,25 @@ class LivreurController extends Controller
             $user = User::lire($idUsr);
             if ($user->id > 0) {
 
+                // AUTORISATION : seul le livreur ASSIGNÉ à la livraison peut
+                // l'accepter (même garde que enregistrerFinLivraison).
+                $livreurAuth = Livreur::lireSurUser($user->id);
+                if ($livreurAuth->id <= 0) {
+                    DB::rollBack();
+                    $retour->code = 403;
+                    $retour->message = 'Action réservée à un livreur';
+                    return response()->json($retour);
+                }
+
                 $livraison = Livraison::lire($request->idLivraison);
+                if ($livraison->livreur_id != $livreurAuth->id) {
+                    // Couvre aussi la livraison inexistante (livreur_id null) :
+                    // 404 pour ne pas servir d'oracle d'énumération.
+                    DB::rollBack();
+                    $retour->code = 404;
+                    $retour->message = 'Livraison introuvable';
+                    return response()->json($retour);
+                }
                 $livraison->accepte = 1;
                 $livraison->etat_livraison = Help::$LIVRAISON_EN_TRAITEMENT;
                 $livraison->date_accord = date("Y-m-d H:i:s");
@@ -418,7 +444,25 @@ class LivreurController extends Controller
             $user = User::lire($idUsr);
             if ($user->id > 0) {
 
+                // AUTORISATION : seul le livreur ASSIGNÉ à la livraison peut
+                // la refuser (même garde que enregistrerFinLivraison).
+                $livreurAuth = Livreur::lireSurUser($user->id);
+                if ($livreurAuth->id <= 0) {
+                    DB::rollBack();
+                    $retour->code = 403;
+                    $retour->message = 'Action réservée à un livreur';
+                    return response()->json($retour);
+                }
+
                 $livraison = Livraison::lire($request->idLivraison);
+                if ($livraison->livreur_id != $livreurAuth->id) {
+                    // Couvre aussi la livraison inexistante (livreur_id null) :
+                    // 404 pour ne pas servir d'oracle d'énumération.
+                    DB::rollBack();
+                    $retour->code = 404;
+                    $retour->message = 'Livraison introuvable';
+                    return response()->json($retour);
+                }
                 $livraison->accepte = 3;
                 $livraison->save();
 
@@ -458,12 +502,32 @@ class LivreurController extends Controller
             $user = User::lire($idUsr);
             if ($user->id > 0) {
 
+                // AUTORISATION : seul le livreur ASSIGNÉ à la livraison peut la
+                // clôturer. Sans ce contrôle, n'importe quel porteur d'un access
+                // valide (client, apporteur...) pouvait marquer n'importe quelle
+                // livraison comme livrée et créditer le solde du livreur assigné.
+                $livreurAuth = Livreur::lireSurUser($user->id);
+                if ($livreurAuth->id <= 0) {
+                    DB::rollBack();
+                    $retour->code = 403;
+                    $retour->message = 'Action réservée à un livreur';
+                    return response()->json($retour);
+                }
+
                 // Verrou pessimiste + garde d'idempotence : un double tap ou un
                 // retry réseau ne doit PAS créditer le livreur deux fois ni
                 // incrémenter qte_livree en double. On relit la livraison FOR UPDATE
                 // et on sort si elle est déjà LIVREE.
                 $livraison = Livraison::where('id', $request->idLivraison)->lockForUpdate()->first();
                 if (!$livraison || $livraison->id <= 0) {
+                    DB::rollBack();
+                    $retour->code = 404;
+                    $retour->message = 'Livraison introuvable';
+                    return response()->json($retour);
+                }
+                if ($livraison->livreur_id != $livreurAuth->id) {
+                    // 404 (et non 403) : ne pas confirmer à un tiers l'existence
+                    // de la livraison d'un autre livreur.
                     DB::rollBack();
                     $retour->code = 404;
                     $retour->message = 'Livraison introuvable';

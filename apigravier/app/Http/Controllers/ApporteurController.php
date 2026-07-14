@@ -323,7 +323,15 @@ class ApporteurController extends Controller
                         return response()->json($retour);
                     }
 
-                    if ($codeReset->code == $request->otp) {
+                    // hash_equals : comparaison stricte et à temps constant. On
+                    // normalise les deux valeurs à 4 chiffres (str_pad) car la colonne
+                    // `code` est un entier : un OTP « 0123 » est stocké « 123 », alors
+                    // que l'email envoie « 0123 » -> sans padding, hash_equals échouerait
+                    // sur la différence de longueur (~10 % des codes, ceux à zéro en tête).
+                    if (hash_equals(
+                        str_pad((string) $codeReset->code, 4, '0', STR_PAD_LEFT),
+                        str_pad((string) $request->otp, 4, '0', STR_PAD_LEFT)
+                    )) {
 
                         RateLimiter::clear($rlKey);
 
