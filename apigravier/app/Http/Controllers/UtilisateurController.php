@@ -23,6 +23,7 @@ use App\Mail\CodeInscriptionMail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\RateLimiter;
 use App\Mail\InscriptionEffectueeMail;
 use Illuminate\Support\Facades\Storage;
 use App\Models\DemandeCompteClientATerme;
@@ -195,7 +196,7 @@ class UtilisateurController extends Controller
                         $code->email = $email;
                         $code->user_id = $user->id;
                         $code->type_code = Help::$CODE_INSCRIPTION;
-                        $code->expiration_date = date("Y-m-d", strtotime("+1 day"));
+                        $code->expiration_date = date("Y-m-d H:i:s", strtotime("+30 minutes")); // OTP courte durée (anti brute-force)
                         $code->utilise = false;
                         $code->save();
                     }
@@ -486,10 +487,33 @@ class UtilisateurController extends Controller
             $idUsr = Crypt::decryptString($request->access);
             $user = User::lire($idUsr);
             if ($user->id > 0) {
+
+                // Anti brute-force : l'OTP ne fait que 4 chiffres (10 000 combinaisons).
+                // On limite à 5 tentatives par compte et par fenêtre de 15 min, en plus
+                // du throttle IP global. Sans ça, la prise de compte était réaliste.
+                $rlKey = 'otp-verify:' . $user->id;
+                if (RateLimiter::tooManyAttempts($rlKey, 5)) {
+                    $seconds = RateLimiter::availableIn($rlKey);
+                    $retour->code = 429;
+                    $retour->message = 'Trop de tentatives. Réessayez dans ' . ceil($seconds / 60) . ' minute(s).';
+                    return response()->json($retour);
+                }
+
                 $codeReset = CodeReset::lireSurUser($user->id, $niveau == 1 ? Help::$CODE_INSCRIPTION : Help::$CODE_PASS_OUBLIE, false);
                 if ($codeReset->id > 0) {
 
+                    // Expiration RÉELLEMENT vérifiée (la colonne existait mais n'était
+                    // jamais contrôlée -> un OTP restait valable indéfiniment).
+                    if (!empty($codeReset->expiration_date) && strtotime($codeReset->expiration_date) < time()) {
+                        $retour->code = 410;
+                        $retour->message = 'Code OTP expiré, veuillez en demander un nouveau';
+                        return response()->json($retour);
+                    }
+
                     if ($codeReset->code == $request->otp) {
+
+                        // Tentative réussie : on réinitialise le compteur.
+                        RateLimiter::clear($rlKey);
 
                         if ($niveau == 1) {
                             //On active le compte du client
@@ -510,6 +534,9 @@ class UtilisateurController extends Controller
                         $retour->code = 200;
                         $retour->message = 'Ok';
                     } else {
+                        // Tentative échouée : on incrémente le compteur (décroissance 15 min).
+                        RateLimiter::hit($rlKey, 900);
+
                         $retour->code = 405;
                         $retour->message = 'Code OTP incorrecte';
                     }
@@ -766,7 +793,7 @@ class UtilisateurController extends Controller
                         $code->email = $email;
                         $code->user_id = $user->id;
                         $code->type_code = Help::$CODE_PASS_OUBLIE;
-                        $code->expiration_date = date("Y-m-d", strtotime("+1 day"));
+                        $code->expiration_date = date("Y-m-d H:i:s", strtotime("+30 minutes")); // OTP courte durée (anti brute-force)
                         $code->utilise = false;
                         $code->save();
                     }

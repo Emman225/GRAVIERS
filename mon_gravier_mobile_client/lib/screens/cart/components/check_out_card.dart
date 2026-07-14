@@ -123,6 +123,11 @@ class _CheckoutCardState extends State<CheckoutCard> {
                       }
 
                       if(validOk){
+                        // Sans livraison, aucun calcul distant n'est requis : le coût
+                        // de livraison est légitimement 0. Avec livraison, on ne pourra
+                        // continuer que si l'appel resume-commande a réussi (sinon on
+                        // partirait au résumé avec coutLivraison = 0 -> montant faux).
+                        bool livraisonCalculee = !meFaireLivre;
                         if (await verifierConnexion()) {
                           try {
                             afficherChargement();
@@ -171,6 +176,7 @@ class _CheckoutCardState extends State<CheckoutCard> {
                                 if (datas['code'] == 200) {
                                   coutLivraison = double.parse(datas['data']['montant'].toString());
                                   lignesLivraisons = datas['data']['lignes'];
+                                  livraisonCalculee = true;
                                 } else {
                                   EasyLoading.showError(datas['message']);
                                 }
@@ -190,12 +196,20 @@ class _CheckoutCardState extends State<CheckoutCard> {
                           EasyLoading.showInfo(
                               "Veuillez vérifier votre connexion internet");
                         }
-                        Get.toNamed(ResumeCommandeScreen.routeName, arguments: [
-                          widget.data,
-                          total,
-                          coutLivraison,
-                          lignesLivraisons,
-                        ]);
+                        // On ne va au résumé que si le coût de livraison a bien été
+                        // calculé (ou n'était pas requis). Sinon le client verrait un
+                        // montant erroné (livraison à 0) et pourrait valider à tort.
+                        if (livraisonCalculee) {
+                          Get.toNamed(ResumeCommandeScreen.routeName, arguments: [
+                            widget.data,
+                            total,
+                            coutLivraison,
+                            lignesLivraisons,
+                          ]);
+                        } else {
+                          EasyLoading.showError(
+                              "Impossible de calculer les frais de livraison. Veuillez réessayer.");
+                        }
                       }else{
                         EasyLoading.showError(msgErr);
                       }

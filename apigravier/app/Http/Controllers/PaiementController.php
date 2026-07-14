@@ -72,6 +72,37 @@ class PaiementController extends Controller
 
                 if (count($lignePaiements) > 0) {
 
+                    // SÉCURITÉ : cette route est publique et le POST est falsifiable
+                    // (un attaquant connaissant un codePaiement peut envoyer code=200).
+                    // On ne se fie donc pas au code annoncé : on confirme le statut
+                    // serveur→serveur auprès de PaySecure avant d'agir.
+                    if (!empty(config('paysecure.status_url'))) {
+                        $statutVerifie = self::interrogerStatutPaiement($request->codePaiement);
+                        if ($statutVerifie === 'paye') {
+                            $request->merge(['code' => 200]);
+                        } else if ($statutVerifie === 'echec') {
+                            $request->merge(['code' => 400]);
+                        } else {
+                            // Statut indéterminé (PENDING, passerelle injoignable...) :
+                            // on ne solde ni n'annule rien ; la vérification pull
+                            // (verifierPaiement) régularisera.
+                            Help::ecrireLog(
+                                "callBackPaiement",
+                                "CallBack paiement non appliqué",
+                                "Code " . $request->codePaiement . " : statut PaySecure indéterminé, aucune action",
+                                0
+                            );
+                            return response()->json(['code' => 202, 'message' => 'Statut non confirmé, aucune action']);
+                        }
+                    } else {
+                        Help::ecrireLog(
+                            "callBackPaiement",
+                            "CallBack paiement non vérifié",
+                            "PAYSECURE_STATUS_URL absente : callback accepté sans vérification serveur→serveur (code " . $request->codePaiement . ")",
+                            0
+                        );
+                    }
+
                     if ($request->code == 200) {
                         //Effectué
                         $parrain_id = 0;
@@ -268,6 +299,90 @@ class PaiementController extends Controller
                 0
             );
         }
+    }
+
+    /**
+     * Interroge PaySecure (serveur→serveur) sur le statut réel d'un paiement.
+     * Retourne 'paye', 'echec' ou 'inconnu' (PENDING, non configuré, injoignable).
+     * Même logique que PaiementEnLigne::interrogerStatutPaiement côté web.
+     */
+    private static function interrogerStatutPaiement($codePaiement)
+    {
+        $statusUrl = config('paysecure.status_url');
+        if (empty($statusUrl)) {
+            return 'inconnu';
+        }
+
+        try {
+            $reponse = Http::withHeaders([
+                'ApiKey'       => config('paysecure.api_key'),
+                'MerchantId'   => config('paysecure.merchant_id'),
+                'Content-Type' => 'application/json',
+            ])->post($statusUrl, [
+                'codePaiement' => $codePaiement,
+            ]);
+
+            if ($reponse->status() != 200) {
+                return 'inconnu';
+            }
+
+            $json = $reponse->json();
+
+            // Format PaySecure (POST /api/airtime/status/transact) :
+            // { "code": 200, "message": "...", "payments": { "state": "PENDDING|CANCEL|...", ... } }
+            // Le "code" racine peut valoir 200 alors que le paiement est encore "PENDDING" :
+            // on se fie donc à payments.state (et non au seul code).
+            $state = strtoupper((string) ($json['payments']['state'] ?? $json['payments']['status'] ?? ''));
+
+            $etatsPayes = ['SUCCESS', 'SUCCESSFUL', 'SUCCESSFULL', 'SUCCESSFULLY', 'SUCCES', 'PAID', 'DONE', 'COMPLETED', 'COMPLETE', 'EFFECTUE', 'EFFECTUEE', 'VALIDATED', 'VALIDE', 'APPROVED', 'PAYE'];
+            $etatsEchoues = ['CANCEL', 'CANCELLED', 'CANCELED', 'FAILED', 'FAIL', 'ECHEC', 'ECHOUE', 'REJECTED', 'REJET', 'ERROR', 'EXPIRED'];
+
+            if (in_array($state, $etatsPayes, true)) {
+                return 'paye';
+            }
+            if (in_array($state, $etatsEchoues, true)) {
+                return 'echec';
+            }
+            return 'inconnu';
+        } catch (\Throwable $th) {
+            Help::ecrireLog('interrogerStatutPaiement', 'error', "code: $codePaiement cause: " . $th->getMessage(), 0);
+            return 'inconnu';
+        }
+    }
+
+    /**
+     * Vérification (pull) du statut d'un paiement — filet de sécurité si le
+     * callback s'est perdu ou n'a pas pu être confirmé. Si PaySecure confirme
+     * le paiement, on rejoue le traitement du callback (qui re-vérifie lui-même).
+     */
+    public function verifierPaiement(Request $request)
+    {
+        Request()->validate(['codePaiement' => 'required|string']);
+        $code = $request->codePaiement;
+
+        $lignes = LignePaiement::listeSurCode($code);
+        if (count($lignes) === 0) {
+            return response()->json(['code' => 404, 'statut' => 'introuvable', 'message' => 'Paiement introuvable']);
+        }
+
+        $dejaRegle = true;
+        foreach ($lignes as $l) {
+            if ($l->statut != Help::$STATUT_ACTIF) { $dejaRegle = false; break; }
+        }
+        if ($dejaRegle) {
+            return response()->json(['code' => 200, 'statut' => 'paye', 'message' => 'Paiement déjà confirmé']);
+        }
+
+        $statut = self::interrogerStatutPaiement($code);
+        if ($statut === 'paye') {
+            $this->callBackPaiement(new Request(['codePaiement' => $code, 'code' => 200]));
+            return response()->json(['code' => 200, 'statut' => 'paye', 'message' => 'Paiement confirmé']);
+        }
+        if ($statut === 'echec') {
+            return response()->json(['code' => 402, 'statut' => 'echec', 'message' => 'Paiement non abouti']);
+        }
+
+        return response()->json(['code' => 202, 'statut' => 'en_attente', 'message' => 'Statut indéterminé']);
     }
 
     public function ouvreApp($codePaiement)
@@ -540,9 +655,12 @@ class PaiementController extends Controller
                         'Url_Retour' => Help::urlPaiement(route("ouvreApp", ['codePaiement' => $codePaiement])),
                         'Url_Callback' => Help::urlPaiement(route('callBackPaiement')),
                     ],
+                    // Signature : ($paramInit, $numero, $codePaiement, $client, $montantTotal, ...).
+                    // L'ancien appel omettait $numero : $client arrivait dans $codePaiement
+                    // et 0 dans $client -> branche factures inutilisable.
+                    $codePaiement,
                     $codePaiement,
                     $client,
-                    0,
                     $total,
                     $request->modePaiement,
                     null,

@@ -64,7 +64,10 @@ class PaiementController extends Controller
 
             if($info->devis->paiements->isEmpty()){
                 // $montant_total = $info->devis->montant;
-                $montant_total = $info->montant_total;
+                // Total NET dû (HT + TVA + livraison − remise) : montant_total ne
+                // contient que le HT côté web -> régler le HT soldait la commande à
+                // tort alors que TVA et livraison restaient dues.
+                $montant_total = $info->montantAPayer();
                 $montant_restant = $montant_total - $request->montant;
                 // d('dans if');
 
@@ -266,36 +269,30 @@ class PaiementController extends Controller
             $data['user'] = Auth::user();
 
             // dd('ok');
-            $montant = $location->montant_total;
+            // Le TAUX de commission dépend de la taille de l'affaire (montant total
+            // de la location), mais la commission ne porte que sur la TRANCHE payée
+            // maintenant. L'ancien code appliquait le taux au montant total à CHAQUE
+            // versement -> une location réglée en 3 fois payait la commission 3×.
+            $montantTotalLoc = (float) $location->montant_total;
+            $montantTranche  = (float) $request->montant;
             $client = Client::find($location->client_id);
-            if($client->code_parrain){
+            if($client && $client->code_parrain){
 
                 $apporteur = Apporteur::where('code',$client->code_parrain)->first();
-                $solde = $apporteur->solde;
-                // dd('hdhde');
+                // $solde n'est lu qu'APRÈS avoir vérifié que l'apporteur existe :
+                // un code_parrain orphelin provoquait un null deref (page d'erreur
+                // caissier) alors que le Paiement venait d'être créé.
                 if($apporteur){
-                    switch ($montant) {
-                        case ($montant >= 0 && $montant < 5000000 ):
-                            // dd('2,5% ',$solde + (($montant*2.5))/100);
-                            $apporteur->update([
-                                'solde' => $solde + (($montant*2.5))/100
-                            ]);
-                            break;
-
-                        case ($montant >= 5000000 && $montant <= 20000000 ):
-                            // dd('5% ',$solde + (($montant*5))/100);
-                            $apporteur->update([
-                                'solde' => $solde + (($montant*5))/100
-                            ]);
-                            break;
-
-                        case ($montant >= 20000001 ):
-                            // dd('7% ',$solde + (($montant*7))/100);
-                            $apporteur->update([
-                                'solde' => $solde + (($montant*7))/100
-                            ]);
-                            break;
+                    if ($montantTotalLoc < 5000000) {
+                        $taux = 2.5;
+                    } elseif ($montantTotalLoc <= 20000000) {
+                        $taux = 5;
+                    } else {
+                        $taux = 7;
                     }
+                    $apporteur->update([
+                        'solde' => (float) $apporteur->solde + ($montantTranche * $taux / 100)
+                    ]);
                 }
             }
 
@@ -597,6 +594,17 @@ class PaiementController extends Controller
             $factures = Facture::find($request->factures);
             // dd($factures, 5);
             $codePaiement = Help::getCommandeNo();
+
+            // On paie des FACTURES : le service_id/service du paiement doit provenir
+            // de la facture réglée, pas d'une valeur codée en dur. L'ancien code
+            // passait service_id = 1 -> pour un client BE (non à terme) le paiement
+            // était enregistré sur la commande id=1, qui se retrouvait soldée à tort
+            // au callback tandis que la vraie commande restait impayée.
+            $premiereFacture = $factures->first();
+            if (!$premiereFacture) {
+                return back()->with('error', 'Aucune facture valide sélectionnée.');
+            }
+
             $ret = PaiementEnLigne::initierPaiement(
                         [
                             'code_paiement' => $codePaiement,
@@ -617,8 +625,8 @@ class PaiementController extends Controller
                         $client,
                         intVal($request->montant),
                         $request->mode,
-                        1,
-                        Help::$COMMANDE,
+                        $premiereFacture->service_id,
+                        $premiereFacture->service,
                         $factures,
                     );
                      if ($ret['code'] == 200){

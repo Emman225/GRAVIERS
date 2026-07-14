@@ -260,7 +260,10 @@ class LigneLivraison {
     etatCommande = json['etat_commande'];
     dateLivraison = json['date_livraison'];
     dateFinLivraison = json['date_fin_livraison'];
-    remise = double.parse(json['remise'] ?? '0');
+    // .toString() indispensable (comme les champs voisins) : si l'API renvoie
+    // remise sous forme de nombre, double.parse(num) lève un TypeError et l'écran
+    // détails livraison reste vide.
+    remise = double.parse((json['remise'] ?? '0').toString());
     modePaiement = json['mode_paiement'];
     typeLivraison = json['type_livraison'];
   }

@@ -68,7 +68,10 @@ class CreanceClientTermeController extends Controller
             $tva            = $montantHt * ($tauxTva / 100);
             $montantTtc     = $montantHt + $tva;
             $fraisLivraison = (float) ($commande?->cout_livraison_client ?? 0);
-            $totalAPayer    = $montantTtc + $fraisLivraison;
+            $remise         = (float) ($commande?->remise ?? 0);
+            // La remise doit être déduite du dû (elle l'était dans montantAPayer()) :
+            // sans ça la créance affichée était surévaluée du montant de la remise.
+            $totalAPayer    = $montantTtc + $fraisLivraison - $remise;
 
             // Si on n'a pas de détails (cas dégradé), on retombe sur facture.montant
             if ($montantHt == 0 && $f->montant > 0) {

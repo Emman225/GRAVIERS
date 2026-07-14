@@ -839,8 +839,10 @@ class OrdersController extends Controller
 
             $stock = StockProduit::where('produit_id', $unProduit)->where('fournisseur_id', $fournisseur[$key])->first();
             if ($qte[$key] > $stock->qte) {
-
-                $nouvelleQte = $qte[$key] - $stock->qte;
+                // Rupture : on enlève tout le stock disponible et il ne reste RIEN.
+                // L'ancien calcul ($qte - $stock) laissait le MANQUANT (positif) comme
+                // stock restant -> des tonnes inexistantes redevenaient vendables.
+                $nouvelleQte = 0;
                 $qteEnlevee = $stock->qte;
             } else {
 

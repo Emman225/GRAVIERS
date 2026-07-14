@@ -19,6 +19,7 @@ use App\Models\DetailLocation;
 use App\Mail\EnvoieCommandeMail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use App\Models\PreuveOperationBanque;
 use Illuminate\Support\Facades\Crypt;
@@ -171,11 +172,6 @@ class LocationController extends Controller
                         $ligne->save();
                     }
 
-                    //On envoie la commande par mail au client
-                    $loc = Location::lire($location->id);
-                    $lis = DetailLocation::liste(null, $location->id);
-                    Mail::to($user->email)->send(new EnvoieCommandeMail($loc, $lis, $request->montantTva, $client->nom . ' ' . $client->prenom, $client->email, $client->contact1, Help::$LOCATION));
-
                     $retour->code = 200;
                     $retour->message = 'Commande effectuée avec succès nous vous contacterons dans quelque instant';
 
@@ -248,6 +244,19 @@ class LocationController extends Controller
                 }
 
                 DB::commit();
+
+                // Email de confirmation APRÈS commit et NON bloquant : un timeout
+                // SMTP (LWS) ne doit jamais faire échouer/annuler la location déjà
+                // enregistrée par le client. cf. règle projet « emails non bloquants ».
+                if (isset($location) && $location->id > 0) {
+                    try {
+                        $loc = Location::lire($location->id);
+                        $lis = DetailLocation::liste(null, $location->id);
+                        Mail::to($user->email)->send(new EnvoieCommandeMail($loc, $lis, $request->montantTva, $client->nom . ' ' . $client->prenom, $client->email, $client->contact1, Help::$LOCATION));
+                    } catch (\Throwable $mailEx) {
+                        Log::error('Email location non envoyé (location ' . $location->id . '): ' . $mailEx->getMessage());
+                    }
+                }
             } else {
                 $retour->code = 404;
                 $retour->message = 'Impossible de récupérer l\'utilisateur';

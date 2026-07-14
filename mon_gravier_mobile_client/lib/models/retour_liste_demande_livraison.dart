@@ -35,11 +35,11 @@ class DataListeDemandeLivraison {
   int? clientId;
   int? adresseLivraisonPecId;
   int? adresseLivraisonDestId;
-  int? montantTotal;
+  num? montantTotal; // num (et non int) : l'API peut renvoyer un décimal (TVA...) -> un int? planterait le parsing
   String? etatCommande;
   String? dateLivraison;
   String? dateFinLivraison;
-  int? remise;
+  num? remise;
   int? statut;
   String? deletedAt;
   String? createdAt;
@@ -93,11 +93,11 @@ class DataListeDemandeLivraison {
     clientId = json['client_id'];
     adresseLivraisonPecId = json['adresse_livraison_pec_id'];
     adresseLivraisonDestId = json['adresse_livraison_dest_id'];
-    montantTotal = json['montantTotal'];
+    montantTotal = json['montantTotal'] == null ? null : num.tryParse(json['montantTotal'].toString());
     etatCommande = json['etat_commande'];
     dateLivraison = json['date_livraison'];
     dateFinLivraison = json['date_fin_livraison'];
-    remise = json['remise'];
+    remise = json['remise'] == null ? null : num.tryParse(json['remise'].toString());
     statut = json['statut'];
     deletedAt = json['deleted_at'];
     createdAt = json['created_at'];

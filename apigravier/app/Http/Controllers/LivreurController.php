@@ -25,6 +25,7 @@ use App\Mail\CodeInscriptionMail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 
 class LivreurController extends Controller
@@ -157,10 +158,29 @@ class LivreurController extends Controller
             $idUsr = Crypt::decryptString($request->access);
             $user = User::lire($idUsr);
             if ($user->id > 0) {
+
+                // Anti brute-force : OTP à 4 chiffres -> 5 tentatives / 15 min / compte.
+                $rlKey = 'otp-verify-livreur:' . $user->id;
+                if (RateLimiter::tooManyAttempts($rlKey, 5)) {
+                    $seconds = RateLimiter::availableIn($rlKey);
+                    $retour->code = 429;
+                    $retour->message = 'Trop de tentatives. Réessayez dans ' . ceil($seconds / 60) . ' minute(s).';
+                    return response()->json($retour);
+                }
+
                 $codeReset = CodeReset::lireSurUser($user->id, $niveau == 1 ? Help::$CODE_CONNEXION : Help::$CODE_PASS_OUBLIE, false);
                 if ($codeReset->id > 0) {
 
+                    // Expiration réellement vérifiée.
+                    if (!empty($codeReset->expiration_date) && strtotime($codeReset->expiration_date) < time()) {
+                        $retour->code = 410;
+                        $retour->message = 'Code OTP expiré, veuillez en demander un nouveau';
+                        return response()->json($retour);
+                    }
+
                     if ($codeReset->code == $request->otp) {
+
+                        RateLimiter::clear($rlKey);
 
                         if ($niveau == 2) {
                             $codeReset->utilise = true;
@@ -170,6 +190,8 @@ class LivreurController extends Controller
                         $retour->code = 200;
                         $retour->message = 'Ok';
                     } else {
+                        RateLimiter::hit($rlKey, 900);
+
                         $retour->code = 405;
                         $retour->message = 'Code OTP incorrecte';
                     }
@@ -214,7 +236,7 @@ class LivreurController extends Controller
                         $code->email = $email;
                         $code->user_id = $user->id;
                         $code->type_code = Help::$CODE_PASS_OUBLIE;
-                        $code->expiration_date = date("Y-m-d", strtotime("+1 day"));
+                        $code->expiration_date = date("Y-m-d H:i:s", strtotime("+30 minutes")); // OTP courte durée (anti brute-force)
                         $code->utilise = false;
                         $code->save();
                     }
@@ -436,7 +458,25 @@ class LivreurController extends Controller
             $user = User::lire($idUsr);
             if ($user->id > 0) {
 
-                $livraison = Livraison::lire($request->idLivraison);
+                // Verrou pessimiste + garde d'idempotence : un double tap ou un
+                // retry réseau ne doit PAS créditer le livreur deux fois ni
+                // incrémenter qte_livree en double. On relit la livraison FOR UPDATE
+                // et on sort si elle est déjà LIVREE.
+                $livraison = Livraison::where('id', $request->idLivraison)->lockForUpdate()->first();
+                if (!$livraison || $livraison->id <= 0) {
+                    DB::rollBack();
+                    $retour->code = 404;
+                    $retour->message = 'Livraison introuvable';
+                    return response()->json($retour);
+                }
+                if ($livraison->etat_livraison == Help::$LIVRAISON_LIVREE) {
+                    DB::commit();
+                    $retour->code = 200;
+                    $retour->message = "Livraison déjà enregistrée comme livrée";
+                    $retour->data = $livraison;
+                    return response()->json($retour);
+                }
+
                 $livraison->etat_livraison = Help::$LIVRAISON_LIVREE;
                 $livraison->date_livraison = date("Y-m-d H:i:s");
                 $livraison->note_livreur = $request->note;

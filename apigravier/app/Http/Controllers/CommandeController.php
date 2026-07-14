@@ -21,6 +21,7 @@ use App\Models\RetourProduit;
 use App\Models\DetailCommande;
 use App\Mail\EnvoieCommandeMail;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use App\Models\PreuveOperationBanque;
 use Illuminate\Support\Facades\Crypt;
@@ -377,11 +378,6 @@ class CommandeController extends Controller
                     //     $this->payerApporteurAffaire($client->parrain_id, $commande->id, $commande->montant_total, Help::$VENTE);
                     // }
 
-                    //On envoie la commande par mail au client
-                    $com = Commande::lire($commande->id);
-                    $lis = DetailCommande::liste(null, $commande->id);
-                    Mail::to($user->email)->send(new EnvoieCommandeMail($com, $lis, $request->montantTva, $client->nom . ' ' . $client->prenom, $client->email, $client->contact1, Help::$VENTE));
-
                     $retour->code = 200;
                     $retour->message = 'Commande effectuée avec succès nous vous contacterons dans quelque instant';
 
@@ -454,6 +450,17 @@ class CommandeController extends Controller
                     }
 
                     DB::commit();
+
+                    // Email de confirmation APRÈS commit et NON bloquant : un timeout
+                    // SMTP (LWS) ne doit jamais faire échouer/annuler la commande déjà
+                    // enregistrée par le client. cf. règle projet « emails non bloquants ».
+                    try {
+                        $com = Commande::lire($commande->id);
+                        $lis = DetailCommande::liste(null, $commande->id);
+                        Mail::to($user->email)->send(new EnvoieCommandeMail($com, $lis, $request->montantTva, $client->nom . ' ' . $client->prenom, $client->email, $client->contact1, Help::$VENTE));
+                    } catch (\Throwable $mailEx) {
+                        Log::error('Email commande non envoyé (commande ' . $commande->id . '): ' . $mailEx->getMessage());
+                    }
                 }
             } else {
                 $retour->code = 404;
@@ -485,9 +492,20 @@ class CommandeController extends Controller
             $user = User::lire($idUsr);
             if ($user->id > 0) {
                 $client = Client::lireSurUser($user->id);
+                $commande = Commande::lire($id);
+
+                // IDOR : ne renvoyer la commande que si elle appartient au client
+                // authentifié. Sans ce contrôle, un client pouvait lire montant /
+                // adresse / note de la commande d'un autre en passant un id arbitraire.
+                if (!$commande || $commande->id <= 0 || $commande->client_id != $client->id) {
+                    $retour->code = 404;
+                    $retour->message = 'Commande introuvable';
+                    return response()->json($retour);
+                }
+
                 $retour->data = [
                     'client_a_terme' => $client->client_a_terme == true ? true : false,
-                    'commande' => Commande::lire($id),
+                    'commande' => $commande,
                     'lignes' => DetailCommande::liste(null, $id, $client->id),
                 ];
                 $retour->code = 200;

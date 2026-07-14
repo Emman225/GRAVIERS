@@ -68,7 +68,10 @@ class _SplashScreenState extends State<SplashScreen> {
         _page = uri.queryParameters['page'] ?? "";
         switch (_page) {
           case "retour_commande":
-            _statut = int.parse(uri.queryParameters['statut'].toString()) ?? 0;
+            // tryParse (et non parse) : si le paramètre 'statut' est absent, on
+            // aurait int.parse("null") -> FormatException, et le panier n'était
+            // jamais vidé après un paiement réussi.
+            _statut = int.tryParse(uri.queryParameters['statut']?.toString() ?? '') ?? 0;
             _code = uri.queryParameters['code'] ?? "";
             if (_statut == 1) {
               paniers.clear();

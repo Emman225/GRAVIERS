@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Exports\exportCommandeClient;
 use App\Http\Controllers\PaiementController;
-use App\Http\Controllers\paiementDev;
 use App\Http\Controllers\PaiementEnLigne;
 use App\Mail\confirmationEmail;
 use App\Mail\confirmClient;
@@ -504,9 +503,14 @@ class ClientController extends Controller
 
         if ($request->hasFile('fichier')) {
 
+            $request->validate(['fichier' => 'required|mimes:pdf|max:2048'], [
+                'fichier.mimes' => 'Le fichier doit être au format PDF',
+                'fichier.max' => 'Le fichier ne doit pas dépasser 2 Mo',
+            ]);
+
             // $destination = base_path('public/storage/productsImage');
             $destination = storage_path('app/public/temp_pdfs'); // disque 'public' réel (cohérent avec move vers lesBons + lecture)
-            $nomPdf = 'bon'.'-'.Auth::user()->client->nom.'-'.Auth::user()->client->prenom.'-'. date('YmdHis') .'.'.$request->file('fichier')->getClientOriginalExtension();
+            $nomPdf = 'bon'.'-'.Auth::user()->client->nom.'-'.Auth::user()->client->prenom.'-'. date('YmdHis') .'.pdf'; // extension forcée : jamais l'extension d'origine (anti-upload de .php exécutable)
 
             $request->file('fichier')->move($destination, $nomPdf);
 
@@ -3452,11 +3456,15 @@ class ClientController extends Controller
                             Mail::send(new emailCommande(
                                 $commande,
                                 $tvaCmd,
-                                $commande->montant_total + $tvaCmd + $commande->cout_livraison_client - $commande->remise,
+                                // Total NET et HT via les méthodes du modèle (calcul depuis les
+                                // lignes) : montant_total contient le HT côté web mais le NET
+                                // côté mobile -> l'ancien calcul double-comptait TVA/livraison
+                                // pour les commandes mobiles.
+                                $commande->montantAPayer(),
                                 $commande->cout_livraison_client,
                                 $commande->remise,
                                 optional(ModePaiement::find($commande->mode_paiement_id))->libelle,
-                                $commande->montant_total
+                                $commande->montantHT()
                             ));
                             Mail::send(new ConfirmPaiement($paiement, $commande, $commande->client->user->email ?? ''));
                         } catch (\Throwable $e) {
@@ -3519,11 +3527,11 @@ class ClientController extends Controller
         $request->validate([
             'fichier' => 'required|max:2048|mimes:pdf',
             'date_operation' => 'required',
-            'fichier' => 'required',
             'banque' => 'required',
             'num_compte' => 'required',
             'reference' => 'required',
         ],[
+            'fichier.mimes' => 'Le fichier doit être au format PDF',
             'fichier.required' => 'Vous devez charger votre reçu de paiement',
 
             'banque.required' => 'Veuillez entrer le nom de la banque',
@@ -3533,7 +3541,7 @@ class ClientController extends Controller
         ]);
 
         $destination = base_path('public/storage/preuveVirement/');
-        $nomPdf = 'Fichier'.'-'.Auth::user()->client->nom.'-'.Auth::user()->client->prenom.'-'. date('YmdHis') .'.'.$request->file('fichier')->getClientOriginalExtension();
+        $nomPdf = 'Fichier'.'-'.Auth::user()->client->nom.'-'.Auth::user()->client->prenom.'-'. date('YmdHis') .'.pdf'; // extension forcée : jamais l'extension d'origine (anti-upload de .php exécutable)
         $request->file('fichier')->move($destination, $nomPdf);
 
         $cout_livraison = 0;
@@ -3994,7 +4002,7 @@ class ClientController extends Controller
         if($client->type_client == 'ENTREPRISE'){
             // dd('rd');
             $request->validate([
-                'fichier' => 'nullable|max:2048',
+                'fichier' => 'nullable|mimes:pdf|max:2048',
                 'numero_bon' => 'required|max:255',
             ],
             [
@@ -4008,7 +4016,7 @@ class ClientController extends Controller
 
                 // $destination = base_path('public/storage/productsImage');
                 $destination = storage_path('app/public/temp_pdfs'); // disque 'public' réel (cohérent avec move vers lesBons + lecture)
-                $nomPdf = 'bon'.'-'.Auth::user()->client->nom.'-'.Auth::user()->client->prenom.'-'. date('YmdHis') .'.'.$request->file('fichier')->getClientOriginalExtension();
+                $nomPdf = 'bon'.'-'.Auth::user()->client->nom.'-'.Auth::user()->client->prenom.'-'. date('YmdHis') .'.pdf'; // extension forcée : jamais l'extension d'origine (anti-upload de .php exécutable)
                 $request->file('fichier')->move($destination, $nomPdf);
                 // $path = $request->file('fichier')->move($destination, 'public');
                 session()->put([
@@ -4100,7 +4108,7 @@ class ClientController extends Controller
 
                 // $destination = base_path('public/storage/productsImage');
                 $destination = storage_path('app/public/temp_pdfs'); // disque 'public' réel (cohérent avec move vers lesBons + lecture)
-                $nomPdf = 'bon'.'-'.Auth::user()->client->nom.'-'.Auth::user()->client->prenom.'-'. date('YmdHis') .'.'.$request->file('fichier')->getClientOriginalExtension();
+                $nomPdf = 'bon'.'-'.Auth::user()->client->nom.'-'.Auth::user()->client->prenom.'-'. date('YmdHis') .'.pdf'; // extension forcée : jamais l'extension d'origine (anti-upload de .php exécutable)
                 $request->file('fichier')->move($destination, $nomPdf);
                 // $path = $request->file('fichier')->move($destination, 'public');
                 session()->put([
@@ -4240,9 +4248,14 @@ class ClientController extends Controller
 
         if ($request->hasFile('fichier')) {
 
+                $request->validate(['fichier' => 'required|mimes:pdf|max:2048'], [
+                    'fichier.mimes' => 'Le fichier doit être au format PDF',
+                    'fichier.max' => 'Le fichier ne doit pas dépasser 2 Mo',
+                ]);
+
                 // $destination = base_path('public/storage/productsImage');
                 $destination = storage_path('app/public/temp_pdfs'); // disque 'public' réel (corrige le double public/ + cohérence move/lecture)
-                $nomPdf = 'bon'.'-'.Auth::user()->client->nom.'-'.Auth::user()->client->prenom.'-'. date('YmdHis') .'.'.$request->file('fichier')->getClientOriginalExtension();
+                $nomPdf = 'bon'.'-'.Auth::user()->client->nom.'-'.Auth::user()->client->prenom.'-'. date('YmdHis') .'.pdf'; // extension forcée : jamais l'extension d'origine (anti-upload de .php exécutable)
                 $request->file('fichier')->move($destination, $nomPdf);
                 // $path = $request->file('fichier')->move($destination, 'public');
                 session()->put([
@@ -4453,8 +4466,12 @@ class ClientController extends Controller
 
             if($client->type_client == 'ENTREPRISE'){
                 if ($request->hasFile('fichier')) {
+                    $request->validate(['fichier' => 'required|mimes:pdf|max:2048'], [
+                        'fichier.mimes' => 'Le fichier doit être au format PDF',
+                        'fichier.max' => 'Le fichier ne doit pas dépasser 2 Mo',
+                    ]);
                     $destination = storage_path('app/public/temp_pdfs'); // disque 'public' réel (corrige le double public/ + cohérence move/lecture)
-                    $nomPdf = 'bon'.'-'.Auth::user()->client->nom.'-'.Auth::user()->client->prenom.'-'. date('YmdHis') .'.'.$request->file('fichier')->getClientOriginalExtension();
+                    $nomPdf = 'bon'.'-'.Auth::user()->client->nom.'-'.Auth::user()->client->prenom.'-'. date('YmdHis') .'.pdf'; // extension forcée : jamais l'extension d'origine (anti-upload de .php exécutable)
                     $request->file('fichier')->move($destination, $nomPdf);
                     session()->put([
                         'cheminFichier' => 'temp_pdfs/'.$nomPdf,

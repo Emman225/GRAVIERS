@@ -66,6 +66,38 @@ class PaiementEnLigne extends Controller
                 $lignePaiements = LignePaiement::listeSurCode($request->codePaiement);
 
                 if (count($lignePaiements) > 0) {
+
+                    // SÉCURITÉ : cette route est publique et le POST est falsifiable
+                    // (un attaquant connaissant un codePaiement peut envoyer code=200).
+                    // On ne se fie donc pas au code annoncé : on confirme le statut
+                    // serveur→serveur auprès de PaySecure avant d'agir.
+                    if (!empty(config('paysecure.status_url'))) {
+                        $statutVerifie = $this->interrogerStatutPaiement($request->codePaiement);
+                        if ($statutVerifie === 'paye') {
+                            $request->merge(['code' => 200]);
+                        } else if ($statutVerifie === 'echec') {
+                            $request->merge(['code' => 400]);
+                        } else {
+                            // Statut indéterminé (PENDING, passerelle injoignable...) :
+                            // on ne solde ni n'annule rien ; la reprise planifiée /
+                            // verifierPaiement / confirmation manuelle régularisera.
+                            Help::ecrireLog(
+                                "callBackPaiement",
+                                "CallBack paiement non appliqué",
+                                "Code " . $request->codePaiement . " : statut PaySecure indéterminé, aucune action",
+                                0
+                            );
+                            return response()->json(['code' => 202, 'message' => 'Statut non confirmé, aucune action']);
+                        }
+                    } else {
+                        Help::ecrireLog(
+                            "callBackPaiement",
+                            "CallBack paiement non vérifié",
+                            "PAYSECURE_STATUS_URL absente : callback accepté sans vérification serveur→serveur (code " . $request->codePaiement . ")",
+                            0
+                        );
+                    }
+
                     if ($request->code == 200) {
                         //Effectué
                         $parrain_id = 0;
@@ -534,7 +566,11 @@ class PaiementEnLigne extends Controller
 
                                 $ligne = new LignePaiement();
                                 $ligne->service_id = $f->service_id;
-                                $ligne->service = $codePaiement;
+                                // Bug copier-coller : le service de la ligne recevait le
+                                // codePaiement au lieu du service réel de la facture
+                                // ($f->service), cassant le rattachement service/facture
+                                // pour un client à terme.
+                                $ligne->service = $f->service;
                                 $ligne->paiement_id = $paiement->id;
                                 $ligne->mode_paiement_id = $modePaiement;
                                 $ligne->date_paiement = date("Y-m-d H:i:s");

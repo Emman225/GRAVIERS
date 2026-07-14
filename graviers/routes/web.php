@@ -790,7 +790,6 @@ Route::controller(TestController::class)->name('test.')->group(function(){
     Route::post('/recapitulatif-devis-de-la-location-a-partie-du-test','recapDevisLocation')->name('recapDevisLocation')->middleware('auth');
 
     Route::get('/select-multiple','select')->name('select');
-    Route::get('/on-va-tester-un-wey','unWey')->name('unWey');
 });
 
 // Processus de mot de passe oublié

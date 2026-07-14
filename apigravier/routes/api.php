@@ -72,6 +72,8 @@ Route::post('details-location/{id}', [LocationController::class, 'detailsLocatio
 Route::post('demande-annuler-location/{id}', [LocationController::class, 'demandeAnnulerLocation']);
 
 Route::post('callBackPaiement', [PaiementController::class, 'callBackPaiement'])->name("callBackPaiement");
+// Vérification (pull) du statut d'un paiement — filet de sécurité si le callback se perd.
+Route::post('verifierPaiement', [PaiementController::class, 'verifierPaiement'])->name("verifierPaiement");
 Route::post('liste-facture', [PaiementController::class, 'listeFacture'])->name("listeFacture");
 Route::post('liste-paiement', [PaiementController::class, 'listePaiement'])->name("listePaiement");
 Route::post('obtenir-lien-paiement', [PaiementController::class, 'obtenirLienPaiement'])->name("obtenirLienPaiement");
