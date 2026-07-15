@@ -133,43 +133,17 @@
                             @error('adresse')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
                         </div>
 
-                        {{-- Login --}}
-                        <div class="mt-3">
-                            <label class="form-label fw-bold">
-                                <i class="material-icons md-account_circle" style="font-size:14px;vertical-align:middle;color:#1c57a3;"></i>
-                                Identifiant de connexion (login) <span class="text-danger">*</span>
-                            </label>
-                            <input class="form-control" name="login" placeholder="Ex: jean.kouassi" type="text"
-                                   required value="{{ old('login') }}" autocomplete="username" />
-                            <small class="text-muted">Utilisé pour se connecter à l'espace de gestion.</small>
-                            @error('login')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
-                        </div>
-
-                        {{-- Mot de passe + force --}}
-                        <div class="mt-3">
-                            <label class="form-label fw-bold">
-                                <i class="material-icons md-lock" style="font-size:14px;vertical-align:middle;color:#1c57a3;"></i>
-                                Mot de passe <span class="text-danger">*</span>
-                            </label>
-                            <div class="input-group">
-                                <input class="form-control" name="password" id="passwordInput"
-                                       placeholder="Min 8 caractères" type="password"
-                                       required autocomplete="new-password"
-                                       oninput="evaluerForcePassword(this.value)" />
-                                <button class="btn btn-outline-secondary" type="button"
-                                        onclick="togglePasswordReveal()" tabindex="-1"
-                                        title="Afficher / masquer le mot de passe">
-                                    <i class="material-icons md-visibility" id="passwordEye" style="font-size:18px;"></i>
-                                </button>
-                            </div>
-                            <div class="mt-2" id="passwordStrengthBar" style="display:none;">
-                                <div class="progress" style="height:6px;border-radius:3px;">
-                                    <div class="progress-bar" id="passwordStrengthFill" role="progressbar" style="width:0%"></div>
+                        {{-- Identifiants générés automatiquement --}}
+                        <div class="mt-3 alert alert-info d-flex align-items-start" style="border-radius:8px;">
+                            <i class="material-icons md-vpn_key" style="font-size:20px;margin-right:10px;color:#1c57a3;"></i>
+                            <div>
+                                <strong>Identifiants générés automatiquement</strong>
+                                <div class="small mb-0">
+                                    Le login et le mot de passe sont créés automatiquement et envoyés
+                                    au gestionnaire par email (comme pour les livreurs et fournisseurs).
+                                    Aucune saisie n'est nécessaire ici.
                                 </div>
-                                <small class="text-muted" id="passwordStrengthLabel"></small>
                             </div>
-                            <small class="text-muted">Recommandé : 8+ caractères, mélangez majuscules, chiffres et symboles.</small>
-                            @error('password')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
                         </div>
 
                         {{-- Photo de profil --}}
@@ -214,9 +188,9 @@
                         <div class="col-md-11">
                             <strong style="color:#1e293b;">Sécurité</strong>
                             <p class="text-muted small mb-0">
-                                Le mot de passe est chiffré (bcrypt) avant stockage en base. Le nouveau gestionnaire pourra
-                                se connecter immédiatement avec son login et son mot de passe sur
-                                <code>/login-account</code>. Il pourra créer des paiements en agence,
+                                Le login et le mot de passe sont générés automatiquement, chiffrés avant stockage
+                                en base, et envoyés au gestionnaire par email. Il pourra se connecter avec ces
+                                identifiants sur <code>/login-account</code>. Il pourra créer des paiements en agence,
                                 mais leur validation finale devra être faite par un administrateur (double validation).
                             </p>
                         </div>

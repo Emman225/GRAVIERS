@@ -2356,6 +2356,21 @@ class UserController extends Controller
 
     public function storeUser(Request $request){
 
+        // Validation SERVEUR (le required côté formulaire peut être contourné) :
+        // mêmes règles que agentRegistred. Login et mot de passe ne sont pas
+        // validés ici car générés automatiquement plus bas.
+        $request->validate([
+            'nom_prenoms' => 'required|string|max:255',
+            'email'       => 'required|email|max:255',
+            'contact'     => 'required|string|max:15',
+            'adresse'     => 'required|string|max:255',
+        ], [
+            'nom_prenoms.required' => 'Le nom et prénoms est obligatoire.',
+            'email.required'       => 'L\'adresse email est obligatoire.',
+            'email.email'          => 'L\'adresse email n\'est pas valide.',
+            'contact.required'     => 'Le numéro de téléphone est obligatoire.',
+            'adresse.required'     => 'L\'adresse est obligatoire.',
+        ]);
 
         // Construire le numéro complet SANS redoubler l'indicatif : si l'utilisateur
         // a déjà saisi le numéro au format international (+225...) ou avec l'indicatif
@@ -2395,16 +2410,23 @@ class UserController extends Controller
             return back()->with('errorEmail', "Cet email est déjà utilisé");
         }
 
+        // IDENTIFIANTS GÉNÉRÉS AUTOMATIQUEMENT (comme livreur/fournisseur) :
+        // le login (slug depuis le nom) et le mot de passe ne sont plus saisis
+        // par l'admin ; ils sont envoyés au gestionnaire par email via MailAccesUsers.
+        $slug = SlugService::createSlug(User::class, 'login', $request->nom_prenoms);
+        $existant = User::withTrashed()->where('login', $slug)->value('login');
+        if ($slug == $existant) {
+            $slug = $slug . '' . rand(0, 100);
+        }
 
-
-        $password = Help::HashPassword($request->password);
-        // dd($password);
+        $rawPassword = Help::ChaineAleatoire(8);
+        $password = Help::HashPassword($rawPassword);
 
         $user = User::create([
             'nom_prenoms' => $request->nom_prenoms,
             'email' => $request->email,
             'contact' => $contact,
-            'login' => $request->login,
+            'login' => $slug,
             'password' => $password,
             'photo' => $nomImage,
             'adresse' => $request->adresse,
@@ -2413,13 +2435,17 @@ class UserController extends Controller
         ]);
         // $user->assignRole('gestionnaire');
 
+        // Envoi NON bloquant des identifiants générés (un échec d'email ne doit
+        // pas empêcher la création du compte). Le gestionnaire se connecte via
+        // /login-account -> route('show.login'), d'où le type 'show'.
+        try {
+            Mail::send(new MailAccesUsers($request->nom_prenoms, $user->login, $rawPassword, $user->email, 'show'));
+        } catch (\Throwable $e) {
+            \Log::error('Erreur envoi email accès gestionnaire: ' . $e->getMessage());
+        }
 
-
-
-        return redirect()->route('show.registerGestionnaire')->with('success','enregistré');
-        // $UserData = User::create($request->validated());
-
-
+        return redirect()->route('show.registerGestionnaire')
+            ->with('success', 'Gestionnaire enregistré. Ses identifiants de connexion lui ont été envoyés par email.');
     }
 
     public function AgentRegister(){
