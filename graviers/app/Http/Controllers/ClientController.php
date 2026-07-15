@@ -3258,9 +3258,18 @@ class ClientController extends Controller
 
                 }
 
+                // Une commande qui NÉCESSITE un paiement en ligne (client ordinaire +
+                // mode en ligne + passerelle configurée) est créée « EN ATTENTE DE
+                // PAIEMENT » : elle n'apparaît PAS dans la file de traitement du
+                // gestionnaire tant que le paiement n'est pas confirmé (sinon on
+                // traiterait une commande non payée). Le callback / la vérification
+                // pull la passe en « EN ATTENTE » à la confirmation du paiement.
+                $paiementEnLigneRequis = ($client->client_a_terme == false && $mode_paiement != 1 && config('paysecure.url'));
+                $etatInitial = $paiementEnLigneRequis ? Help::$COMMANDE_EN_ATTENTE_PAIEMENT : $etat[0];
+
                 $commande = Commande::create([
                     'numero' => $devis->numero,
-                    'etat_commande' => $etat[0],
+                    'etat_commande' => $etatInitial,
                     'devis_id' => $devis->id,
                     'client_id' => $client->id,
                     'date_livraison' => $date_livraison,

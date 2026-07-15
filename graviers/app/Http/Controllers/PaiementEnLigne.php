@@ -165,6 +165,14 @@ class PaiementEnLigne extends Controller
                                 case Help::$COMMANDE:
 
                                     $commande = Commande::lire($s['service_id']);
+                                    if ($commande && $commande->id > 0) {
+                                        // Paiement confirmé : la commande « EN ATTENTE DE PAIEMENT »
+                                        // entre dans la file de traitement du gestionnaire.
+                                        if ($commande->etat_commande == Help::$COMMANDE_EN_ATTENTE_PAIEMENT) {
+                                            $commande->etat_commande = Help::$COMMANDE_EN_ATTENTE;
+                                            $commande->save();
+                                        }
+                                    }
                                     if ($commande && $commande->client) {
                                         $image = base_path('public/frontend/assets/imgs/logo/omer 1.png');
                                         Help::envoyerDocumentPdf(
@@ -812,6 +820,14 @@ class PaiementEnLigne extends Controller
                 switch ($s['service']) {
                     case Help::$COMMANDE:
                         $commande = Commande::lire($s['service_id']);
+                        if ($commande && $commande->id > 0) {
+                            // Paiement confirmé (vérification pull) : la commande
+                            // « EN ATTENTE DE PAIEMENT » entre dans la file de traitement.
+                            if ($commande->etat_commande == Help::$COMMANDE_EN_ATTENTE_PAIEMENT) {
+                                $commande->etat_commande = Help::$COMMANDE_EN_ATTENTE;
+                                $commande->save();
+                            }
+                        }
                         if ($commande && $commande->client) {
                             $image = base_path('public/frontend/assets/imgs/logo/omer 1.png');
                             Help::envoyerDocumentPdf(
