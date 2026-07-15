@@ -3219,6 +3219,16 @@ class ClientController extends Controller
                         ]);
                     }
 
+                    // Débit des points fidélité utilisés (colonne 'point') : dans la
+                    // commande directe, la valeur des points était déduite du montant
+                    // mais le solde du client n'était jamais réduit -> points
+                    // réutilisables. On le décrémente ici, à la validation.
+                    if(session('point_reduc')){
+                        $client->update([
+                            'point' => max(0, $client->point - session('point_reduc'))
+                        ]);
+                    }
+
                     foreach(Cart::content() as $produit){
                         DetailDevis::create([
                             'produit_id' => $produit->id,
