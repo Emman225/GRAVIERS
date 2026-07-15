@@ -39,6 +39,20 @@
         <div class="container mb-80 mt-30">
 
             @if (Cart::count() > 0)
+                {{-- Bandeau : rappel que le client MODIFIE un devis. Sans ça, il pouvait
+                     croire être bloqué (le panier le renvoie ici tant que la modification
+                     n'est pas quittée) et penser à un bug. --}}
+                <div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3" style="border-radius:10px;">
+                    <div>
+                        <i class="fi-rs-info"></i>
+                        <strong>Vous êtes en train de modifier le devis N°{{ $devis->numero ?? $devis->id }}.</strong>
+                        Tant que vous ne l'avez pas quittée, votre panier reste rattaché à ce devis.
+                    </div>
+                    <a href="{{ route('devis.annulerModificationDevis', $devis) }}" class="btn btn-sm btn-danger">
+                        <i class="fi-rs-cross"></i> Quitter et faire une commande normale
+                    </a>
+                </div>
+
                 {{-- Top actions bar --}}
                 <div class="modif-devis-toolbar mb-3">
                     <a href="{{ route('client.index') }}" class="modif-devis-toolbar__link">

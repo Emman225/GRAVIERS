@@ -1856,8 +1856,15 @@ class ClientController extends Controller
 
 
         if(session('devisAModifier')){
-            $devis = Devis::find(session('devisAModifier'));
-            return redirect()->route('devis.editDevis',$devis->id);
+            $devisEnCours = Devis::find(session('devisAModifier'));
+            // Auto-récupération : on ne renvoie vers l'édition du devis QUE s'il existe
+            // encore ET n'est pas déjà converti en commande (statut 2). Sinon le drapeau
+            // est périmé (devis terminé/supprimé) -> on le nettoie et on affiche le
+            // panier normalement, au lieu de bloquer le client sur ce devis.
+            if($devisEnCours && $devisEnCours->statut != 2){
+                return redirect()->route('devis.editDevis', $devisEnCours->id);
+            }
+            session()->forget(['devisAModifier', 'niveauModifDevis']);
         }
 
         $client = HELP::clientValide() ;
