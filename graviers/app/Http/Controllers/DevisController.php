@@ -260,6 +260,11 @@ class DevisController extends Controller
     }
 
     public function modePaiement(Devis $devis){
+        // On repart d'une remise VIERGE à chaque ouverture de la page de paiement
+        // d'un devis : sinon une remise (code promo / points) appliquée sur un AUTRE
+        // devis pourrait « fuiter » et être appliquée à tort sur celui-ci.
+        session()->forget(['remise', 'reduction_id', 'point_reduc']);
+
         session()->put([
                     'devis' => $devis->id,
                     'type' => 'devis'

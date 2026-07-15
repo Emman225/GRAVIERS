@@ -216,7 +216,7 @@
                                                 <td class="cart_total_label"><h6 class="text-muted">TVA</h6></td>
                                                 <td></td>
                                                 <td class="cart_total_amount">
-                                                    <h6 class="text-brand text-end"> <span id="montant_total" class="js-tva">{{ Help::formatNombre($devis->tva,true) }}</span></h6>
+                                                    <h6 class="text-brand text-end"> <span id="mpTVA" class="js-tva">{{ Help::formatNombre($devis->tva,true) }}</span></h6>
                                                 </td>
                                             </tr>
                                             @if ($devis->cout_livraison)
@@ -224,17 +224,17 @@
                                                     <td class="cart_total_label"><h6 class="text-muted">Coût livraison</h6></td>
                                                     <td></td>
                                                     <td class="cart_total_amount">
-                                                        <h6 class="text-brand text-end"> <span id="montant_total">{{ Help::formatNombre($devis->cout_livraison, true) }}</span></h6>
+                                                        <h6 class="text-brand text-end"> <span>{{ Help::formatNombre($devis->cout_livraison, true) }}</span></h6>
                                                     </td>
                                                 </tr>
                                             @endif
                                         </tbody>
                                         <tfoot>
-                                            <tr>
+                                            <tr id="mpMontantTTC">
                                                 <th class="cart_total_label"><h6 class="text-muted text-start">Montant TTC</h6></th>
                                                 <th></th>
                                                 <th class="cart_total_amount">
-                                                    <h6 class="text-brand text-end paiement-total-final"> <span id="montant_total">{{ Help::formatNombre($devis->montant + $devis->tva + $devis->cout_livraison, true) }}</span></h6>
+                                                    <h6 class="text-brand text-end paiement-total-final"> <span>{{ Help::formatNombre($devis->montant + $devis->tva + $devis->cout_livraison, true) }}</span></h6>
                                                 </th>
                                             </tr>
                                             <tr id="mpMontantTotal">

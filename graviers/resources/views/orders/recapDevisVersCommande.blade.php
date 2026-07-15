@@ -57,7 +57,10 @@
     @php
         $totalTVA = $devis->tva ?? 0;
         $livraison = $devis->cout_livraison ?? 0;
-        $totalAPayer = $totalHT + $totalTVA + $livraison;
+        // Remise = code promo / points appliqués sur la page de paiement (passée par
+        // le contrôleur). Déduite du total à payer, comme le fait Commande::montantAPayer().
+        $remise = $remise ?? 0;
+        $totalAPayer = max(0, $totalHT + $totalTVA + $livraison - $remise);
     @endphp
     <table class="fne-totaux-outer"><tr><td class="fne-totaux-spacer"></td><td class="fne-totaux-content"><table class="fne-totaux">
         <tr><td class="label">TOTAL HT</td><td class="valeur">{{ number_format($totalHT, 0, '', ' ') }}</td></tr>
@@ -66,6 +69,9 @@
         <tr><td class="label">Coût livraison</td><td class="valeur">{{ number_format($livraison, 0, '', ' ') }}</td></tr>
         @endif
         <tr><td class="label">TOTAL TTC</td><td class="valeur">{{ number_format($totalHT + $totalTVA, 0, '', ' ') }}</td></tr>
+        @if($remise > 0)
+        <tr><td class="label">Remise (code promo / points)</td><td class="valeur">- {{ number_format($remise, 0, '', ' ') }}</td></tr>
+        @endif
         <tr><td class="label">AUTRES TAXES</td><td class="valeur">0</td></tr>
         <tr><td class="label" style="font-size:10pt;">TOTAL A PAYER</td><td class="valeur" style="font-size:10pt; font-weight:bold;">{{ number_format($totalAPayer, 0, '', ' ') }}</td></tr>
     </table></td></tr></table>

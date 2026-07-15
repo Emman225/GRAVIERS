@@ -110,8 +110,10 @@ class PaiementController extends Controller
                     'statut' => 3
                 ]);
 
+                // Colonne réelle = 'point' (singulier) : l'ancien 'points' écrivait
+                // dans une colonne inexistante -> les points gagnés étaient perdus.
                 $info->client->update([
-                    'points' => $info->client->point + 200
+                    'point' => $info->client->point + 200
                 ]);
             }
             if($montant_restant<0 ){
@@ -247,8 +249,9 @@ class PaiementController extends Controller
                     'statut' => 3
                 ]);
 
+                // Colonne réelle = 'point' (singulier) : cf. paiement().
                 $location->client->update([
-                    'points' => $location->client->point + 200
+                    'point' => $location->client->point + 200
                 ]);
             }
 

@@ -1708,21 +1708,22 @@ class ClientController extends Controller
 
             $montantAEnlever = $total * ($reduction->taux_reduction/100);
 
-            $montantTotal = $total - $montantAEnlever;
-
             if(session('point_reduc')){
                 $config = Configuration::first();
 
                 $valeurPoints = session('point_reduc') * $config->montant_point;
 
-                // Remise totale affichée = remise promo + valeur des points.
+                // Remise totale = remise promo + valeur des points.
                 $montantAEnlever += $valeurPoints;
-
-                // Ne soustraire QUE la valeur des points : la remise promo a déjà
-                // été déduite de $montantTotal juste au-dessus.
-                $montantTotal -= $valeurPoints;
-
             }
+
+            // Plafond : la remise ne peut JAMAIS dépasser le HT marchandise, sinon
+            // HT net / TVA / TTC deviendraient négatifs.
+            if ($montantAEnlever > $total) {
+                $montantAEnlever = $total;
+            }
+
+            $montantTotal = $total - $montantAEnlever;
 
 
             session(['remise' => session('remise') + $montantAEnlever]);
@@ -1761,7 +1762,17 @@ class ClientController extends Controller
             ]);
         $client = Client::where('user_id',Auth::user()->id)->first();
 
-        if($request->point > $client->point){
+        // Validation : nombre de points entier et strictement positif (un point
+        // négatif AUGMENTERAIT le total).
+        $points = (int) $request->point;
+        if ($points < 1) {
+            return response()->json([
+                'statut' => -1,
+                'message' => 'Veuillez saisir un nombre de points valide.',
+            ]);
+        }
+
+        if($points > $client->point){
             // return redirect()->route('client.monPanier')->with('failPoint','Vous n\'avez pas ce nombre de point');
             return response()->json([
                 'statut' => -1,
@@ -1798,14 +1809,20 @@ class ClientController extends Controller
         $config = Configuration::first();
 
         // Valeur des points fidélité.
-        $montantAEnlever += $request->point * $config->montant_point;
+        $montantAEnlever += $points * $config->montant_point;
+
+        // Plafond : la remise (promo + points) ne peut dépasser le HT marchandise,
+        // sinon HT net / TVA / TTC deviendraient négatifs.
+        if ($montantAEnlever > $total) {
+            $montantAEnlever = $total;
+        }
 
         // HT net après toutes les remises.
         $montantTotal = $total - $montantAEnlever;
 
         session(['remise' => $montantAEnlever]);
         session()->put([
-            'point_reduc' => $request->point,
+            'point_reduc' => $points,
             // 'reduc' => $config
         ]);
 
@@ -3210,7 +3227,13 @@ class ClientController extends Controller
                     $adresse_id = $devis->adresse_livraison_id;
                     // $date_livraison = $devis->date_Livraison;
                     // $mode_paiement = $devis->mode_paiement_id;
-                    $remise = $devis->cout_reduction;
+                    // Remise = celle appliquée par le client sur la page de paiement
+                    // (code promo / points, en session) si présente ; sinon la remise
+                    // d'origine du devis. Sans ça, la réduction saisie au paiement était
+                    // ignorée et le client payait plein tarif.
+                    $remise = (session('reduction_id') || session('point_reduc'))
+                        ? ceil((float) session('remise'))
+                        : $devis->cout_reduction;
                     // $type_livraison = $devis->type_livraison_id;
                     $cout_livraison = $devis->cout_livraison;
                     $livrable = $devis->adresse_livraison_id != null ? 1 : 0;
@@ -3272,6 +3295,29 @@ class ClientController extends Controller
                     $devis->update([
                         'statut' => 2
                     ]);
+
+                    // Consommer le code promo appliqué sur la page de paiement (flux
+                    // devis existant) : le marquer utilisé pour qu'il ne resserve pas.
+                    // Idempotent (la branche « nouveau devis » l'a déjà fait le cas échéant).
+                    if(session('reduction_id')){
+                        $reduction = Reduction::find(session('reduction_id'));
+                        if($reduction && !$reduction->est_utilise){
+                            $reduction->update([
+                                'est_utilise' => 1,
+                                'client_id'   => $client->id,
+                                'devis_id'    => $devis->id,
+                            ]);
+                        }
+                    }
+
+                    // Débit des points fidélité utilisés (colonne 'point') : c'est ici,
+                    // à la VALIDATION de la commande, que le solde est réellement réduit
+                    // (le flux devis ne le faisait nulle part auparavant).
+                    if(session('point_reduc')){
+                        $client->update([
+                            'point' => max(0, $client->point - session('point_reduc'))
+                        ]);
+                    }
                 }else{
                     foreach(Cart::content() as $produit){
                         $detailCommande = DetailCommande::create([
@@ -4285,26 +4331,32 @@ class ClientController extends Controller
             $ville = $devis->adresseLivraison->ville;
         }
 
-        $total = Cart::total();
+        // Base = HT du DEVIS (le panier est vide dans le flux devis ; l'ancien
+        // Cart::total() valait 0, ce qui écrasait le total et la remise).
+        $totalHT = (float) $devis->montant;
         $promo = 0;
-
         $reducPoint = 0;
-            if(session('reduction_id')){
-                $data['reduction'] = Reduction::find(session('reduction_id'));
+        $remise = 0;
 
+        if(session('reduction_id')){
+            $data['reduction'] = Reduction::find(session('reduction_id'));
+            if($data['reduction']){
                 $promo = $data['reduction']->taux_reduction;
-
-                $total = Cart::total() - (Cart::total() * $data['reduction']->taux_reduction)/100;
-
-
+                $remise += $totalHT * ($promo / 100);
             }
-            if(session('point_reduc')){
-                $config = Configuration::first();
-                $total = $total - session('point_reduc') * $config->montant_point;
+        }
+        if(session('point_reduc')){
+            $config = Configuration::first();
+            $reducPoint = session('point_reduc') * $config->montant_point;
+            $remise += $reducPoint;
+        }
 
-                $reducPoint = session('point_reduc') * $config->montant_point;
+        // Plafond : la remise ne peut dépasser le HT marchandise.
+        if ($remise > $totalHT) {
+            $remise = $totalHT;
+        }
 
-            }
+        $total = $totalHT - $remise; // HT net après remise
 
         // dd($mode);
         return view('orders.recapDevisVersCommande',[
@@ -4312,6 +4364,7 @@ class ClientController extends Controller
             'client' => Auth::user() ? Client::where('user_id',Auth::user()->id)->first(): new Client,
             'categories' => Categorie::all(),
             'total' => $total,
+            'remise' => $remise,
             'promo' => $promo,
             'reducPoint' => $reducPoint,
             'lieu' => session('infoSup'),
@@ -4625,8 +4678,11 @@ class ClientController extends Controller
             $config = Configuration::first();
             $total = $total - session('point_reduc') * $config->montant_point;
 
+            // Colonne réelle = 'point' (singulier) : l'ancien 'points' visait une
+            // colonne inexistante -> les points n'étaient jamais débités. max(0,…)
+            // empêche un solde négatif.
             $client->update([
-                'points' => $client->points - session('point_reduc')
+                'point' => max(0, $client->point - session('point_reduc'))
             ]);
         }
 
@@ -4919,8 +4975,11 @@ class ClientController extends Controller
         if(session('point_reduc')){
             $total = $total - session('point_reduc') * $config->montant_point;
 
+            // Colonne réelle = 'point' (singulier) : l'ancien 'points' visait une
+            // colonne inexistante -> les points n'étaient jamais débités. max(0,…)
+            // empêche un solde négatif.
             $client->update([
-                'points' => $client->points - session('point_reduc')
+                'point' => max(0, $client->point - session('point_reduc'))
             ]);
         }
 
