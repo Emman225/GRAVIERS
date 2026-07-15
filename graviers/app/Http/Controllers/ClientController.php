@@ -475,7 +475,7 @@ class ClientController extends Controller
             'client' => Auth::user() ? Client::where('user_id',Auth::user()->id)->first() : new Client,
             'categories' => Categorie::all(),
             'unites' => Uniteproduit::all(),
-            'paiements' => ModePaiement::all(),
+            'paiements' => ModePaiement::liste(),
             'types_livraison' => TypeLivraison::all()
         ]);
     }
@@ -1089,7 +1089,7 @@ class ClientController extends Controller
             'villes' => Ville::all(),
             'client' => Auth::user() ?  Client::where('user_id',Auth::user()->id)->first(): new Client,
             'categories' => Categorie::all(),
-            'modes'=> ModePaiement::all(),
+            'modes'=> ModePaiement::liste(),
             'total' => $total,
             'typeLivraison' => TypeLivraison::all(),
             'conf' => Configuration::first(),
@@ -1226,7 +1226,7 @@ class ClientController extends Controller
             'villes' => Ville::all(),
             'client' => $client,
             'categories' => Categorie::all(),
-            'modes'=> ModePaiement::all(),
+            'modes'=> ModePaiement::liste(),
             'total' => $devis->montant,
             'devis' => $devis,
             'typeLivraison' => TypeLivraison::orderBy('libelle')->get(),
@@ -1635,7 +1635,7 @@ class ClientController extends Controller
             // 'reduc' => $dataPromo['config'],
             // 'montantPoint' => $dataPromo['montantPoint'],
             // 'montantPromo' => $dataPromo['montantPromo'],
-            'modes' => ModePaiement::all(),
+            'modes' => ModePaiement::liste(),
             'typeLivraison' => TypeLivraison::all(),
             'conf' => Configuration::first(),
             'tva' => Client::tva($client),
@@ -2332,7 +2332,7 @@ class ClientController extends Controller
             'villes' => Ville::all(),
             'client' => $clientObj,
             'categories' => Categorie::all(),
-            'modes'=> ModePaiement::all(),
+            'modes'=> ModePaiement::liste(),
             'total' => $total,
             'prixPerso' => $prixPerso,
         ]);
@@ -4411,7 +4411,7 @@ class ClientController extends Controller
             'categories' => Categorie::all(),
             'produits' => Produit::all(),
             'client' => Client::where('user_id',Auth::user()->id)->first(),
-            'moyens' => ModePaiement::all()
+            'moyens' => ModePaiement::liste()
         ]);
 
     }

@@ -169,7 +169,7 @@ class CreanceClientTermeController extends Controller
         // Le total ne compte que les paiements validés
         $totalEncaisse = $lignes->where('en_attente', false)->sum('montant_recu');
 
-        $modesPaiement = ModePaiement::where('statut', 1)->orderBy('libelle')->get();
+        $modesPaiement = ModePaiement::liste();
         $facturesNonSoldees = Facture::with(['commande', 'commande.client', 'paiements'])
             ->whereIn('client_id', $clientsTerme)
             ->orderByDesc('created_at')

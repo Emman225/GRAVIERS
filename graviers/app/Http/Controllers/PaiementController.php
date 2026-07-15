@@ -49,7 +49,7 @@ class PaiementController extends Controller
         // dd($montant_restant);
         $data['montant_restant'] = $montant_restant;
         $data['commande'] = Commande::where('id','=',$numero)->first();
-        $data['modePaiement'] = ModePaiement::all();
+        $data['modePaiement'] = ModePaiement::liste();
 
         return view('paiement.createPaiement',$data);
     }
@@ -201,7 +201,7 @@ class PaiementController extends Controller
         //dd($location);
         return view('paiement.paiementLocation',[
             'location' => $location,
-            'modePaiement' => ModePaiement::all(),
+            'modePaiement' => ModePaiement::liste(),
         ]);
     }
 
@@ -443,7 +443,7 @@ class PaiementController extends Controller
         return view('paiement.effectuerPaiement',[
             'paiements' => $paiements,
             'client' => $client,
-            'moyens' => ModePaiement::all(),
+            'moyens' => ModePaiement::liste(),
         ]);
     }
 

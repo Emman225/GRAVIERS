@@ -119,7 +119,7 @@ class DetteFournisseurController extends Controller
         $totalPaye = $lignes->where('en_attente', false)->sum('montant');
 
         // Données pour modal d'enregistrement
-        $modesPaiement = ModePaiement::where('statut', 1)->orderBy('libelle')->get();
+        $modesPaiement = ModePaiement::liste();
         $enlevementsNonSoldes = Enlevement::with(['fournisseur', 'produit'])
             ->orderByDesc('created_at')
             ->limit(300)

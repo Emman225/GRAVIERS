@@ -274,7 +274,7 @@ class DevisController extends Controller
             'villes' => Ville::all(),
             'client' => $client,
             'categories' => Categorie::all(),
-            'modes'=> ModePaiement::all(),
+            'modes'=> ModePaiement::liste(),
             'total' => $devis->montant,
             'devis' => $devis,
             'typeLivraison' => TypeLivraison::orderBy('libelle')->get(),

@@ -402,7 +402,7 @@ class SellerController extends Controller
     public function demandeDepaieFournisseur()
     {
 
-        $data['modesPaie'] = ModePaiement::all();
+        $data['modesPaie'] = ModePaiement::liste();
         $data['frs'] = Fournisseur::where('user_id', Auth::user()->id)->first();
 
         return view('fournisseur.fournisseurDemandePaiement', $data);

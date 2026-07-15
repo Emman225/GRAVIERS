@@ -1034,7 +1034,7 @@ class UserController extends Controller
         return view('livreur.demandeDePaie', [
             'user'              => $user,
             'profilLabel'       => $profilLabel,
-            'modesPaie'         => ModePaiement::all(),
+            'modesPaie'         => ModePaiement::liste(),
             'demandes'          => $demandes,
             'totalDemandes'     => $totalDemandes,
             'totalEnAttente'    => $totalEnAttente,

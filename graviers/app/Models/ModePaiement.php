@@ -27,6 +27,21 @@ class ModePaiement extends Model
 
     public static function liste()
     {
+        // Liste des modes SÉLECTIONNABLES pour un paiement.
+        // Exclut le mode "En Agence (virement, Chèque, Espèce)" (id=1) : il ne doit
+        // plus être proposé nulle part (web + mobile). Les modes Chèque, Espèces,
+        // Virement, mobile money, etc. restent disponibles. L'id 1 est fixe (cf.
+        // ProductionSeeder) ; la ligne reste en base pour l'historique des paiements.
+        return ModePaiement::orderBy('libelle', 'asc')
+            ->where('statut', Help::$STATUT_ACTIF)
+            ->where('id', '!=', 1)
+            ->get();
+    }
+
+    // Liste COMPLÈTE des modes actifs (y compris "En Agence") — pour l'admin/technique,
+    // pas pour les selects de paiement client.
+    public static function listeTous()
+    {
         return ModePaiement::orderBy('libelle', 'asc')
             ->where('statut', Help::$STATUT_ACTIF)
             ->get();

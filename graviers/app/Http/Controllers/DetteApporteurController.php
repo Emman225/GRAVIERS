@@ -138,7 +138,7 @@ class DetteApporteurController extends Controller
 
         $totalPaye = $lignes->where('en_attente', false)->sum('montant');
 
-        $modesPaiement = ModePaiement::where('statut', 1)->orderBy('libelle')->get();
+        $modesPaiement = ModePaiement::liste();
         $commissionsDues = CommissionApporteur::with(['apporteur.user', 'commande'])
             ->orderByDesc('created_at')
             ->limit(300)

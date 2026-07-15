@@ -186,7 +186,7 @@ class CommandeComptantController extends Controller
 
         // Données pour le formulaire d'encaissement (modal)
         $agences      = Agence::where('statut', 1)->orderBy('nom')->get();
-        $modesPaiement = ModePaiement::where('statut', 1)->orderBy('libelle')->get();
+        $modesPaiement = ModePaiement::liste();
         $commandesNonSoldees = Commande::with(['client'])
             ->whereIn('client_id', $clientsOrdinaires)
             ->where('statut', '!=', 0)
