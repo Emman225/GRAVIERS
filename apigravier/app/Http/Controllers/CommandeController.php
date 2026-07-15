@@ -17,6 +17,7 @@ use App\Models\TvaCommande;
 use Illuminate\Http\Request;
 use App\Models\Configuration;
 use App\Models\CoutLivraison;
+use App\Models\Produit;
 use App\Models\RetourProduit;
 use App\Models\DetailCommande;
 use App\Mail\EnvoieCommandeMail;
@@ -298,6 +299,19 @@ class CommandeController extends Controller
             $user = User::lire($idUsr);
             $config = Configuration::find(1);
             if ($user->id > 0) {
+
+                // Garde : tous les produits du panier doivent encore exister (l'app peut
+                // avoir un catalogue en cache périmé -> id de produit disparu). Sinon la
+                // contrainte de clé étrangère fait planter avec un message SQL brut (500).
+                // On renvoie plutôt un message clair et on annule proprement.
+                $idsProduits = collect($request->lignes)->pluck('produit_id')->filter()->unique()->values();
+                $existants   = Produit::whereIn('id', $idsProduits)->pluck('id');
+                if ($idsProduits->count() > 0 && $existants->count() < $idsProduits->count()) {
+                    DB::rollBack();
+                    $retour->code = 400;
+                    $retour->message = "Un ou plusieurs produits de votre panier ne sont plus disponibles. Veuillez actualiser votre catalogue (fermez et rouvrez l'application) puis réessayer.";
+                    return response()->json($retour);
+                }
 
                 // MÊME calcul que le web : UN SEUL coût de livraison (km × prixKm)
                 // réparti proportionnellement à la quantité sur chaque ligne.
