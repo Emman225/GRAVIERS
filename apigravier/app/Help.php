@@ -40,6 +40,10 @@ class Help
     public static $COMMANDE_EN_ATTENTE = "EN ATTENTE";
     public static $COMMANDE_EN_TRAITEMENT = "EN TRAITEMENT";
     public static $COMMANDE_TERMINE = "TERMINEE";
+    // Commande créée mais dont le paiement en ligne n'est pas encore confirmé :
+    // volontairement hors de la file de traitement du gestionnaire tant qu'elle
+    // n'est pas payée. Passe à EN ATTENTE une fois le paiement confirmé.
+    public static $COMMANDE_EN_ATTENTE_PAIEMENT = "EN ATTENTE DE PAIEMENT";
 
     public static $LIVRAISON_EN_ATTENTE = "EN ATTENTE";
     public static $LIVRAISON_EN_TRAITEMENT = "EN TRAITEMENT";

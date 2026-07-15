@@ -182,6 +182,11 @@ class PaiementController extends Controller
                                 $comSvc = Commande::lire($ligne->service_id);
                                 if ($comSvc && $comSvc->id > 0) {
                                     $comSvc->statut = ($paiement->montant_restant <= 0) ? 3 : 2;
+                                    // Paiement soldé : la commande « EN ATTENTE DE PAIEMENT »
+                                    // entre dans la file de traitement du gestionnaire.
+                                    if ($paiement->montant_restant <= 0 && $comSvc->etat_commande == Help::$COMMANDE_EN_ATTENTE_PAIEMENT) {
+                                        $comSvc->etat_commande = Help::$COMMANDE_EN_ATTENTE;
+                                    }
                                     $comSvc->save();
                                 }
                             }

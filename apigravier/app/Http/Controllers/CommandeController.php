@@ -311,7 +311,14 @@ class CommandeController extends Controller
                 $commande->mode_paiement_id = $request->moyen_paiement > 0 ? $request->moyen_paiement : null;
                 $commande->date_commande = date("Y-m-d H:i:s");
                 $commande->montant_total = $request->total;
-                $commande->etat_commande = Help::$COMMANDE_EN_ATTENTE;
+                // Commande à payer EN LIGNE (mobile « En ligne » = mode 1, montant sous
+                // le plafond passerelle) : créée « EN ATTENTE DE PAIEMENT » pour NE PAS
+                // apparaître dans la file de traitement du gestionnaire tant que le
+                // paiement n'est pas confirmé. Le callback la passe à « EN ATTENTE ».
+                // (Parité avec le web ; mêmes conditions que le déclenchement du paiement
+                //  en ligne plus bas : mode_paiement == 1 && total <= 2 000 000.)
+                $commandePaieEnLigne = ($request->mode_paiement == 1 && $request->total <= 2000000);
+                $commande->etat_commande = $commandePaieEnLigne ? Help::$COMMANDE_EN_ATTENTE_PAIEMENT : Help::$COMMANDE_EN_ATTENTE;
                 $commande->statut = Help::$STATUT_ACTIF;
                 $commande->note = $request->note;
                 $commande->date_livraison = $request->date_livraison;

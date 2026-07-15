@@ -3523,6 +3523,20 @@ class ClientController extends Controller
                 ->with('info', "Paiement introuvable pour ce code. Si vous venez de payer, consultez Mon Compte pour vérifier votre commande/location.");
         }
 
+        // Confirmation ACTIVE : le client peut revenir de PaySecure AVANT que le
+        // callback serveur→serveur n'ait régularisé le paiement (course). On
+        // interroge donc directement le statut auprès de PaySecure et on régularise
+        // s'il est payé — sinon on afficherait « paiement non effectué » à tort à un
+        // client qui a bien payé. marquerPaiementEffectue est idempotent.
+        if (!empty(config('paysecure.status_url'))) {
+            $pen = new PaiementEnLigne();
+            if ($pen->interrogerStatutPaiement($codePaiement) === 'paye') {
+                $pen->marquerPaiementEffectue($codePaiement);
+                // Recharger le paiement (et donc ses lignes) après régularisation.
+                $paiement = Paiement::find($paiement->id) ?? $paiement;
+            }
+        }
+
         $lignePaiementCount = $paiement->lignePaiements->count();
         $count = 0;
 

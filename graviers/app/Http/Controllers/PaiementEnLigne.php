@@ -100,6 +100,19 @@ class PaiementEnLigne extends Controller
 
                     if ($request->code == 200) {
                         //Effectué
+
+                        // Idempotence : PaySecure peut REJOUER le callback. Si toutes les
+                        // lignes sont déjà réglées, le paiement a déjà été traité -> on
+                        // sort sans rien refaire (évite une seconde émission de facture,
+                        // etc.). La commission est déjà protégée dans payerApporteurAffaire.
+                        $dejaTraite = count($lignePaiements) > 0;
+                        foreach ($lignePaiements as $lChk) {
+                            if ($lChk->statut != Help::$STATUT_ACTIF) { $dejaTraite = false; break; }
+                        }
+                        if ($dejaTraite) {
+                            return response()->json(['code' => 200, 'message' => 'Paiement déjà traité']);
+                        }
+
                         $parrain_id = 0;
                         $idService = 0;
                         $service = "";
@@ -810,6 +823,19 @@ class PaiementEnLigne extends Controller
                 }
             }
             $paiement->save();
+
+            // LOCATION : la location n'est créée qu'ICI, à la confirmation du paiement,
+            // depuis le brouillon stocké sur le paiement (donnees_service). Idempotent
+            // (creerDepuisPaiement renvoie la location existante sans rien recréer).
+            // Sans ça, une location confirmée UNIQUEMENT par le pull (callback perdu +
+            // reprise planifiée) n'était jamais créée.
+            if ($ligne->service == Help::$LOCATION) {
+                $loc = Location::creerDepuisPaiement($paiement);
+                if ($loc && $loc->id) {
+                    $loc->statut = ($paiement->montant_restant <= 0) ? 3 : 2;
+                    $loc->save();
+                }
+            }
         }
 
         // Envoi des factures uniquement si un règlement vient d'avoir lieu.
