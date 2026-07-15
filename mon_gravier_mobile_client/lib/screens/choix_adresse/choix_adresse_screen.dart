@@ -217,16 +217,19 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
   @override
   void initState() {
     _montantTotal = getTotalAmount();
-    // Le mode "Paiement en agence" (id 3) a été retiré : il n'est plus proposé
-    // comme moyen de paiement (aligné sur le web).
+    // « Paiement en agence » (id 3) = paiement HORS LIGNE : la commande est
+    // enregistrée et payée ensuite en agence (le backend ne déclenche la
+    // passerelle que pour le mode « En ligne » id 1).
     if (_montantTotal > _montantMaxLigne) {
       _listModePaiement = [
         {"id": 2, "libelle": "Virement bancaire"},
+        {"id": 3, "libelle": "Paiement en agence"},
       ];
       _modePaiement = 2;
     } else {
       _listModePaiement = [
         {"id": 1, "libelle": "En ligne"},
+        {"id": 3, "libelle": "Paiement en agence"},
       ];
       _modePaiement = 1;
     }
