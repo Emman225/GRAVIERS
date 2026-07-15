@@ -181,13 +181,19 @@ class PaiementController extends Controller
                             } else if ($ligne->service == Help::$COMMANDE) {
                                 $comSvc = Commande::lire($ligne->service_id);
                                 if ($comSvc && $comSvc->id > 0) {
-                                    $comSvc->statut = ($paiement->montant_restant <= 0) ? 3 : 2;
+                                    // NE PLUS écraser commande.statut avec l'état de PAIEMENT
+                                    // (3 = soldé / 2 = partiel) : le web ne le fait pas, et
+                                    // orders-list ainsi que les listes client filtrent
+                                    // statut = ACTIF(1) -> une commande payée passée en statut 3
+                                    // disparaissait de toutes les listes. Le statut de paiement
+                                    // est déjà porté par ligne_paiement / paiement ;
+                                    // commande.statut reste ACTIF.
                                     // Paiement soldé : la commande « EN ATTENTE DE PAIEMENT »
                                     // entre dans la file de traitement du gestionnaire.
                                     if ($paiement->montant_restant <= 0 && $comSvc->etat_commande == Help::$COMMANDE_EN_ATTENTE_PAIEMENT) {
                                         $comSvc->etat_commande = Help::$COMMANDE_EN_ATTENTE;
+                                        $comSvc->save();
                                     }
-                                    $comSvc->save();
                                 }
                             }
 
