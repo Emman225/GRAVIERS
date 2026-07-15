@@ -71,7 +71,11 @@ class Location extends Model
             ->when($etat_location, function ($query) use ($etat_location) {
                 $query->where('location.etat_location', $etat_location);
             })
-            ->where('location.statut', Help::$STATUT_ACTIF)
+            // location.statut est surchargé : 1 = active, 3 = soldée (payée), 2 = INACTIF.
+            // Le callback de paiement (web ET mobile) met statut = 3 quand la location est
+            // entièrement payée. Filtrer uniquement statut = 1 faisait DISPARAÎTRE de la
+            // liste toute location soldée. On affiche donc active + soldée, on exclut INACTIF.
+            ->whereIn('location.statut', [Help::$STATUT_ACTIF, 3])
             ->limit(500)
             ->get();
     }
