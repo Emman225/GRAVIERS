@@ -326,7 +326,12 @@ class PaiementController extends Controller
 
     public function paiementList(){
 
-        $lignePaiment = LignePaiement::orderByDesc('created_at')->get();
+        // N'afficher que les paiements RÉELLEMENT encaissés (client facturé) :
+        // ligne de paiement au statut ACTIF. On exclut ainsi les paiements en ligne
+        // initiés mais non confirmés (INACTIF) et les paiements annulés (statut 3).
+        $lignePaiment = LignePaiement::where('statut', Help::$STATUT_ACTIF)
+            ->orderByDesc('created_at')
+            ->get();
 
         return view('paiement.list',[
             'lignes' => $lignePaiment
