@@ -3132,8 +3132,19 @@ class ClientController extends Controller
 
                 // Garde anti-doublon (BUG double soumission) : en flux panier (sans devis),
                 // un panier déjà vide signifie qu'une commande vient d'être créée par une
-                // 1re requête. On évite de créer une commande vide en double.
+                // 1re requête (double-clic, préchargement du lien GET, refresh…).
+                // On renvoie vers la page de CONFIRMATION de la dernière commande du
+                // client (qui propose « Continuer vos achats »), et NON vers la liste
+                // des commandes.
                 if (!$devis->id && Cart::content()->isEmpty()) {
+                    $clientCourant = Client::where('user_id', Auth::user()->id)->first();
+                    $derniereCommande = $clientCourant
+                        ? Commande::where('client_id', $clientCourant->id)->latest('id')->first()
+                        : null;
+                    if ($derniereCommande) {
+                        return redirect()->route('client.commandeValidee', $derniereCommande->numero)
+                            ->with('info', 'Votre commande a déjà été enregistrée.');
+                    }
                     return redirect()->route('client.commande')
                         ->with('info', 'Votre commande a déjà été enregistrée.');
                 }
