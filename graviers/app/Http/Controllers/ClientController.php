@@ -740,7 +740,10 @@ class ClientController extends Controller
                 $retour->code = null;
                 $retour->message = null;
                 // dd($client->client_a_terme == false, session('paiement'), $c->montantTotal + session('montantTva'));
-                if ($client->client_a_terme == false && session('paiement') != 1 && $c->montantTotal + session('montantTva') < 2000000) {
+                // Hors ligne / en ligne selon le flag en_ligne du mode (et non id=1) :
+                // « Paiement en agence » (en_ligne=0) reste un paiement hors ligne.
+                $modeLivObj = session('paiement') ? ModePaiement::find(session('paiement')) : null;
+                if ($client->client_a_terme == false && $modeLivObj && $modeLivObj->en_ligne == 1 && $c->montantTotal + session('montantTva') < 2000000) {
                     $codePaiement = Help::getCommandeNo();
                     $nomPrenoms = $client->nom;
                     $arrNoms = explode(" ", $nomPrenoms);
@@ -3045,7 +3048,10 @@ class ClientController extends Controller
                 'tva'     => intVal(round(session('0')['tva'] ?? (session('totalLocation') * Client::tva($client)))),
             ];
 
-            $online = ($client->client_a_terme == false && session('mode_paiement') != 1 && $montantTTC < 2000000);
+            // Hors ligne / en ligne selon le flag en_ligne du mode (et non id=1) :
+            // « Paiement en agence » (en_ligne=0) reste un paiement hors ligne.
+            $modeLocObj = session('mode_paiement') ? ModePaiement::find(session('mode_paiement')) : null;
+            $online = ($client->client_a_terme == false && $modeLocObj && $modeLocObj->en_ligne == 1 && $montantTTC < 2000000);
 
             if ($online) {
                 // PAIEMENT EN LIGNE : la location N'EST PAS encore créée. On initie le paiement
@@ -3258,13 +3264,21 @@ class ClientController extends Controller
 
                 }
 
+                // Le mode choisi est-il un mode EN LIGNE ? On se base sur le flag
+                // en_ligne du mode (et NON sur un id codé en dur) : ainsi « Paiement en
+                // agence », « Chèque », « Espèces » (en_ligne = 0) restent des paiements
+                // HORS LIGNE et ne déclenchent pas la passerelle — le client peut donc
+                // toujours payer hors ligne en choisissant « Paiement en agence ».
+                $modeObjChoisi = $mode_paiement ? ModePaiement::find($mode_paiement) : null;
+                $modeEstEnLigne = $modeObjChoisi && $modeObjChoisi->en_ligne == 1;
+
                 // Une commande qui NÉCESSITE un paiement en ligne (client ordinaire +
                 // mode en ligne + passerelle configurée) est créée « EN ATTENTE DE
                 // PAIEMENT » : elle n'apparaît PAS dans la file de traitement du
                 // gestionnaire tant que le paiement n'est pas confirmé (sinon on
                 // traiterait une commande non payée). Le callback / la vérification
                 // pull la passe en « EN ATTENTE » à la confirmation du paiement.
-                $paiementEnLigneRequis = ($client->client_a_terme == false && $mode_paiement != 1 && config('paysecure.url'));
+                $paiementEnLigneRequis = ($client->client_a_terme == false && $modeEstEnLigne && config('paysecure.url'));
                 $etatInitial = $paiementEnLigneRequis ? Help::$COMMANDE_EN_ATTENTE_PAIEMENT : $etat[0];
 
                 $commande = Commande::create([
@@ -3392,8 +3406,11 @@ class ClientController extends Controller
                     'mode_paiement' => $mode_paiement,
                 ]);
 
-                // Déclencher le paiement en ligne si : client ordinaire ET mode ≠ En Agence (id=1)
-                if ($client->client_a_terme == false && $mode_paiement != 1) {
+                // Déclencher le paiement en ligne UNIQUEMENT pour un mode en ligne
+                // (en_ligne = 1). Un mode hors ligne comme « Paiement en agence »
+                // (en_ligne = 0) ne passe pas par la passerelle : la commande est
+                // simplement enregistrée, le client paie ensuite en agence.
+                if ($client->client_a_terme == false && $modeEstEnLigne) {
 
                     // Vérifier que le service de paiement en ligne est configuré
                     if (!config('paysecure.url')) {
