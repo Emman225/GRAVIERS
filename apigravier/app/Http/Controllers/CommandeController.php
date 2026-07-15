@@ -146,11 +146,15 @@ class CommandeController extends Controller
                 $devis->date_livraison = $request->dateLivraison;
                 $devis->service = is_numeric($request->service) ? $request->service : ($request->service == 'VENTE' ? 1 : 2);
                 if ($devis->save()) {
+                    // Le coût de livraison TOTAL du devis (client-envoyé depuis le résumé,
+                    // désormais aligné sur le web) est réparti proportionnellement à la
+                    // quantité sur chaque ligne — pour que la somme des lignes = le total.
+                    $livTotal = ($request->meFaireLivre == true || $request->meFaireLivre == 1) ? (float) $request->coutLivraison : 0;
+                    $qteTotaleDevis = 0;
+                    foreach ($request->lignes as $l) { $qteTotaleDevis += (float) $l[('qte')]; }
                     foreach ($request->lignes as $l) {
 
-                        $cl = ($request->meFaireLivre == true || $request->meFaireLivre == 1)
-                            ? CoutLivraison::calculer($request->long, $request->lat, $ville->region_id, $l[('qte')])
-                            : 0;
+                        $cl = ($qteTotaleDevis > 0) ? ((float) $l[('qte')] / $qteTotaleDevis) * $livTotal : 0;
 
                         $ligne = new DetailDevis();
                         $ligne->produit_id = $l['produit_id'];
@@ -208,12 +212,19 @@ class CommandeController extends Controller
 
                 $ville = Ville::lire($user->ville_id);
 
+                // MÊME calcul que le web : UN SEUL coût de livraison pour toute la
+                // commande (km × prixKm), réparti proportionnellement à la quantité sur
+                // chaque ligne — au lieu d'additionner un coût par ligne (qui sur-comptait
+                // pour les commandes multi-produits).
                 $montant = 0;
                 $lignes = $request->lignes;
-                foreach ($lignes as $key => $l) {
-                    $prix = CoutLivraison::calculer($request->long, $request->lat, $ville->region_id, $l[('qte')]);
-                    $montant += $prix;
-                    $lignes[$key]['livraison'] = $prix;
+                $qteTotale = 0;
+                foreach ($lignes as $l) { $qteTotale += (float) $l[('qte')]; }
+                if ($qteTotale > 0) {
+                    $montant = CoutLivraison::calculer($request->long, $request->lat, $ville->region_id, $qteTotale);
+                    foreach ($lignes as $key => $l) {
+                        $lignes[$key]['livraison'] = ((float) $l[('qte')] / $qteTotale) * $montant;
+                    }
                 }
 
                 $totalTTC = $request->total;
@@ -288,14 +299,19 @@ class CommandeController extends Controller
             $config = Configuration::find(1);
             if ($user->id > 0) {
 
+                // MÊME calcul que le web : UN SEUL coût de livraison (km × prixKm)
+                // réparti proportionnellement à la quantité sur chaque ligne.
                 $montantLivraison = 0;
                 $lignes = $request->lignes;
                 if ($request->meFaireLivre == 1 || $request->meFaireLivre == true) {
                     $ville = Ville::lire($user->ville_id);
-                    foreach ($lignes as $key => $l) {
-                        $prix = CoutLivraison::calculer($request->long, $request->lat, $ville->region_id, $l[('qte')]);
-                        $montantLivraison += $prix;
-                        $lignes[$key]['livraison'] = $prix;
+                    $qteTotale = 0;
+                    foreach ($lignes as $l) { $qteTotale += (float) $l[('qte')]; }
+                    if ($qteTotale > 0) {
+                        $montantLivraison = CoutLivraison::calculer($request->long, $request->lat, $ville->region_id, $qteTotale);
+                        foreach ($lignes as $key => $l) {
+                            $lignes[$key]['livraison'] = ((float) $l[('qte')] / $qteTotale) * $montantLivraison;
+                        }
                     }
                 }
 

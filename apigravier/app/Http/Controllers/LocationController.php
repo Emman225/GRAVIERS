@@ -103,14 +103,19 @@ class LocationController extends Controller
             $config = Configuration::find(1);
             if ($user->id > 0) {
 
+                // MÊME calcul que le web : UN SEUL coût de livraison (km × prixKm)
+                // réparti proportionnellement à la quantité sur chaque ligne.
                 $montantLivraison = 0;
                 $lignes = $request->lignes;
                 if ($request->meFaireLivre == 1 || $request->meFaireLivre == true) {
                     $ville = Ville::lire($user->ville_id);
-                    foreach ($lignes as $key => $l) {
-                        $prix = CoutLivraison::calculer($request->long, $request->lat, $ville->region_id, $l[('qte')]);
-                        $montantLivraison += $prix;
-                        $lignes[$key]['livraison'] = $prix;
+                    $qteTotale = 0;
+                    foreach ($lignes as $l) { $qteTotale += (float) $l[('qte')]; }
+                    if ($qteTotale > 0) {
+                        $montantLivraison = CoutLivraison::calculer($request->long, $request->lat, $ville->region_id, $qteTotale);
+                        foreach ($lignes as $key => $l) {
+                            $lignes[$key]['livraison'] = ((float) $l[('qte')] / $qteTotale) * $montantLivraison;
+                        }
                     }
                 }
 

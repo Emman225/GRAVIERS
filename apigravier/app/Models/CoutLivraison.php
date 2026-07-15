@@ -58,22 +58,33 @@ class CoutLivraison extends Model
         $region = DB::table('regions')->where('id', $regionID)->first();
         $conf = DB::table('configuration')->first();
 
-        $regionLong = 0;
-        $regionLat = 0;
-
-        if ($region) {
-            $regionLong = isset($region->long) ? $region->long : ($region->longitude ?? 0);
-            $regionLat = isset($region->lat) ? $region->lat : ($region->latitude ?? 0);
+        if (!$region || !$conf) {
+            return 0;
         }
 
-        $km = Help::distance($longitude, $latitude, $regionLong, $regionLat); // Distance en kilomètres
+        $regionLong = isset($region->long) ? $region->long : ($region->longitude ?? 0);
+        $regionLat = isset($region->lat) ? $region->lat : ($region->latitude ?? 0);
 
-        $nbreVoyage = ceil($qte / $conf->tonne_moyenne);
-        $prix = $km * $conf->cout_liv_fixe * $nbreVoyage;
-        if($prix < $conf->cout_livraison_min){
-            $prix = $conf->cout_livraison_min;
+        // Région sans coordonnées : minimum (cohérent avec le web Help::coutLivraison).
+        if ($regionLong == 0 && $regionLat == 0) {
+            return (float) ($conf->cout_livraison_min ?? 0);
         }
 
-        return $prix; // Résultat en kilomètres
+        $km = Help::distance($longitude, $latitude, $regionLong, $regionLat); // Distance en km
+
+        // MÊME formule que le web (Help::coutLivraison) : coût = km × prixKm,
+        // plancher cout_livraison_min. On n'utilise plus cout_liv_fixe ni le nombre
+        // de voyages (tonne_moyenne) — ils donnaient un résultat différent du web
+        // (et cout_liv_fixe=0 rendait le coût toujours égal au minimum).
+        // $qte est conservé pour la signature mais n'entre plus dans le calcul.
+        $prixKm  = (float) ($conf->prixKm ?? 0);
+        $coutMin = (float) ($conf->cout_livraison_min ?? 0);
+
+        $prix = $km * $prixKm;
+        if ($coutMin > 0 && $prix < $coutMin) {
+            $prix = $coutMin;
+        }
+
+        return $prix;
     }
 }
