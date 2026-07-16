@@ -59,6 +59,14 @@ class DetailLocation extends Model
     {
         $url = Help::$URL_BASE_FICHIER;
         return DetailLocation::distinct()
+            // detail_location.etat_location est écrit « EN ATTENTE » à la création de la
+            // location et n'est mis à jour NULLE PART ensuite (ni le web validerLocation/
+            // retourLocation, ni le mobile ne touchent les lignes : ils ne font évoluer que
+            // location.etat_location). La colonne restait donc figée, et l'app affichait
+            // « (EN ATTENTE) » sur une location TERMINEE — en bloquant au passage la
+            // notation du matériel (« L'article n'a pas encore été livré ! »).
+            // On renvoie donc l'état réel, celui de la location. L'alias est volontairement
+            // placé APRÈS detail_location.* pour écraser la colonne périmée.
             ->selectRaw("detail_location.*,
         produit.reference,
         produit.nom,
@@ -66,7 +74,8 @@ class DetailLocation extends Model
         produit.description,
         produit.prix_moyen,
         produit.prix_reduction,
-        concat('$url',image_produit.image) as image")
+        concat('$url',image_produit.image) as image,
+        location.etat_location as etat_location")
             ->orderBy('produit.nom', 'asc')
             ->join('produit', 'produit.id', '=', 'detail_location.produit_id')
             ->join('location', 'location.id', '=', 'detail_location.location_id')
