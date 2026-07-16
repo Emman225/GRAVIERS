@@ -136,6 +136,11 @@ class LocationController extends Controller
                 $location->remise = $request->remise;
                 if ($request->reduction > 0) {
                     $reduction = Reduction::lire($request->reduction);
+                    // est_utilise est CE QUI rend le code invalide (badge « Code invalide »
+                    // de creation-de-code-promo, et refus dans la vérification du code).
+                    // Sans lui, un code promo consommé par une location restait réutilisable
+                    // à l'infini. Parité avec CommandeController::enregistrerCommande.
+                    $reduction->est_utilise = true;
                     $reduction->statut = Help::$STATUT_INACTIF;
                     $reduction->save();
                 }

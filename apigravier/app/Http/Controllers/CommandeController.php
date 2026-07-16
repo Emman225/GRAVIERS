@@ -774,9 +774,32 @@ class CommandeController extends Controller
         try {
             $reduction = Reduction::lireCode($request->code);
             if ($reduction->id > 0) {
-                $retour->data = $reduction;
-                $retour->code = 200;
-                $retour->message = "Code promo valide";
+                // Mêmes règles que le web (ClientController::appliquerCodePromo) : sans ces
+                // contrôles le mobile ne testait QUE l'existence du code -> un code déjà
+                // utilisé, désactivé ou expiré restait indéfiniment acceptable.
+                $aujourdhui = date('Y-m-d');
+                $motifRefus = null;
+
+                if ($reduction->est_utilise == 1) {
+                    $motifRefus = 'Ce code promo a déjà été utilisé.';
+                } elseif (isset($reduction->statut) && $reduction->statut == 0) {
+                    $motifRefus = "Ce code promo n'est plus actif.";
+                } elseif (!empty($reduction->debut) && $aujourdhui < \Carbon\Carbon::parse($reduction->debut)->format('Y-m-d')) {
+                    $motifRefus = "Ce code promo n'est pas encore valide (à partir du "
+                        . \Carbon\Carbon::parse($reduction->debut)->format('d-m-Y') . ').';
+                } elseif (!empty($reduction->fin) && $aujourdhui > \Carbon\Carbon::parse($reduction->fin)->format('Y-m-d')) {
+                    $motifRefus = 'Ce code promo a expiré le '
+                        . \Carbon\Carbon::parse($reduction->fin)->format('d-m-Y') . '.';
+                }
+
+                if ($motifRefus !== null) {
+                    $retour->code = 405;
+                    $retour->message = $motifRefus;
+                } else {
+                    $retour->data = $reduction;
+                    $retour->code = 200;
+                    $retour->message = "Code promo valide";
+                }
             } else {
                 $retour->code = 405;
                 $retour->message = 'Code promo invalide';
