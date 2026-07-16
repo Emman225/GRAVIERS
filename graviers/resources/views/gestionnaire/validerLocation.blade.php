@@ -56,7 +56,7 @@
                 $modeCourant = old('mode_livraison', $location->est_livrable ? 'livraison' : 'retrait');
             @endphp
 
-            <form method="POST" action="{{ route('show.validerLocation', $location) }}" class="row gx-3">
+            <form method="POST" action="{{ route('show.validerLocation', $location) }}" class="row gx-3" id="formValiderLocation">
                 @csrf
 
                 <div class="col-12 mb-3">
@@ -130,7 +130,6 @@
                     var radioRet = document.getElementById('modeRetrait');
                     var info     = document.getElementById('infoRetrait');
                     var libelle  = document.getElementById('libelleBtnValider');
-                    var bouton   = document.getElementById('btnValiderLocation');
 
                     function appliquerMode() {
                         var retrait = radioRet.checked;
@@ -148,11 +147,33 @@
                     radios.forEach(function (r) { r.addEventListener('change', appliquerMode); });
                     appliquerMode();
 
-                    bouton.addEventListener('click', function (e) {
-                        var msg = radioRet.checked
-                            ? 'Valider cette location en RETRAIT SUR PLACE ? Aucun livreur ne sera affecté.'
-                            : 'Valider cette location, créer la livraison et affecter le livreur ?';
-                        if (!confirm(msg)) e.preventDefault();
+                    // Confirmation SweetAlert2 (remplace le confirm() natif). Le submit est
+                    // bloqué jusqu'à confirmation, puis relancé avec un drapeau anti-reboucle.
+                    var form = document.getElementById('formValiderLocation');
+                    form.addEventListener('submit', function (e) {
+                        if (form.dataset.confirmed === '1') return;
+                        e.preventDefault();
+                        var retrait = radioRet.checked;
+                        if (typeof Swal === 'undefined') { form.dataset.confirmed = '1'; form.submit(); return; }
+                        Swal.fire({
+                            title: retrait ? 'Valider en retrait sur place ?' : 'Valider et affecter le livreur ?',
+                            html: retrait
+                                ? 'Aucun livreur ni véhicule ne sera affecté, <b>aucune livraison</b> ne sera créée.<br>'
+                                    + 'La location passera à l\'état <b>EN COURS</b>.'
+                                : 'La livraison sera créée, le livreur affecté.<br>'
+                                    + 'La location passera à l\'état <b>EN COURS</b>.',
+                            icon: 'question',
+                            showCancelButton: true,
+                            confirmButtonText: retrait ? 'Oui, valider le retrait' : 'Oui, valider & affecter',
+                            cancelButtonText: 'Annuler',
+                            confirmButtonColor: '#0d6efd',
+                            cancelButtonColor: '#6c757d',
+                        }).then(function (result) {
+                            if (result.isConfirmed) {
+                                form.dataset.confirmed = '1';
+                                form.submit();
+                            }
+                        });
                     });
                 })();
             </script>
