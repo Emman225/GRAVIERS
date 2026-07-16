@@ -3042,6 +3042,10 @@ class ClientController extends Controller
                     'adresse_livraison_id'  => $adresseId,
                     'montant_total'         => $total,
                     'cout_livraison_client' => session('0')['cout_livraison'] ?? 0,
+                    // Le choix « Me faire livrer / Retrait sur place » doit voyager dans le
+                    // brouillon : la location est créée par le callback de paiement, qui est
+                    // un appel serveur-à-serveur SANS session. Repli sur livrable.
+                    'est_livrable'          => (session('0')['estLivrable'] ?? 'oui') == 'oui' ? 1 : 0,
                     'remise'                => round(session('remise') ?? 0),
                 ],
                 'details' => $details,
@@ -3869,6 +3873,9 @@ class ClientController extends Controller
                         'montant_total' => $total,
                         'etat_location' => Help::$LOCATION_EN_ATTENTE,
                         'cout_livraison_client' => session('0')['cout_livraison'],
+                        // « Retrait sur place » : aucun livreur n'interviendra, la page de
+                        // validation gestionnaire s'adapte. Repli sur livrable.
+                        'est_livrable' => (session('0')['estLivrable'] ?? 'oui') == 'oui' ? 1 : 0,
                         // Remise (code promo / points) : cohérence facture / montant payé.
                         'remise' => round(session('remise') ?? 0),
                     ];
@@ -5062,6 +5069,8 @@ class ClientController extends Controller
                     'montant_total' => $total,
                     'etat_location' => Help::$LOCATION_EN_ATTENTE,
                     'cout_livraison_client' => session('0')? session('0')['cout_livraison_client'] : 0,
+                    // « Retrait sur place » : aucun livreur n'interviendra. Repli sur livrable.
+                    'est_livrable' => (session('0')['estLivrable'] ?? 'oui') == 'oui' ? 1 : 0,
                     // 'remise' =>
                 ];
 

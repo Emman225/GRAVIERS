@@ -133,6 +133,11 @@ class LocationController extends Controller
                 $location->statut = Help::$STATUT_ACTIF;
                 $location->note = $request->note;
                 $location->cout_livraison_client = $montantLivraison;
+                // Choix de livraison du client (l'app l'envoie déjà, il n'était simplement
+                // pas enregistré) : sans lui, une location « Retrait sur place » était
+                // INVALIDABLE côté gestionnaire, qui exige un livreur. Même normalisation
+                // que la commande (l'app envoie un booléen JSON).
+                $location->est_livrable = ($request->meFaireLivre == 1 || $request->meFaireLivre == true) ? 1 : 0;
                 $location->remise = $request->remise;
                 if ($request->reduction > 0) {
                     $reduction = Reduction::lire($request->reduction);

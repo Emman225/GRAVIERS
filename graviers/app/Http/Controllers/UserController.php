@@ -441,14 +441,22 @@ class UserController extends Controller
      * la location EN COURS. Transactionnel.
      */
     public function validerLocation(Request $request, \App\Models\Location $location){
+        // « Retrait sur place » : le client vient chercher le matériel, aucun livreur
+        // n'intervient -> livreur/véhicule ne sont plus exigés. Le mode est pré-coché
+        // depuis le choix du client (location.est_livrable) mais reste modifiable par le
+        // gestionnaire : les locations créées AVANT l'ajout de est_livrable n'ont pas de
+        // choix fiable, et le client peut aussi avoir changé d'avis par téléphone.
         $request->validate([
-            'livreur'  => 'required|integer|exists:livreur,id',
-            'vehicule' => 'required|integer|exists:vehicule,id',
+            'mode_livraison' => 'required|in:livraison,retrait',
+            'livreur'  => 'required_if:mode_livraison,livraison|nullable|integer|exists:livreur,id',
+            'vehicule' => 'required_if:mode_livraison,livraison|nullable|integer|exists:vehicule,id',
             'caution'  => 'nullable|numeric|min:0',
         ], [
-            'livreur.required'  => 'Veuillez sélectionner un livreur.',
-            'vehicule.required' => 'Veuillez sélectionner un véhicule.',
+            'livreur.required_if'  => 'Veuillez sélectionner un livreur.',
+            'vehicule.required_if' => 'Veuillez sélectionner un véhicule.',
         ]);
+
+        $estRetrait = $request->mode_livraison === 'retrait';
 
         if ($location->etatLibelle() !== Help::$LOCATION_EN_ATTENTE) {
             return redirect()->route('show.listeLocationEnAttente')
@@ -466,8 +474,11 @@ class UserController extends Controller
         }
 
         $livraisonsCreees = [];
-        \DB::transaction(function () use ($location, $request, $livreur, $conf, $distance, &$livraisonsCreees) {
-            foreach ($location->detailLocation as $detail) {
+        \DB::transaction(function () use ($location, $request, $livreur, $conf, $distance, $estRetrait, &$livraisonsCreees) {
+            // Retrait sur place : aucune livraison à créer. En créer une serait une
+            // livraison fantôme, qui polluerait la tournée du livreur et enverrait au
+            // client un code de validation pour une livraison qui n'aura jamais lieu.
+            foreach ($estRetrait ? [] : $location->detailLocation as $detail) {
                 // LOCATION : le matériel loué n'est pas mesuré en tonnes. Le repli de
                 // rémunération est le coût d'UN déplacement (distance × coût fixe), SANS
                 // facteur "voyages/tonnage" (qui n'a de sens que pour le gravier en vrac).
@@ -503,9 +514,13 @@ class UserController extends Controller
             }
 
             $location->update([
-                'livreur_id'    => $request->livreur,
-                'vehicule_id'   => $request->vehicule,
+                'livreur_id'    => $estRetrait ? null : $request->livreur,
+                'vehicule_id'   => $estRetrait ? null : $request->vehicule,
                 'caution'       => (float) ($request->caution ?? 0),
+                // On enregistre le mode réellement retenu par le gestionnaire : il fait foi
+                // sur le choix initial du client (correction d'un ancien enregistrement,
+                // ou changement d'avis).
+                'est_livrable'  => $estRetrait ? 0 : 1,
                 'etat_location' => Help::$LOCATION_EN_COURS,
             ]);
         });
@@ -527,7 +542,9 @@ class UserController extends Controller
         }
 
         return redirect()->route('show.listeLocationEnAttente')
-            ->with('success', 'Location validée : livraison(s) créée(s), livreur affecté, location passée EN COURS.');
+            ->with('success', $estRetrait
+                ? 'Location validée en RETRAIT SUR PLACE : aucun livreur affecté, le client vient chercher le matériel. Location passée EN COURS.'
+                : 'Location validée : livraison(s) créée(s), livreur affecté, location passée EN COURS.');
     }
 
     /**

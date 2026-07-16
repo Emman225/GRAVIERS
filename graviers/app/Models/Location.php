@@ -28,6 +28,8 @@ class Location extends Model
         'note',
         'remise',
         'cout_livraison_client',
+        // 0 = « Retrait sur place » (le client vient chercher) : aucun livreur n'intervient.
+        'est_livrable',
         'statut',
         // Cycle de vie (phase c)
         'caution',
@@ -102,6 +104,11 @@ class Location extends Model
                 'montant_total'         => $l['montant_total'] ?? 0,
                 'etat_location'         => \Help::$LOCATION_EN_ATTENTE,
                 'cout_livraison_client' => $l['cout_livraison_client'] ?? 0,
+                // Choix de livraison du client, figé dans le brouillon au moment du
+                // checkout : le callback de paiement n'a pas de session pour le relire.
+                // Repli sur 1 (livrable) = comportement historique, pour les brouillons
+                // créés avant l'ajout du champ et encore en attente de callback.
+                'est_livrable'          => $l['est_livrable'] ?? 1,
                 'remise'                => $l['remise'] ?? 0,
                 'statut'                => $statut,
             ]);

@@ -24,6 +24,9 @@ class Location extends Model
         "statut",
         "montant_tva",
         "cout_livraison_client",
+        // 0 = « Retrait sur place » : aucun livreur n'intervient, la page de validation
+        // gestionnaire (web) n'exige alors ni livreur ni véhicule.
+        "est_livrable",
     ];
 
     public static function lire($id)
