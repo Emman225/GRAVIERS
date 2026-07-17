@@ -650,6 +650,18 @@ class CommandeController extends Controller
             if ($user->id > 0) {
 
                 $commande = Commande::lire($id);
+                $client = Client::lireSurUser($user->id);
+
+                // PROPRIÉTÉ : la commande doit exister ET appartenir au client qui
+                // appelle. Sans ce contrôle, n'importe quel utilisateur connecté
+                // pouvait annuler la commande d'un autre en devinant son id — et
+                // l'écran location de l'app (branché par erreur sur cet endpoint)
+                // annulait la COMMANDE portant le même id que la location.
+                if ($commande->id <= 0 || $client->id <= 0 || $commande->client_id != $client->id) {
+                    $retour->code = 403;
+                    $retour->message = "Cette commande est introuvable ou ne vous appartient pas.";
+                    return response()->json($retour);
+                }
 
                 // GARDE-FOUS : l'annulation DIRECTE n'est autorisée que si la
                 // commande n'est ni payée ni en cours de traitement/livraison.
@@ -666,8 +678,7 @@ class CommandeController extends Controller
                             ->where('provenance', Help::$COMMANDE)->exists());
 
                 if ($paye > 0 || $enTraitement) {
-                    $client = Client::lireSurUser($user->id);
-                    $demande = DemandeAnnulationCommande::lireSurCle($client->id, $commande->id);
+                    $demande = DemandeAnnulationCommande::lireSurCle($client->id, $commande->id, Help::$VENTE);
                     if ($demande->id <= 0) {
                         $demande = new DemandeAnnulationCommande();
                         $demande->client_id = $client->id;
@@ -729,7 +740,16 @@ class CommandeController extends Controller
             if ($user->id > 0) {
                 $client = Client::lireSurUser($user->id);
 
-                $demande = DemandeAnnulationCommande::lireSurCle($client->id, $id);
+                // PROPRIÉTÉ : même contrôle que annulerCommande — la demande ne peut
+                // viser qu'une commande du client appelant.
+                $commande = Commande::lire($id);
+                if ($commande->id <= 0 || $client->id <= 0 || $commande->client_id != $client->id) {
+                    $retour->code = 403;
+                    $retour->message = "Cette commande est introuvable ou ne vous appartient pas.";
+                    return response()->json($retour);
+                }
+
+                $demande = DemandeAnnulationCommande::lireSurCle($client->id, $id, Help::$VENTE);
                 if ($demande->id <= 0) {
                     $demande = new DemandeAnnulationCommande();
                     $demande->client_id = $client->id;

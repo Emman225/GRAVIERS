@@ -69,6 +69,8 @@ Route::post('recuperer-montant-point', [HomeController::class, 'recupererMontant
 
 Route::post('enregistrer-location', [LocationController::class, 'enregistrerLocation']);
 Route::post('details-location/{id}', [LocationController::class, 'detailsLocation']);
+// Annulation directe (garde-fous : payée/démarrée -> bascule en demande), pendant de annuler-commande.
+Route::post('annuler-location/{id}', [LocationController::class, 'annulerLocation']);
 Route::post('demande-annuler-location/{id}', [LocationController::class, 'demandeAnnulerLocation']);
 
 Route::post('callBackPaiement', [PaiementController::class, 'callBackPaiement'])->name("callBackPaiement");

@@ -16,6 +16,8 @@ use App\Models\Configuration;
 use App\Models\CoutLivraison;
 use App\Models\IntervalPoint;
 use App\Models\DetailLocation;
+use App\Models\LignePaiement;
+use App\Models\Livraison;
 use App\Mail\EnvoieCommandeMail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -325,6 +327,91 @@ class LocationController extends Controller
         return response()->json($retour);
     }
 
+    public function annulerLocation(Request $request, $id)
+    {
+        Request()->validate([
+            'access' => "required",
+            'type' => "required",
+        ]);
+        $retour = new Retour();
+
+        try {
+            $idUsr = Crypt::decryptString($request->access);
+            $user = User::lire($idUsr);
+            if ($user->id > 0) {
+
+                $location = Location::lire($id);
+                $client = Client::lireSurUser($user->id);
+
+                // PROPRIÉTÉ : la location doit exister ET appartenir au client appelant.
+                if ($location->id <= 0 || $client->id <= 0 || $location->client_id != $client->id) {
+                    $retour->code = 403;
+                    $retour->message = "Cette location est introuvable ou ne vous appartient pas.";
+                    return response()->json($retour);
+                }
+
+                // GARDE-FOUS (parité annulerCommande) : l'annulation DIRECTE n'est
+                // autorisée que si la location n'est ni payée ni démarrée (matériel
+                // sorti / livraison créée). Sinon, on transforme automatiquement en
+                // DEMANDE d'annulation que l'admin devra approuver.
+                $paye = LignePaiement::where('service', Help::$LOCATION)
+                    ->where('service_id', $location->id)
+                    ->where('statut', 1)
+                    ->sum('montant');
+
+                $detailIds = DetailLocation::where('location_id', $location->id)->pluck('id');
+                // NB : pour une livraison de LOCATION, detail_commande_id porte l'id
+                // du detail_location (cf. création côté web validerLocation).
+                $enTraitement = in_array($location->etat_location, [Help::$LOCATION_EN_COURS, Help::$LOCATION_TERMINE])
+                    || ($detailIds->isNotEmpty() && Livraison::whereIn('detail_commande_id', $detailIds)
+                            ->where('provenance', Help::$LOCATION)->exists());
+
+                if ($paye > 0 || $enTraitement) {
+                    $demande = DemandeAnnulationCommande::lireSurCle($client->id, $location->id, Help::$LOCATION);
+                    if ($demande->id <= 0) {
+                        $demande = new DemandeAnnulationCommande();
+                        $demande->client_id = $client->id;
+                        $demande->user_id = $user->id; // colonne NOT NULL
+                        $demande->commande_id = $location->id;
+                        $demande->motif = "Annulation demandée depuis le mobile (location "
+                            . ($paye > 0 ? "déjà payée" : "en cours de traitement") . ")";
+                        $demande->est_traite = false;
+                        $demande->type_affaire = Help::$LOCATION;
+                        $demande->statut = Help::$STATUT_ACTIF;
+                        $demande->save();
+                    }
+                    $retour->code = 200;
+                    $retour->message = $paye > 0
+                        ? "Cette location a déjà été payée : une demande d'annulation a été transmise à notre équipe (le remboursement sera traité après validation)."
+                        : "Cette location est déjà en cours de traitement : une demande d'annulation a été transmise à notre équipe pour validation.";
+                } else {
+                    // MÊMES effets que l'approbation d'une demande côté web
+                    // (DemandeAnnulationController::traiter, branche LOCATION).
+                    $location->etat_location = 'ANNULEE';
+                    $location->save();
+                    // Libère les lignes de matériel réservées.
+                    DetailLocation::where('location_id', $location->id)
+                        ->update(['etat_location' => Help::$LOCATION_EN_ATTENTE, 'statut' => Help::$STATUT_INACTIF]);
+
+                    $retour->code = 200;
+                    $retour->message = "Location annulée avec succès";
+                }
+            } else {
+                $retour->code = 404;
+                $retour->message = 'Impossible de récupérer l\'utilisateur';
+            }
+        } catch (ValidationException $e) {
+            // Ce bloc sera prioritaire pour les erreurs de validation
+            $retour->code = 501;
+            $retour->message = collect($e->errors())->flatten()->implode(" \n ");
+        } catch (\Throwable $th) {
+            $retour->code = 500;
+            $retour->message = 'Une erreur s\'est produite code: 500 ' . $th->getMessage();
+        }
+
+        return response()->json($retour);
+    }
+
     public function demandeAnnulerLocation(Request $request, $id)
     {
         Request()->validate([
@@ -340,7 +427,15 @@ class LocationController extends Controller
             if ($user->id > 0) {
                 $client = Client::lireSurUser($user->id);
 
-                $demande = DemandeAnnulationCommande::lireSurCle($client->id, $id);
+                // PROPRIÉTÉ : la demande ne peut viser qu'une location du client appelant.
+                $location = Location::lire($id);
+                if ($location->id <= 0 || $client->id <= 0 || $location->client_id != $client->id) {
+                    $retour->code = 403;
+                    $retour->message = "Cette location est introuvable ou ne vous appartient pas.";
+                    return response()->json($retour);
+                }
+
+                $demande = DemandeAnnulationCommande::lireSurCle($client->id, $id, Help::$LOCATION);
                 if ($demande->id <= 0) {
                     $demande = new DemandeAnnulationCommande();
                     $demande->client_id = $client->id;

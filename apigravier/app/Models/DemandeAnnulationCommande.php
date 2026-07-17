@@ -21,9 +21,16 @@ class DemandeAnnulationCommande extends Model
         'statut',
     ];
 
-    public static function lireSurCle($client_id, $commande_id){
+    // $type_affaire (VENTE / LOCATION) : commande_id porte l'id d'une COMMANDE ou d'une
+    // LOCATION selon le type — deux tables aux compteurs indépendants. Sans ce filtre,
+    // une demande sur la commande n°5 bloquait toute demande sur la location n°5 du
+    // même client (et inversement). Optionnel pour rester rétro-compatible.
+    public static function lireSurCle($client_id, $commande_id, $type_affaire = null){
         $obj = DemandeAnnulationCommande::where('client_id', $client_id)
         ->where('commande_id', $commande_id)
+        ->when($type_affaire, function ($query) use ($type_affaire) {
+            $query->where('type_affaire', $type_affaire);
+        })
         ->where('statut', Help::$STATUT_ACTIF)
         ->first();
         if (isset($obj->id) && $obj->id > 0) return $obj;

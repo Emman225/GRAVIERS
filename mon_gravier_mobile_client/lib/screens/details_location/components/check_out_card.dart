@@ -109,7 +109,7 @@ class _CheckoutCardState extends State<CheckoutCard> {
               Expanded(
                 child: ElevatedButton(
                   onPressed: () async {
-                    if (await confirmationAction(context, "Attention !!", "Voulez-vous annulé votre commande ?")) {
+                    if (await confirmationAction(context, "Attention !!", "Voulez-vous annuler votre location ?")) {
                       if (await verifierConnexion()) {
                         try {
                           afficherChargement();
@@ -124,7 +124,9 @@ class _CheckoutCardState extends State<CheckoutCard> {
                           }
 
                           retourHttp = await http
-                              .post(Uri.parse('${lienAPI()}annuler-commande/$idCommande'),
+                              // Endpoint LOCATION : cet écran appelait annuler-commande/{id},
+                              // qui annulait la COMMANDE portant le même id que la location.
+                              .post(Uri.parse('${lienAPI()}annuler-location/$idCommande'),
                               headers: {"Content-Type": "application/json"},
                               body: jsonEncode(param))
                               .timeout(const Duration(minutes: 2));
@@ -315,7 +317,8 @@ class _CheckoutCardState extends State<CheckoutCard> {
                           }
 
                           retourHttp = await http
-                              .post(Uri.parse('${lienAPI()}demande-annuler-commande/$idCommande'),
+                              // Endpoint LOCATION (la demande était créée en type VENTE sinon).
+                              .post(Uri.parse('${lienAPI()}demande-annuler-location/$idCommande'),
                               headers: {"Content-Type": "application/json"},
                               body: jsonEncode(param))
                               .timeout(const Duration(minutes: 2));
@@ -349,7 +352,7 @@ class _CheckoutCardState extends State<CheckoutCard> {
                       }
                       Get.back();
                     }else{
-                      EasyLoading.showError("Veuillez saisir le motif de l'annulation de votre commande");
+                      EasyLoading.showError("Veuillez saisir le motif de l'annulation de votre location");
                     }
                   },
                   child: const Text(
