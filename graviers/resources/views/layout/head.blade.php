@@ -31,7 +31,7 @@
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
         <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
         <link href="{{ asset('backend/assets/css/main.css?v=6.0') }}  " rel="stylesheet" type="text/css" />
-        <link rel="stylesheet" href="{{ asset('backend/assets/css/myStyle.css') }}">
+        <link rel="stylesheet" href="{{ asset('backend/assets/css/myStyle.css?v=1.1') }}">
         <link rel="stylesheet" href="{{ asset('backend/assets/css/premium-admin.css?v=1.1') }}">
         <link rel="stylesheet" href="{{ asset('backend/assets/css/premium-dashboard.css?v=1.0') }}">
         <link rel="stylesheet" href="{{ asset('backend/assets/css/premium-auth.css?v=4.0') }}">

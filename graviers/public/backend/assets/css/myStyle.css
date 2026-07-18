@@ -254,6 +254,16 @@ form label:not(.form-check-label):not(.btn) {
     border-bottom: 1px solid #2a3047 !important;
 }
 
+/* Logo de la sidebar : le thème (main.css) ne borne que la LARGEUR (min/max-width
+   120px), sans hauteur. Avec un logo carré (omer 1.png : 2321×2321), l'image
+   s'affichait en pavé 120×120 dans un bandeau prévu pour 72px. On borne la
+   hauteur et on libère la largeur pour conserver les proportions. */
+.navbar-aside .aside-top .logo {
+    max-height: 48px;
+    width: auto;
+    min-width: 0;
+}
+
 .navbar-aside .btn-aside-minimize i {
     color: #adb5bd !important;
 }
