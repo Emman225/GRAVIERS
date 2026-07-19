@@ -858,8 +858,12 @@ class Help
     }
     public static function totatEnlevementUnProduit($commandeId, $produitId){
 
+        // NULLIF(qte_servi, 0) : un qte_servi à 0 (décimale détruite par l'ancien type
+        // INTEGER de la colonne, ou saisie aberrante) est traité comme « non renseigné »
+        // -> repli sur la qte du bon. Sans ça, l'enlèvement comptait pour ZÉRO et la
+        // page de traitement proposait de re-traiter la totalité (sur-livraison).
         $sql = "SELECT SUM(enlevement.qte) AS totalQte,
-        SUM(COALESCE(enlevement.qte_servi, enlevement.qte)) AS totalServi,
+        SUM(COALESCE(NULLIF(enlevement.qte_servi, 0), enlevement.qte)) AS totalServi,
         detail_commande.qte as qteALivrer
         FROM enlevement INNER JOIN livraison ON livraison.id = enlevement.livraison_id
         INNER JOIN detail_commande on detail_commande.id = livraison.detail_commande_id

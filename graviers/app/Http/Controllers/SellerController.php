@@ -256,8 +256,16 @@ class SellerController extends Controller
     {
         $this->verificationStock();
 
-        // dd($code, $request->qteServi);
-        // $enleve = Enlevement::where('code_enleve',$code)->first();
+        // La quantité servie est décimale (tonnes : 0.5, 1.5…). Aucune validation
+        // n'existait : une valeur vide ou 0 passait telle quelle et l'enlèvement
+        // comptait ensuite pour ZÉRO dans le suivi de traitement de la commande.
+        $request->validate([
+            'qteServi' => 'required|numeric|min:0.1',
+        ], [
+            'qteServi.required' => 'Veuillez saisir la quantité servie.',
+            'qteServi.numeric'  => 'La quantité servie doit être un nombre (utilisez le point pour les décimales).',
+            'qteServi.min'      => 'La quantité servie doit être supérieure à 0.',
+        ]);
 
         $fournisseur = Fournisseur::where('user_id', '=', Auth::user()->id)->first();
 
