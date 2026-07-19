@@ -440,6 +440,8 @@ class SellerController extends Controller
             'numero_compte' => $request->numero,
             'user_id' => $user->id,
             'mode_paiement_id' => $request->modePaie,
+            // Le solde vient d'être débité ci-dessus : la 2e validation ne re-débite pas.
+            'solde_debite_initiation' => 1,
         ]);
 
         return redirect()->route('sellers.demandeDepaieFournisseur')->with('success', 'Votre demande a été envoyée');

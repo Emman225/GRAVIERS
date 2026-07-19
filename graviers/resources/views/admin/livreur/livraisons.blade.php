@@ -18,8 +18,11 @@
                         $totalForfait = $lignes->sum('forfait_base');
                         $totalKm      = $lignes->sum('frais_km');
                         $totalDu      = $lignes->sum('total_du');
-                        $totalPaye    = $lignes->sum('montant_paye');
-                        $totalReste   = $lignes->sum('reste_a_payer');
+                        // Total payé = demandes de paiement VALIDÉES (circuit mobile, source
+                        // de vérité). L'ancienne somme par livraison (PaiementLivreur) est un
+                        // circuit neutralisé : elle affichait toujours 0.
+                        $totalPaye    = (float) ($totalPayeDemandes ?? $lignes->sum('montant_paye'));
+                        $totalReste   = max(0, $totalDu - $totalPaye);
                     @endphp
                     <div class="row text-center">
                         <div class="col-md-3">

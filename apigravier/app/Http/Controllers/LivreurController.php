@@ -685,6 +685,11 @@ class LivreurController extends Controller
                             $demande->numero_compte = $request->compte;
                             $demande->user_id = $user->id;
                             $demande->paye = false;
+                            // Le solde est débité ci-dessous (réservation) : la 2e validation
+                            // admin ne doit PAS re-débiter (cf. web valideDemande). Sans ce
+                            // flag, l'heuristique historique re-débitait CHAQUE demande
+                            // acceptée -> solde livreur à 0 au lieu du reliquat.
+                            $demande->solde_debite_initiation = 1;
                             $demande->statut = Help::$STATUT_ACTIF;
                             $demande->save();
 

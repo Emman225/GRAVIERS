@@ -1113,6 +1113,9 @@ class UserController extends Controller
             'user_id' => $user->id,
             'numero_compte' => $request->numero,
             "mode_paiement_id" => $request->modePaie,
+            // Le solde vient d'être débité ci-dessus (réservation) : la 2e validation
+            // ne doit PAS re-débiter (cf. valideDemande).
+            'solde_debite_initiation' => 1,
         ]);
 
         // dd($demande);
@@ -1837,36 +1840,30 @@ class UserController extends Controller
                 default       => null,
             };
 
-            // Si refusée → on restitue le solde au tier (cas demande de paiement initiée par lui).
-            // Si acceptée → on décrémente le solde (cas règlement de dette du point 15) UNIQUEMENT si
-            // le solde n'a pas encore été décrémenté à l'initiation.
+            // Le solde a-t-il déjà été débité à l'INITIATION de la demande ? C'est un FAIT,
+            // enregistré à la création (solde_debite_initiation) — plus une heuristique.
+            // L'ancienne heuristique (« 1er validateur admin => règlement de dette => débiter »)
+            // était fausse : le 1er validateur est TOUJOURS un admin, donc chaque demande
+            // mobile acceptée était débitée UNE SECONDE FOIS (solde livreur à 0 au lieu du
+            // reliquat). Et le refus restituait sans condition : refuser un reglerDette
+            // (jamais débité) aurait CRÉDITÉ le tiers à tort.
             //
-            // Note : pour le code historique, le solde était DÉJÀ décrémenté à l'initiation par
-            // l'utilisateur lui-même (cf. demandeDePaie côté livreur/apporteur/fournisseur). Donc :
-            //  - Refus → on restitue (logique inchangée)
-            //  - Acceptation → on ne touche PAS au solde (déjà décrémenté à l'initiation)
-            // Pour les règlements initiés via reglerDette (point 15), le solde N'A PAS été décrémenté
-            // à l'initiation. Pour préserver les deux flows sans table dédiée, on convient que :
-            //  - Si refus, on restitue le montant (peu importe le flow d'initiation)
-            //  - Si acceptation, on ne touche pas au solde si déjà décrémenté ; sinon on décrémente.
-            // Solution simple et robuste : laisser inchangée la logique historique (pas de
-            // décrémentation au moment de la 2e validation), et compenser pour les règlements de
-            // dette en décrémentant le solde explicitement à la 2e validation.
-            //
-            // Heuristique : si la DemandePaiement a été créée via reglerDette, la date_validation
-            // était nulle ET user_valide_id == initiateur (admin) ; pour ces cas on décrémente.
-            // Sinon (initiée par le tier lui-même) on ne touche pas (déjà décrémenté).
+            // Repli pour les demandes créées AVANT l'ajout de la colonne (NULL) :
+            // seul reglerDette génère un `numero` -> numero IS NULL = initiée par le tiers,
+            // dont le flux majoritaire débite à l'initiation.
+            $dejaDebite = $demande->solde_debite_initiation !== null
+                ? (bool) $demande->solde_debite_initiation
+                : is_null($demande->numero);
 
             if ($tier) {
                 if (!$accepter) {
-                    // Refus → restituer le montant au solde du tier
-                    $tier->update(['solde' => (float) $tier->solde + (float) $demande->montant]);
+                    // Refus → restituer UNIQUEMENT ce qui avait été réservé à l'initiation.
+                    if ($dejaDebite) {
+                        $tier->update(['solde' => (float) $tier->solde + (float) $demande->montant]);
+                    }
                 } else {
-                    // Acceptation : décrémenter le solde uniquement si la demande vient du flow
-                    // "règlement de dette" (initiée par un admin via reglerDette).
-                    $initiateur = User::find($demande->user_valide_id);
-                    $estReglement = $initiateur && (int) $initiateur->type_user_id === (int) Help::$USER_ADMIN;
-                    if ($estReglement) {
+                    // Acceptation → débiter UNIQUEMENT si l'initiation ne l'a pas déjà fait.
+                    if (!$dejaDebite) {
                         $tier->update(['solde' => max(0, (float) $tier->solde - (float) $demande->montant)]);
                     }
                 }
@@ -3256,6 +3253,8 @@ class UserController extends Controller
             'user_valide2_id' => null,       // en attente
             'date_validation' => null,
             'paye' => false,
+            // Le solde du tiers N'est PAS débité ici : il le sera à la 2e validation.
+            'solde_debite_initiation' => 0,
             'numero_compte' => $request->numero_compte,
         ]);
 

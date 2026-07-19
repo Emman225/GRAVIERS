@@ -18,6 +18,8 @@ class DemandePaiement extends Model
         'user_valide_id',
         'date_validation',
         'paye',
+        // 1 = solde débité à l'initiation (livreur mobile), 0 = débité à la 2e validation.
+        'solde_debite_initiation',
         'statut',
     ];
 

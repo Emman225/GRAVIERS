@@ -72,8 +72,19 @@ class DetteLivreurController extends Controller
             ];
         });
 
+        // Total réellement payé aux livreurs = demandes de paiement VALIDÉES (source de
+        // vérité du circuit mobile, cf. paiements()). L'ancien total sommait
+        // PaiementLivreur (Système B, neutralisé) : toujours 0 — la page affichait
+        // « Total payé : 0 » alors que le livreur avait déjà encaissé.
+        $totalPayeDemandes = (float) \App\Models\DemandePaiement::join('users', 'users.id', '=', 'demande_paiement.user_id')
+            ->where('users.type_user_id', 8) // livreurs
+            ->where('demande_paiement.paye', 1)
+            ->whereNull('demande_paiement.deleted_at')
+            ->sum('demande_paiement.montant');
+
         return view('admin.livreur.livraisons', [
             'lignes' => $lignes,
+            'totalPayeDemandes' => $totalPayeDemandes,
         ]);
     }
 

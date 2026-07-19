@@ -21,6 +21,10 @@ class DemandePaiement extends Model
         'user_valide2_id',
         'date_validation',
         'paye',
+        // 1 = le solde du tiers a été débité à l'initiation (réservation) ;
+        // 0 = il sera débité à la 2e validation (reglerDette, apporteur mobile).
+        // Sans lui dans fillable, create([...]) l'ignorerait silencieusement.
+        'solde_debite_initiation',
         'numero_compte'
     ];
 

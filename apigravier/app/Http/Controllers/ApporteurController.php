@@ -572,6 +572,9 @@ class ApporteurController extends Controller
                             $demande->numero_compte = $request->compte;
                             $demande->user_id = $user->id;
                             $demande->paye = false;
+                            // Contrairement au flux livreur, le solde apporteur n'est PAS
+                            // débité à l'initiation : c'est la 2e validation qui débitera.
+                            $demande->solde_debite_initiation = 0;
                             $demande->statut = Help::$STATUT_ACTIF;
                             $demande->save();
                             DB::commit();
