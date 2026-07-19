@@ -271,13 +271,27 @@ class SellerController extends Controller
 
         $bon = Enlevement::where('code_enleve', $code)->where('fournisseur_id', $fournisseur->id)->first();
 
-        $commande = DB::select("select c.* from commande c, detail_commande d, livraison l where c.id = d.`commande_id` and d.`id`=l.`detail_commande_id` and l.id=" . $bon->livraison->id)[0];
-        // $d = Commande::find($commande->id)->detailCommande->sum('qte');
-        // dd($commande, $d, );
-
+        // Contrôle AVANT toute utilisation de $bon (l'ancien code lisait
+        // $bon->livraison->id avant ce test : crash 500 sur code invalide).
         if ($bon == null) {
             return back()->with('error', 'Code invalide');
         }
+
+        // IDEMPOTENCE : un bon déjà validé ne doit pas être revalidable — chaque
+        // re-soumission RE-CRÉDITAIT le solde du fournisseur (et re-touchait le stock).
+        if ($bon->fournisseur_validation !== null || $bon->qte_servi !== null) {
+            return back()->with('error', 'Ce bon a déjà été validé.');
+        }
+
+        // La quantité servie ne peut pas dépasser celle du bon (le max du formulaire
+        // ne suffit pas : il est contournable).
+        if ((float) $request->qteServi > (float) $bon->qte) {
+            return back()->with('error', 'La quantité servie (' . $request->qteServi . ') dépasse celle du bon (' . $bon->qte . ').');
+        }
+
+        $commande = DB::select("select c.* from commande c, detail_commande d, livraison l where c.id = d.`commande_id` and d.`id`=l.`detail_commande_id` and l.id=" . $bon->livraison->id)[0];
+        // $d = Commande::find($commande->id)->detailCommande->sum('qte');
+        // dd($commande, $d, );
 
         $bon->livraison->detailCommande->update([
             'etat_livraison' => 3
@@ -305,13 +319,28 @@ class SellerController extends Controller
 
         $produit = StockProduit::where('produit_id', $bon->produit_id)->where('fournisseur_id', $bon->fournisseur_id)->first();
 
+        // CRÉDIT au PRIX NÉGOCIÉ : le gestionnaire saisit un prix_fournisseur au
+        // traitement (stocké sur l'enlèvement) ; c'est LUI qui fait foi. L'ancien
+        // calcul utilisait le prix catalogue du stock : si les deux différaient,
+        // le fournisseur était crédité d'un montant différent du convenu.
+        // Repli sur le prix du stock si le bon n'a pas de prix (anciens flux).
+        $prixUnitaire = (float) ($bon->prix_fournisseur ?? 0) > 0
+            ? (float) $bon->prix_fournisseur
+            : (float) ($produit->prix ?? 0);
+        $nouveauSolde = $fournisseur->solde + ($request->qteServi * $prixUnitaire);
 
+        // STOCK : NE PLUS re-décrémenter ici. La quantité du bon a DÉJÀ été retirée
+        // du stock au traitement par le gestionnaire (traitementItem /
+        // traitementItemSansLivraison / traitement en masse) : décrémenter une
+        // seconde fois faisait perdre le double au stock affiché. On RESTITUE au
+        // contraire la part réservée mais non servie (qte du bon - qte servie).
+        $nonServi = max(0, (float) $bon->qte - (float) $request->qteServi);
+        if ($nonServi > 0) {
+            $produit->update([
+                'qte' => $produit->qte + $nonServi
+            ]);
+        }
 
-        $nouveauSolde = $fournisseur->solde + ($request->qteServi * $produit->prix);
-        $produit->update([
-            'qte' => $produit->qte - $bon->qte_servi
-        ]);
-        // dd($nouveauSolde);
         $fournisseur->update([
             'solde' => $nouveauSolde
         ]);
