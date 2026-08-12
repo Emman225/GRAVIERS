@@ -1007,15 +1007,32 @@
 
         <section class="section-padding mb-30">
             <div class="container">
+                @php
+                    // Les quatre blocs ci-dessous puisaient tous dans $produits avec le
+                    // MÊME critère (meilleur_note >= 90) et sans borne : ils affichaient
+                    // donc la même liste, aussi longue que la page de produits.
+                    //
+                    // Chacun est désormais borné à 5 articles. Le filtre sur le statut
+                    // est appliqué une fois pour toutes : deux des quatre blocs ne le
+                    // posaient pas et pouvaient montrer un produit retiré de la vente.
+                    //
+                    // $produits est un paginateur : on passe par sa collection, car
+                    // collect() sur un paginateur renvoie ses métadonnées, pas ses lignes.
+                    $sourceProduits = $produits instanceof \Illuminate\Pagination\AbstractPaginator
+                        ? $produits->getCollection()
+                        : collect($produits);
+
+                    $produitsEnAvant = $sourceProduits
+                        ->filter(fn ($p) => $p->statut == 1 && $p->meilleur_note >= 90)
+                        ->take(5);
+                @endphp
 
                 <div class="row">
                     {{-- top selling --}}
                     <div class="col-xl-3 col-lg-4 col-md-6 mb-sm-5 mb-md-0">
-                        <h4 class="section-title style-1 mb-30 animated animated">Top Selling</h4>
+                        <h4 class="section-title style-1 mb-30 animated animated">Meilleures ventes</h4>
                         <div class="product-list-small animated animated">
-                            @foreach ($produits as $produit )
-                            @if ($produit->statut == 1)
-                                @if ($produit->meilleur_note >= 90)
+                            @foreach ($produitsEnAvant as $produit )
 
                                     <article class="row align-items-center hover-up">
                                         <figure class="col-md-4 mb-0">
@@ -1044,21 +1061,16 @@
                                         </div>
                                     </article>
 
-                                @endif
-                            @endif
-
                             @endforeach
                         </div>
                     </div>
 
                     {{-- Trending products --}}
                     <div class="col-xl-3 col-lg-4 col-md-6 mb-md-0">
-                        <h4 class="section-title style-1 mb-30 animated animated">Prouduit tendance</h4>
+                        <h4 class="section-title style-1 mb-30 animated animated">Produits tendance</h4>
                         <div class="product-list-small animated animated">
-                            @foreach ($produits as $produit)
+                            @foreach ($produitsEnAvant as $produit)
 
-                            @if ($produit->statut == 1)
-                                @if($produit->meilleur_note >= 90)
                                     <article class="row align-items-center hover-up">
                                         <figure class="col-md-4 mb-0">
                                         @foreach ($produit->image as $image )
@@ -1073,7 +1085,7 @@
                                                 <div class="product-rate d-inline-block">
                                                     <div class="product-rating" style="width: {{$produit->meilleur_note}}%"></div>
                                                 </div>
-                                                <span class="font-small ml-5 text-muted"> (({{round(($produit->meilleur_note*5)/100,1)}}))</span>
+                                                <span class="font-small ml-5 text-muted"> ({{round(($produit->meilleur_note*5)/100,1)}})</span>
                                             </div>
                                             <div class="product-price">
                                                 @if(isset($prixPerso[$produit->id]))
@@ -1085,19 +1097,15 @@
                                             </div>
                                         </div>
                                     </article>
-                                @endif
-                            @endif
                             @endforeach
                         </div>
                     </div>
 
                     {{-- Recently added --}}
                     <div class="col-xl-3 col-lg-4 col-md-6 mb-sm-5 mb-md-0">
-                        <h4 class="section-title style-1 mb-30 animated animated">Ajoutés récement </h4>
+                        <h4 class="section-title style-1 mb-30 animated animated">Ajoutés récemment</h4>
                         <div class="product-list-small animated animated">
-                            @foreach ($produits as $produit )
-
-                                @if ($produit->meilleur_note >= 90)
+                            @foreach ($produitsEnAvant as $produit )
 
                                     <article class="row align-items-center hover-up">
                                         <figure class="col-md-4 mb-0">
@@ -1125,8 +1133,6 @@
                                             </div>
                                         </div>
                                     </article>
-
-                                @endif
 
                             @endforeach
                         </div>
@@ -1136,8 +1142,7 @@
                     <div class="col-xl-3 col-lg-4 col-md-6 mb-md-0">
                         <h4 class="section-title style-1 mb-30 animated animated">Meilleure note</h4>
                         <div class="product-list-small animated animated">
-                            @foreach ($produits as $produit)
-                                @if($produit->meilleur_note >= 90)
+                            @foreach ($produitsEnAvant as $produit)
                                     <article class="row align-items-center hover-up">
                                         <figure class="col-md-4 mb-0">
                                         @foreach ($produit->image as $image )
@@ -1152,7 +1157,7 @@
                                                 <div class="product-rate d-inline-block">
                                                     <div class="product-rating" style="width: {{$produit->meilleur_note}}%"></div>
                                                 </div>
-                                                <span class="font-small ml-5 text-muted"> (({{round(($produit->meilleur_note*5)/100,1)}}))</span>
+                                                <span class="font-small ml-5 text-muted"> ({{round(($produit->meilleur_note*5)/100,1)}})</span>
                                             </div>
                                             <div class="product-price">
                                                 @if(isset($prixPerso[$produit->id]))
@@ -1164,7 +1169,6 @@
                                             </div>
                                         </div>
                                     </article>
-                                @endif
                             @endforeach
                         </div>
                     </div>

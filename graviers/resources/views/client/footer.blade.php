@@ -86,10 +86,18 @@
                                 De la qualité
                             </h2>
                             <p class="mb-45">Commencer vos achat avec <span class="text-brand"> IMLOD </span></p>
-                            <form class="form-subcriber d-flex">
-                                <input type="email" placeholder="Your emaill address" />
+                            {{-- Ce formulaire n'était relié à rien : ni action, ni méthode, ni
+                                 nom de champ. Le visiteur croyait s'inscrire et rechargeait
+                                 simplement la page ; aucune adresse n'était conservée. --}}
+                            <form class="form-subcriber d-flex" action="{{ route('newsletter.store') }}" method="POST">
+                                @csrf
+                                <input type="email" name="email" placeholder="Votre adresse e-mail" required maxlength="150"
+                                       value="{{ old('email') }}" />
                                 <button class="btn" type="submit">S'inscrire</button>
                             </form>
+                            @error('email')
+                                <p class="mt-2 mb-0" style="color:#ffd7d7;">{{ $message }}</p>
+                            @enderror
                         </div>
                         <img src="{{asset('frontend/assets/imgs/theme/produit/banner2.png')}}" alt="newsletter" />
                     </div>
@@ -111,10 +119,12 @@
                             <p class="font-lg text-heading">Meilleur endroit pour vos matériels de construction</p>
                         </div>
                         <ul class="contact-infor">
-                            <li><img src="assets/imgs/theme/icons/icon-location.svg" alt="" /><strong>Adresse: </strong> <span>Abidjan - Yopougon Rue 12 Avenu Jean Marshall</span></li>
-                            <li><img src="assets/imgs/theme/icons/icon-contact.svg" alt="" /><strong>Contact:</strong><span>(+225) - 07 27 3333 - 3333</span></li>
-                            <li><img src="assets/imgs/theme/icons/icon-email-2.svg" alt="" /><strong>Email:</strong><span>IMLOD.bat@gmail.com</span></li>
-                            <li><img src="assets/imgs/theme/icons/icon-clock.svg" alt="" /><strong>Heure d'ouverture:</strong><span>08:00 - 18:00, du lundi au Samedi</span></li>
+                            {{-- Chemins corrigés : « assets/… » manquait le préfixe « frontend/ »,
+                                 et ces quatre icônes tombaient en 404 sur toutes les pages. --}}
+                            <li><img src="{{ asset('frontend/assets/imgs/theme/icons/icon-location.svg') }}" alt="" /><strong>Adresse: </strong> <span>Abidjan - Yopougon Rue 12 Avenu Jean Marshall</span></li>
+                            <li><img src="{{ asset('frontend/assets/imgs/theme/icons/icon-contact.svg') }}" alt="" /><strong>Contact:</strong><span>(+225) - 07 27 3333 - 3333</span></li>
+                            <li><img src="{{ asset('frontend/assets/imgs/theme/icons/icon-email-2.svg') }}" alt="" /><strong>Email:</strong><span><a href="mailto:info@fneconnect.net">info@fneconnect.net</a></span></li>
+                            <li><img src="{{ asset('frontend/assets/imgs/theme/icons/icon-clock.svg') }}" alt="" /><strong>Heure d'ouverture:</strong><span>08:00 - 18:00, du lundi au Samedi</span></li>
                         </ul>
                     </div>
                 </div>
@@ -185,7 +195,9 @@
                 <div class="footer-bottom"></div>
             </div>
             <div class="col-xl-4 col-lg-6 col-md-6">
-                <p class="font-sm mb-0">&copy; 2024, <strong class="text-brand">gravierci</strong> - Immobilier - Location - Distribution <br />Tous droits reservés</p>
+                {{-- Année courante : le pied de page annonçait 2024 en dur, ce qui
+                     vieillit le site chaque 1er janvier sans que personne n'y pense. --}}
+                <p class="font-sm mb-0">&copy; {{ date('Y') }}, <strong class="text-brand">gravierci</strong> - Immobilier - Location - Distribution <br />Tous droits reservés</p>
             </div>
             <div class="col-xl-4 col-lg-6 text-center d-none d-xl-block">
                 <div class="hotline d-lg-inline-flex mr-30">
@@ -307,6 +319,32 @@
                 hideMethod: "fadeOut"
             };
             toastr.success("{{ session('success') ?? session('succes') }}", "Compte cree avec succes !");
+        });
+    </script>
+    @endif
+
+    {{-- Messages d'ERREUR. Le site n'en affichait AUCUN : la seule ligne toastr
+         prévue pour eux était commentée plus haut dans ce fichier, et aucune page
+         du parcours d'achat ne lit session('error'). Un refus renvoyé par un
+         contrôleur — plafond de crédit dépassé, par exemple — restait donc
+         totalement invisible : le client revenait sur la page précédente sans
+         explication.
+         @json plutôt que des guillemets : le message contient des apostrophes et
+         des espaces insécables que Blade échapperait en entités HTML, affichées
+         telles quelles par toastr. --}}
+    @if(session('error'))
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            toastr.options = {
+                closeButton: true,
+                progressBar: true,
+                positionClass: "toast-top-center",
+                timeOut: 12000,
+                extendedTimeOut: 5000,
+                showMethod: "fadeIn",
+                hideMethod: "fadeOut"
+            };
+            toastr.error(@json(session('error')));
         });
     </script>
     @endif
