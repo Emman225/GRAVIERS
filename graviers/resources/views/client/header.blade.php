@@ -38,6 +38,14 @@
         .header-wrap > .logo { flex: 0 0 auto; }
         /* Logo un peu plus compact pour libérer de la largeur */
         .header-wrap > .logo a img { height: 46px !important; max-width: 120px !important; }
+        /* Le thème pose 70px de marge à droite du logo (.logo-width-1, main.css) — un
+           réglage hérité d'un en-tête sur deux lignes, où le logo était seul à gauche.
+           Ici le rang est saturé : ces 70px sont pris à la barre de recherche, qui
+           tombait à 220px pour un visiteur contre 516px pour un client connecté (les
+           boutons « Se connecter / S'inscrire » et « Espace pro » occupant le reste).
+           Le conteneur applique déjà un gap de 12px ; 16px suffisent à détacher le
+           logo du menu. Le thème réinitialise déjà cette marge sous 768px. */
+        .header-wrap > .logo.logo-width-1 { margin-right: 16px !important; }
         /* Menu : toujours sur UNE seule ligne (ne s'enroule pas, ne se compresse pas) */
         .header-wrap > .header-nav { flex: 0 0 auto !important; }
         .header-nav .main-menu { width: auto; }
@@ -169,6 +177,10 @@
 
                                 <li><a href="{{route('client.location')}}">Location</a></li>
                                 <li><a href="{{route('client.demandeLivraison')}}">Livraison</a></li>
+                                {{-- Le blog n'était accessible que depuis le menu mobile : sur
+                                     ordinateur, aucun lien n'y menait, les articles publiés
+                                     restaient donc invisibles pour le grand public. --}}
+                                <li><a class="{{ request()->routeIs('client.blog', 'client.detailBlog') ? 'active' : '' }}" href="{{route('client.blog')}}">Blog</a></li>
                                 <li><a href="{{route('aPropos')}}">A propos</a></li>
                                 <li><a href="{{route('contact')}}">Contact</a></li>
 
