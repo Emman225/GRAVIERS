@@ -2294,20 +2294,57 @@ class UserController extends Controller
             'message.required'     => 'Veuillez saisir votre message.',
         ]);
 
-        // L'email est unique en base : on met à jour le dernier message de cet expéditeur.
-        \App\Models\Contact::updateOrCreate(
-            ['email' => $request->email],
-            [
-                'nom_prenoms' => $request->nom_prenoms,
-                'telephone'   => $request->telephone,
-                'sujet'       => $request->sujet,
-                'message'     => $request->message,
-                'lu'          => false,
-            ]
-        );
+        // Chaque message est conservé. L'enregistrement se faisait par
+        // updateOrCreate sur l'adresse e-mail, unique en base : un client qui
+        // écrivait une seconde fois ÉCRASAIT son message précédent, même des
+        // mois plus tard et sur un autre sujet. La contrainte d'unicité a été
+        // levée par migration.
+        $contact = \App\Models\Contact::create([
+            'nom_prenoms' => $request->nom_prenoms,
+            'email'       => $request->email,
+            'telephone'   => $request->telephone,
+            'sujet'       => $request->sujet,
+            'message'     => $request->message,
+            'lu'          => false,
+            'statut'      => \Help::$STATUT_ACTIF,
+        ]);
+
+        // Alerte à l'entreprise. Personne n'était prévenu : le message dormait
+        // en base, et comme aucun écran ne l'affichait, le visiteur n'obtenait
+        // jamais de réponse alors que la page lui en promettait une.
+        //
+        // Hors du chemin critique : le message est déjà enregistré ici, une
+        // messagerie indisponible ne doit pas afficher d'erreur au visiteur.
+        try {
+            \Mail::to($this->adresseDeContact())->send(new \App\Mail\NouveauMessageContact($contact));
+        } catch (\Throwable $e) {
+            \Log::error('Contact : alerte non envoyée pour le message #' . $contact->id . ' — ' . $e->getMessage());
+        }
 
         return redirect()->route('contact')
             ->with('success', 'Votre message a bien été envoyé. Notre équipe vous répondra dans les plus brefs délais.');
+    }
+
+    /**
+     * Destinataire des alertes de la page « Nous contacter ».
+     *
+     * On privilégie l'adresse renseignée dans les paramètres de l'entreprise,
+     * mais seulement si c'en est une : ce champ contient parfois autre chose
+     * (un numéro, une référence) selon la façon dont la configuration a été
+     * saisie. Repli sur l'expéditeur configuré, puis sur l'adresse du domaine.
+     */
+    private function adresseDeContact(): string
+    {
+        $config = Configuration::first();
+
+        foreach ([$config->email_entreprise ?? null, config('mail.from.address')] as $candidat) {
+            $candidat = trim((string) $candidat);
+            if ($candidat !== '' && filter_var($candidat, FILTER_VALIDATE_EMAIL)) {
+                return $candidat;
+            }
+        }
+
+        return 'info@fneconnect.net';
     }
 
     public function error (){

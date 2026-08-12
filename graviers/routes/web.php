@@ -479,6 +479,14 @@ Route::middleware('auth.type:Admin,Gestionnaire')->group(function () {
     Route::post('/register-account', [UserController::class, 'storeUser']);
 });
 
+// MESSAGES DE CONTACT — reçus depuis la page publique « Nous contacter ».
+// Ils étaient enregistrés en base sans qu'aucun écran ne les affiche.
+Route::name('messagesContact.')->controller(\App\Http\Controllers\MessageContactController::class)->middleware('auth.type:Admin,Gestionnaire')->group(function(){
+    Route::get('/messages-de-contact','liste')->name('liste');
+    Route::get('/messages-de-contact/{id}/lu','basculerLu')->name('basculerLu');
+    Route::get('/messages-de-contact/{id}/supprimer','supprimer')->name('supprimer');
+});
+
 // LETTRE D'INFORMATION — gestion des abonnés recueillis sur le site public.
 // Les exports contiennent des adresses personnelles : accès réservé aux
 // administrateurs et gestionnaires, comme le reste du back-office.

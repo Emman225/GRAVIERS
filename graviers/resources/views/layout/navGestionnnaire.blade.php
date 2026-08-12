@@ -20,7 +20,7 @@
     $isPaiementsActive = request()->routeIs('paye.list');
     $isDemandesPaiementActive = request()->routeIs('show.listeDeDemandeLivreur', 'show.listeDeDemandeApporteur', 'show.listeDeDemandeFournisseur', 'show.historiqueDemande');
     $isDettesActive = request()->routeIs('show.dettesApporteurs', 'show.dettesFournisseurs', 'show.dettesLivreurs');
-    $isDiversActive = request()->routeIs('show.creationDeBlog', 'show.creationDeBanniere', 'show.lesRegions', 'dest.lesVilles', 'show.agences.*', 'show.statutMetier.*', 'show.typeVehiculeLivreur.*', 'newsletter.*');
+    $isDiversActive = request()->routeIs('show.creationDeBlog', 'show.creationDeBanniere', 'show.lesRegions', 'dest.lesVilles', 'show.agences.*', 'show.statutMetier.*', 'show.typeVehiculeLivreur.*', 'newsletter.*', 'messagesContact.*');
     $isGrandLivreActive = request()->routeIs('grandLivre.*');
 @endphp
 
@@ -255,6 +255,16 @@
             {{-- Diapositives du carrousel d'accueil. Comme pour les bannières, le
                  menu ouvre la LISTE ; la création se fait depuis son bouton d'ajout. --}}
             <a class="{{ request()->routeIs('show.listeDesSlides', 'show.creationDeSlide', 'show.modificationDeSlidePage') ? 'active' : '' }}" href="{{ route('show.listeDesSlides') }}">Carrousel d'accueil</a>
+            {{-- Messages reçus par la page publique « Nous contacter ». Le nombre
+                 de non-lus est affiché : sans écran, ces messages restaient
+                 invisibles et sans réponse. --}}
+            <a class="{{ request()->routeIs('messagesContact.*') ? 'active' : '' }}" href="{{ route('messagesContact.liste') }}">
+                Messages de contact
+                @php $contactsNonLus = \App\Models\Contact::where('lu', false)->count(); @endphp
+                @if ($contactsNonLus > 0)
+                    <span class="badge bg-danger">{{ $contactsNonLus }}</span>
+                @endif
+            </a>
             {{-- Abonnés recueillis par le formulaire du pied de page du site. --}}
             <a class="{{ request()->routeIs('newsletter.*') ? 'active' : '' }}" href="{{ route('newsletter.liste') }}">Lettre d'information</a>
             <a class="{{ request()->routeIs('show.lesRegions') ? 'active' : '' }}" href="{{ route('show.lesRegions') }}">Les régions</a>
