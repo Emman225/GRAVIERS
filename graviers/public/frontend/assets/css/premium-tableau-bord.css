@@ -1,0 +1,348 @@
+/* ==========================================================================
+   Tableau de bord du client — onglet d'accueil de « Mon compte »
+   --------------------------------------------------------------------------
+   L'onglet ne contenait qu'une salutation, un nombre de points et le solde.
+   Ces règles habillent le nouveau contenu : carte d'accueil, chiffres clés,
+   actions à mener, dernières commandes et raccourcis.
+
+   Même charte que les autres écrans « premium » (dégradé foncé -> bleu ->
+   orange, cartes blanches arrondies). Préfixe distinct pour ne pas interférer
+   avec les feuilles du SAV et de la demande de compte à terme.
+   ========================================================================== */
+
+:root {
+    --tb-bleu: #134380;
+    --tb-bleu-fonce: #0a2540;
+    --tb-orange: #c2410c;
+    --tb-gris: #6b7280;
+    --tb-bordure: #e5e7eb;
+    --tb-fond: #f7f8fa;
+}
+
+/* ===== Carte d'accueil ===== */
+.tb-accueil {
+    position: relative;
+    background: linear-gradient(135deg, #0a2540 0%, #134380 60%, #c2410c 100%);
+    color: #fff;
+    border-radius: 16px;
+    padding: 26px 28px;
+    margin-bottom: 20px;
+    overflow: hidden;
+    isolation: isolate;
+}
+
+.tb-accueil::after {
+    content: "";
+    position: absolute;
+    right: -60px;
+    top: -60px;
+    width: 230px;
+    height: 230px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.07);
+    z-index: -1;
+}
+
+.tb-accueil__haut {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+/* Sélecteurs préfixés par .dashboard-content, et « !important » : sans cela le
+   salut s'affichait en #0a2540 SUR un fond #0a2540 — soit un texte strictement
+   invisible. Deux règles du thème l'écrasaient, toutes deux en !important :
+
+     h1..h6, .font-heading            { color: var(--premium-primary-dark) !important }   premium-client.css
+     .dashboard-content h3, h4, h5    { color: #0a2540 !important }                       premium-client-account.css
+
+   Un simple « color: #fff !important » n'aurait pas suffi : à importance égale,
+   c'est la spécificité qui tranche, et « .dashboard-content h3 » (0,1,1) l'emporte
+   sur « .tb-accueil__salut » (0,1,0). D'où le préfixe, qui porte la nôtre à (0,2,0).
+
+   La date suivait le même sort : elle héritait d'un gris #7e7e7e, illisible sur
+   ce fond. Elle reprend le blanc, atténué par l'opacité déjà prévue ici. */
+.tb-accueil__salut { font-size: 1.45rem; font-weight: 700; margin: 0 0 4px; }
+.tb-accueil__sous  { margin: 0; opacity: 0.85; font-size: 0.88rem; }
+
+/* Couleur SEULE dans la règle renforcée : la mettre avec la taille de police
+   aurait fait perdre au passage la réduction prévue en mobile plus bas
+   (.tb-accueil__salut, 1.2rem), moins spécifique que ce sélecteur. */
+.dashboard-content .tb-accueil__salut,
+.dashboard-content .tb-accueil__sous { color: #fff !important; }
+
+.tb-etiquette {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.32);
+    border-radius: 999px;
+    padding: 5px 14px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.tb-accueil__bas {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin-top: 22px;
+}
+
+.tb-bloc {
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    padding: 14px 16px;
+}
+
+.tb-bloc__libelle {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.82;
+    margin-bottom: 5px;
+}
+
+.tb-bloc__valeur { font-size: 1.3rem; font-weight: 700; line-height: 1.15; }
+.tb-bloc__note   { font-size: 0.76rem; opacity: 0.8; margin-top: 3px; }
+
+.tb-bloc__lien {
+    display: inline-block;
+    margin-top: 7px;
+    font-size: 0.78rem;
+    color: #fff;
+    text-decoration: underline;
+    opacity: 0.9;
+}
+
+.tb-bloc__lien:hover { color: #fff; opacity: 1; }
+
+/* ===== Chiffres clés ===== */
+.tb-chiffres {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin-bottom: 20px;
+}
+
+.tb-chiffre {
+    background: #fff;
+    border: 1px solid var(--tb-bordure);
+    border-radius: 14px;
+    padding: 16px 18px;
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    box-shadow: 0 3px 12px rgba(15, 23, 42, 0.05);
+    text-decoration: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+a.tb-chiffre:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.1);
+    text-decoration: none;
+}
+
+.tb-chiffre__icone {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    border-radius: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 1.05rem;
+}
+
+.tb-chiffre__icone--bleu   { background: var(--tb-bleu); }
+.tb-chiffre__icone--orange { background: #d97706; }
+.tb-chiffre__icone--vert   { background: #16a34a; }
+.tb-chiffre__icone--gris   { background: #64748b; }
+
+.tb-chiffre__valeur  { font-size: 1.3rem; font-weight: 700; color: #0f172a; line-height: 1.15; }
+.tb-chiffre__libelle { font-size: 0.79rem; color: var(--tb-gris); text-transform: uppercase; letter-spacing: 0.03em; }
+
+/* ===== Carte générique ===== */
+.tb-carte {
+    background: #fff;
+    border: 1px solid var(--tb-bordure);
+    border-radius: 14px;
+    box-shadow: 0 3px 12px rgba(15, 23, 42, 0.05);
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+.tb-carte__entete {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 18px;
+    background: var(--tb-fond);
+    border-bottom: 1px solid var(--tb-bordure);
+}
+
+.tb-carte__titre {
+    margin: 0;
+    font-size: 0.98rem;
+    font-weight: 700;
+    color: #0f172a;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tb-carte__lien { font-size: 0.82rem; color: var(--tb-bleu); font-weight: 600; text-decoration: none; white-space: nowrap; }
+.tb-carte__lien:hover { text-decoration: underline; color: var(--tb-bleu-fonce); }
+.tb-carte__corps { padding: 16px 18px; }
+
+/* ===== À faire ===== */
+.tb-todo { display: flex; flex-direction: column; gap: 10px; }
+
+.tb-todo__item {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    padding: 13px 15px;
+    border-radius: 12px;
+    border: 1px solid;
+    text-decoration: none;
+    transition: transform 0.15s ease;
+}
+
+.tb-todo__item:hover { transform: translateX(3px); text-decoration: none; }
+.tb-todo__item--orange { background: #fffbeb; border-color: #fde68a; }
+.tb-todo__item--bleu   { background: #eff6ff; border-color: #bfdbfe; }
+.tb-todo__item--rouge  { background: #fef2f2; border-color: #fecaca; }
+
+.tb-todo__icone {
+    width: 36px; height: 36px; flex: 0 0 36px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.95rem; color: #fff;
+}
+
+.tb-todo__item--orange .tb-todo__icone { background: #d97706; }
+.tb-todo__item--bleu   .tb-todo__icone { background: var(--tb-bleu); }
+.tb-todo__item--rouge  .tb-todo__icone { background: #dc2626; }
+
+.tb-todo__titre { font-weight: 700; font-size: 0.9rem; color: #0f172a; margin: 0 0 2px; }
+.tb-todo__texte { font-size: 0.81rem; color: var(--tb-gris); margin: 0; }
+.tb-todo__fleche { margin-left: auto; color: var(--tb-gris); flex: 0 0 auto; }
+
+/* ===== Liste des dernières commandes ===== */
+.tb-liste { list-style: none; margin: 0; padding: 0; }
+
+.tb-liste li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid #f1f3f5;
+}
+
+.tb-liste li:last-child { border-bottom: none; }
+
+.tb-liste__num {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.82rem;
+    background: #eef2f7;
+    color: var(--tb-bleu);
+    padding: 3px 9px;
+    border-radius: 6px;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.tb-liste__num:hover { background: var(--tb-bleu); color: #fff; }
+.tb-liste__info { flex: 1 1 auto; min-width: 0; }
+.tb-liste__date { font-size: 0.79rem; color: var(--tb-gris); }
+.tb-liste__montant { font-weight: 700; color: #0f172a; font-size: 0.9rem; white-space: nowrap; }
+
+.tb-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 11px;
+    border-radius: 999px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.tb-badge--attente { background: #eef2f7; color: #475569; }
+.tb-badge--cours   { background: #fef3c7; color: #92400e; }
+.tb-badge--fini    { background: #dcfce7; color: #166534; }
+.tb-badge--annule  { background: #fee2e2; color: #991b1b; }
+
+/* ===== Raccourcis ===== */
+.tb-raccourcis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+    gap: 12px;
+}
+
+.tb-raccourci {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    padding: 18px 12px;
+    border: 1px solid var(--tb-bordure);
+    border-radius: 12px;
+    background: #fff;
+    text-align: center;
+    text-decoration: none;
+    color: #0f172a;
+    font-size: 0.84rem;
+    font-weight: 600;
+    transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tb-raccourci:hover {
+    border-color: var(--tb-bleu);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 18px rgba(19, 67, 128, 0.12);
+    color: var(--tb-bleu);
+    text-decoration: none;
+}
+
+.tb-raccourci i { font-size: 1.35rem; color: var(--tb-bleu); }
+
+/* ===== Message vide ===== */
+.tb-vide { text-align: center; padding: 26px 14px; color: var(--tb-gris); font-size: 0.88rem; }
+.tb-vide i { display: block; font-size: 1.8rem; color: #cbd5e1; margin-bottom: 9px; }
+
+/* ===== Encadré fidélité ===== */
+.tb-fidelite {
+    display: flex;
+    gap: 13px;
+    align-items: flex-start;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 12px;
+    padding: 14px 16px;
+}
+
+.tb-fidelite i { color: #d97706; font-size: 1.2rem; flex: 0 0 auto; }
+.tb-fidelite p { margin: 0; font-size: 0.85rem; color: #334155; line-height: 1.5; }
+.tb-fidelite strong { color: #0f172a; }
+
+/* ===== Écrans étroits ===== */
+@media (max-width: 767px) {
+    .tb-accueil { padding: 20px 18px; }
+    .tb-accueil__salut { font-size: 1.2rem; }
+    .tb-chiffres { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tb-chiffre { padding: 13px; gap: 10px; }
+    .tb-chiffre__valeur { font-size: 1.1rem; }
+    .tb-liste li { flex-wrap: wrap; }
+    .tb-liste__montant { margin-left: auto; }
+    .tb-raccourcis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
