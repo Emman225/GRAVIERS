@@ -228,9 +228,15 @@
 
                         </div>
                         <div class="header-action-icon-2">
-                            <a href="{{route('client.monCompte')}}">
-                                <img class="svgInject" alt="Nest" src="{{ asset('frontend/assets/imgs/theme/icons/icon-user.svg') }}" />
-                            </a>
+                            {{-- Icône « compte » réservée aux connectés : pour un visiteur elle
+                                 pointait sur /mon-compte, page protégée qui le renvoyait aussitôt
+                                 sur la connexion — soit exactement ce que fait le bouton
+                                 « Se connecter » situé juste à côté. --}}
+                            @auth
+                                <a href="{{route('client.monCompte')}}" title="Mon compte">
+                                    <img class="svgInject" alt="Mon compte" src="{{ asset('frontend/assets/imgs/theme/icons/icon-user.svg') }}" />
+                                </a>
+                            @endauth
                             @guest
                                 <span class="header-auth-actions">
                                     <a href="{{ route('client.login') }}" class="header-auth-btn header-auth-btn--ghost">Se connecter</a>
