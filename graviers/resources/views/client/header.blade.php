@@ -209,16 +209,22 @@
 
                 <div class="hotline d-none d-lg-flex">
                     <div class="header-action-2">
-                        <div class="header-action-icon-2">
-                            <a href="{{ Auth::check() ? route('client.wishList') : route('client.login') }}"
-                               title="{{ Auth::check() ? 'Mes souhaits' : 'Connectez-vous pour voir vos favoris' }}">
-                                <img class="svgInject" alt="Mes souhaits" src="{{ asset('frontend/assets/imgs/theme/icons/icon-heart.svg') }}" />
-                                <span class="pro-count {{ $like > 0 ? 'blue' : '' }}" id="like">{{ $like }}</span>
-                            </a>
-                            <a href="{{ Auth::check() ? route('client.wishList') : route('client.login') }}">
-                                <span class="lable">Mes souhaits</span>
-                            </a>
-                        </div>
+                        {{-- Icône « favoris » réservée aux connectés, comme l'icône « compte » :
+                             pour un visiteur elle affichait un compteur toujours à zéro et menait
+                             à la page de connexion, que le bouton « Se connecter » atteint déjà.
+                             Le compteur #like n'est manipulé par ajoutProduit.js que dans la
+                             branche « data.auth », donc uniquement quand l'icône est présente. --}}
+                        @auth
+                            <div class="header-action-icon-2">
+                                <a href="{{ route('client.wishList') }}" title="Mes souhaits">
+                                    <img class="svgInject" alt="Mes souhaits" src="{{ asset('frontend/assets/imgs/theme/icons/icon-heart.svg') }}" />
+                                    <span class="pro-count {{ $like > 0 ? 'blue' : '' }}" id="like">{{ $like }}</span>
+                                </a>
+                                <a href="{{ route('client.wishList') }}">
+                                    <span class="lable">Mes souhaits</span>
+                                </a>
+                            </div>
+                        @endauth
                         <div class="header-action-icon-2">
                             <a class="mini-cart-icon" href="{{route('client.monPanier')}}">
                                 <img alt="Nest" src="{{ asset('frontend/assets/imgs/theme/icons/icon-cart.svg') }}" />
