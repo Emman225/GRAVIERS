@@ -49,7 +49,7 @@ Route::get('/storage-link', function () {
         echo "symlink est désactivé.";
     }
     Artisan::call('storage:link');
-});
+})->middleware('auth.type:Admin,Gestionnaire'); // route technique : était PUBLIQUE (commande d'administration déclenchable par n'importe qui)
 
 Route::name('errors.')->controller(ErrorController::class)->group(function () {
 
@@ -71,7 +71,9 @@ Route::get('/paiementaprescommande/', [PaiementController::class, 'paiementapres
 
 Route::get('/welcome', [UserController::class, 'welcome'])->name('welcome');
 
-Route::get('/redirecting',[UserController::class, 'redirecting'])->name('redirect');
+// [ROUTE DE TEST] publique, génère un PDF de la vue « test » et bloque le serveur
+// plusieurs dizaines de secondes. Aucun lien ne l'utilise.
+// Route::get('/redirecting',[UserController::class, 'redirecting'])->name('redirect');
 
 Route::get('/notify', [UserController::class, 'notify'])->name('notify');
 
@@ -83,6 +85,12 @@ Route::get('/Site-en-contruction',[UserController::class,'enConstruction'])->nam
 Route::get('/a-propos',[UserController::class,'pageAPropos'])->name('aPropos');
 Route::get('/nous-contacter',[UserController::class,'pageContact'])->name('contact');
 Route::post('/nous-contacter',[UserController::class,'contactStore'])->name('contact.store');
+
+// Inscription à la lettre d'information depuis le pied de page du site.
+// Limitée en cadence : l'adresse est publique et sans authentification.
+Route::post('/inscription-lettre-information', [\App\Http\Controllers\NewsletterController::class, 'store'])
+    ->middleware('throttle:10,1')
+    ->name('newsletter.store');
 Route::get('/Error/Catch/back',[UserController::class,'errorCatchBack'])->name('errorCatch');
 Route::get('/termes-et-conditions', [UserController::class, 'termesConditions'])->name('termesConditions');
 
@@ -91,12 +99,24 @@ Route::get('/termes-et-conditions', [UserController::class, 'termesConditions'])
 Route::get('/login-account', [UserController::class,'login'])->name('show.login');
 Route::post('/login-account', [UserController::class,'validLogin']);
 
-Route::get('/action-facture-{commande}-{facture}-{action}-{livraison}', [UserController::class,'actionFacture'])->name('show.actionFacture');
+// Facture FNE (document fiscal : nom du client, montants, NCC). Cette route était
+// déclarée hors de tout groupe d'authentification : n'importe qui pouvait télécharger
+// la facture de n'importe quel client en devinant les identifiants. Les seuls liens
+// vers cette route sont dans « Mes factures » (client) et le grand livre (admin) —
+// aucun email n'y renvoie, la protection ne casse donc aucun parcours.
+Route::get('/action-facture-{commande}-{facture}-{action}-{livraison}', [UserController::class,'actionFacture'])
+    ->middleware('auth.type:Admin,Gestionnaire,client')
+    ->name('show.actionFacture');
 Route::delete('/logout', [UserController::class,'logout'])->name('show.logout');
-// demande de paie
-
-Route::get('/demande-de-paie', [UserController::class,'demandeDepaiePage'])->name('show.demandeDepaiePage');
-Route::post('/demande-de-paiements', [UserController::class,'demandeDepaie'])->name('show.demandeDepaie');
+// Demande de paiement (fournisseur, apporteur, livreur).
+// Ces deux routes étaient publiques alors que les deux méthodes lisent
+// Auth::user()->type_user_id sans garde : un visiteur non connecté obtenait une
+// erreur 500, et un POST non authentifié tombait au milieu d'un traitement qui
+// débite un solde. Protection par les trois profils réellement concernés.
+Route::middleware('auth.type:Fournisseur,Apporteur,Livreur')->group(function () {
+    Route::get('/demande-de-paie', [UserController::class,'demandeDepaiePage'])->name('show.demandeDepaiePage');
+    Route::post('/demande-de-paiements', [UserController::class,'demandeDepaie'])->name('show.demandeDepaie');
+});
 
 // Profil utilisateur (accessible à tous les utilisateurs authentifiés)
 Route::middleware('auth')->group(function () {
@@ -120,7 +140,7 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::post('/preuve-operation-bancaire-{commande}', 'preuveValide')->name('preuveValide');
     Route::get('/admin-applique-tva-{client}', 'appliqueTVA')->name('appliqueTva');
 
-    Route::get('/products', 'products')->name('products');
+    // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::get('/products', 'products')->name('products');
     Route::get('/bonAttente', 'bonAttente')->name('bonAttente');
     Route::get('/bonValides', 'bonValides')->name('bonValides');
     Route::get('/bon/{enlevement}/apercu', 'bonApercu')->name('bonApercu');
@@ -141,6 +161,7 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::get('/reapprovisionnement','reapprovisionnement')->name('reapprovisionnement');
     Route::get('/gestionnaire/home', 'home')->name('home');
     Route::get('/list-client', 'listClient')->name('listClient');
+    Route::get('/list-client-en-attente', 'listClientEnAttente')->name('listClientEnAttente');
     Route::get('/list-client-a-terme', 'listClientATerme')->name('listClientATerme');
     Route::get('/client/{client}/document/{type}/{mode?}', 'clientDocument')
         ->whereIn('type', ['dfe', 'rc'])
@@ -256,6 +277,11 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::get('/liste-agent', 'listeAgent')->name('listeAgent');
     Route::delete('/liste-agent/{id}', 'deleteAgent')->name('deleteAgent');
 
+    // Affectation d'un gestionnaire, d'un agent ou d'un administrateur à une
+    // agence. C'est ce rattachement qui décide du guichet auquel ses
+    // encaissements seront imputés — il n'est plus choisi à la saisie.
+    Route::post('/utilisateur/{id}/agence', 'affecterAgence')->name('affecterAgence');
+
     Route::get('/liste-de-demande-de-paiemennt-livreur', 'listeDeDemande')->name('listeDeDemandeLivreur');
 
     Route::get('/valide-demande-{id}-{type}-{reponse}', 'valideDemande')->name('valideDemande');
@@ -285,7 +311,7 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::get('/traite-livraison-page-{demandeLivraison}','traiteLivraisonPage')->name('traitelivraisonPage')->middleware('auth');
     Route::post('/traite-livraison-page-{demandeLivraison}-{detail}','traiteLivraison')->name('traitementLivraison')->middleware('auth');
     Route::get('selecion-vehicule-{id}-{detail}', 'selectionneVehicule')->name('selectCar')->middleware('auth');
-    Route::post('/Valider-selection-vehicule','validerSelectionVehicule')->name('validerSelection');
+    // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::post('/Valider-selection-vehicule','validerSelectionVehicule')->name('validerSelection');
     Route::get('/bloquer-compte-user-{id}-{type}','bloquerCompte')->name('bloquerCompte');
     Route::get('/commande-d-un-client-a-terme-{user}','clientDetailCommande')->name('clientDetailCommande');
 
@@ -308,32 +334,57 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::post('/creation-de-Banniere','creationDeBanniereTraitement')->name('creationDeBanniereTraitement');
     Route::get('/liste-des-Bannieres','listeDesBannieres')->name('listeDesBannieres');
     Route::get('/Supprimer-Banniere-{id}-{action}','supprimerPublierBanniere')->name('supprimerPublierBanniere');
+    // Suppression définitive (ligne + fichier image), réservée aux bannières
+    // déjà mises à la corbeille.
+    Route::delete('/Banniere-{id}/suppression-definitive','suppressionDefinitiveBanniere')->name('suppressionDefinitiveBanniere');
     Route::get('/modification-de-Banniere-{id}','modificationDeBannierePage')->name('modificationDeBannierePage');
     Route::post('/modification-de-Banniere-{id}','modificationDeBanniere')->name('modificationDeBanniere');
+
+    // Diapositives du carrousel d'accueil : même jeu de routes que les bannières.
+    Route::get('/liste-des-Slides','listeDesSlides')->name('listeDesSlides');
+    Route::get('/creation-de-Slide','creationDeSlide')->name('creationDeSlide');
+    Route::post('/creation-de-Slide','creationDeSlideTraitement')->name('creationDeSlideTraitement');
+    Route::get('/modification-de-Slide-{id}','modificationDeSlidePage')->name('modificationDeSlidePage');
+    Route::post('/modification-de-Slide-{id}','modificationDeSlide')->name('modificationDeSlide');
+    // {action} optionnel : sans lui = mettre en ligne / retirer,
+    // « supprimer » = mise à la corbeille ou restauration.
+    Route::get('/Supprimer-Slide-{id}/{action?}','supprimerPublierSlide')->name('supprimerPublierSlide');
+    Route::delete('/Slide-{id}/suppression-definitive','suppressionDefinitiveSlide')->name('suppressionDefinitiveSlide');
 
     Route::get('/creation-de-Blog','creationDeBlog')->name('creationDeBlog');
     Route::post('/creation-de-Blog','creationDeBlogTraitement')->name('creationDeBlogTraitement');
     Route::get('/liste-des-Blogs','listeDesBlogs')->name('listeDesBlogs');
-    Route::get('/Supprimer-Blog-{id}','supprimerPublierBlog')->name('supprimerPublierBlog');
+    // {action} optionnel : sans lui = publier/retirer (comportement historique),
+    // « supprimer » = mise à la corbeille ou restauration.
+    Route::get('/Supprimer-Blog-{id}/{action?}','supprimerPublierBlog')->name('supprimerPublierBlog');
+    // Suppression définitive (ligne, images et commentaires), réservée aux blogs
+    // déjà mis à la corbeille.
+    Route::delete('/Blog-{id}/suppression-definitive','suppressionDefinitiveBlog')->name('suppressionDefinitiveBlog');
     Route::get('/modification-de-Blog-{id}','modificationDeBlogPage')->name('modificationDeBlogPage');
     Route::post('/modification-de-Blog-{id}','modificationDeBlog')->name('modificationDeBlog');
     Route::get('/commentaire-sur-les-blogs-{id}','commentaireBlogs')->name('commentaireBlogs');
+    // Modération de tous les commentaires de blog, tous articles confondus :
+    // sans elle il fallait ouvrir chaque article pour repérer les nouveaux.
+    Route::get('/moderation-commentaires-blog','moderationCommentairesBlog')->name('moderationCommentairesBlog');
     Route::get('/publier-commentaire-blog-{id}','publierCommentaireBlog')->name('publierCommentaireBlog');
     Route::get('/annuler-commentaire-blog-{id}','annulerCommentaireBlog')->name('annulerCommentaireBlog');
+    // Corbeille (bascule suppression / restauration) et suppression irréversible.
+    Route::get('/corbeille-commentaire-blog-{id}','supprimerCommentaireBlog')->name('supprimerCommentaireBlog');
+    Route::delete('/commentaire-blog-{id}/suppression-definitive','suppressionDefinitiveCommentaireBlog')->name('suppressionDefinitiveCommentaireBlog');
 
-    Route::get('/liste-pays','listePays')->name('listePays');
-    Route::get('/ajout-pays','ajoutPays')->name('ajoutPays');
-    Route::post('/ajout-pays','ajoutPaysTraitement')->name('ajoutPaysTraitement');
-    Route::get('/suppression-pays-{pays}','suppressionPays')->name('suppressionPays');
-    Route::get('/modification-pays-{pays}','modificationPays')->name('modificationPays');
-    Route::post('/modification-pays-{pays}','modificationPaysTraitement')->name('modificationPaysTraitement');
+    // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::get('/liste-pays','listePays')->name('listePays');
+    // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::get('/ajout-pays','ajoutPays')->name('ajoutPays');
+    // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::post('/ajout-pays','ajoutPaysTraitement')->name('ajoutPaysTraitement');
+    // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::get('/suppression-pays-{pays}','suppressionPays')->name('suppressionPays');
+    // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::get('/modification-pays-{pays}','modificationPays')->name('modificationPays');
+    // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::post('/modification-pays-{pays}','modificationPaysTraitement')->name('modificationPaysTraitement');
 
-    Route::get('/liste-ville','listeVille')->name('listeVille');
-    Route::get('/ajout-ville','ajoutVille')->name('ajoutVille');
-    Route::post('/ajout-ville','ajoutVilleTraitement')->name('ajoutVilleTraitement');
-    Route::get('/suppression-ville-{ville}','suppressionVille')->name('suppressionVille');
-    Route::get('/modification-ville-{ville}','modificationVille')->name('modificationVille');
-    Route::post('/modification-ville-{ville}','modificationVilleTraitement')->name('modificationVilleTraitement');
+    // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::get('/liste-ville','listeVille')->name('listeVille');
+    // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::get('/ajout-ville','ajoutVille')->name('ajoutVille');
+    // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::post('/ajout-ville','ajoutVilleTraitement')->name('ajoutVilleTraitement');
+    // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::get('/suppression-ville-{ville}','suppressionVille')->name('suppressionVille');
+    // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::get('/modification-ville-{ville}','modificationVille')->name('modificationVille');
+    // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::post('/modification-ville-{ville}','modificationVilleTraitement')->name('modificationVilleTraitement');
 
     Route::get('/livraison-en-cours','livraisonEnCours')->name('livraisonEnCours');
     Route::get('/livraison-validees','livraisonValidees')->name('livraisonValidees');
@@ -359,7 +410,7 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::get('/update-de-code-promo-{reduction}','updateDeCodePromo')->name('updateDeCodePromo');
     Route::post('/updated-de-code-promo-{reduction}','codeUpdated')->name('codeUpdated');
 
-    Route::post('/retour-produit/{livraison}','retourProduit')->name('retourProduit');
+    // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::post('/retour-produit/{livraison}','retourProduit')->name('retourProduit');
     Route::post('/restaure-livraison/{livraison}','restaureLivraison')->name('restaureLivraison');
 
     Route::get('/les-regions', 'lesRegions')->name('lesRegions');
@@ -404,9 +455,29 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
         ->name('livreurPiece');
 });
 
-// Création de compte gestionnaire (publique — accessible depuis /login-account)
-Route::get('/register-account', [UserController::class, 'register'])->name('show.registerGestionnaire');
-Route::post('/register-account', [UserController::class, 'storeUser']);
+// Création de compte GESTIONNAIRE (back-office).
+// Ces deux routes étaient PUBLIQUES : n'importe quel visiteur pouvait ouvrir
+// /register-account et créer un compte gestionnaire actif (statut = true), dont les
+// identifiants lui étaient envoyés par email — soit un accès complet au back-office.
+// Le seul lien existant est celui du menu Admin (« Création de compte ») ; la page de
+// connexion n'y renvoie pas. On applique donc la même protection que la liste des
+// gestionnaires, sans changer le parcours légitime.
+Route::middleware('auth.type:Admin,Gestionnaire')->group(function () {
+    Route::get('/register-account', [UserController::class, 'register'])->name('show.registerGestionnaire');
+    Route::post('/register-account', [UserController::class, 'storeUser']);
+});
+
+// LETTRE D'INFORMATION — gestion des abonnés recueillis sur le site public.
+// Les exports contiennent des adresses personnelles : accès réservé aux
+// administrateurs et gestionnaires, comme le reste du back-office.
+Route::name('newsletter.')->controller(\App\Http\Controllers\NewsletterController::class)->middleware('auth.type:Admin,Gestionnaire')->group(function(){
+    Route::get('/lettre-information/abonnes','liste')->name('liste');
+    Route::get('/lettre-information/abonne-{id}/statut','basculerStatut')->name('basculerStatut');
+    Route::get('/lettre-information/abonne-{id}/supprimer','supprimer')->name('supprimer');
+    Route::get('/lettre-information/export/excel','exportExcel')->name('exportExcel');
+    Route::get('/lettre-information/export/word','exportWord')->name('exportWord');
+    Route::get('/lettre-information/export/pdf','exportPdf')->name('exportPdf');
+});
 
 // CONFIGURATION DES PRIX PERSONNALISES
 Route::name('configPrix.')->controller(ConfigurationPrixController::class)->middleware('auth.type:Admin,Gestionnaire')->group(function(){
@@ -471,7 +542,7 @@ Route::name('orders.')->controller(OrdersController::class)->middleware('auth.ty
     route::get('/documentation/fne-integration', 'documentationFne')->name('documentationFne');
     route::get('/order-item/{id}', 'oderItemPage')->name('item');
     route::post('/order-item/{id}', 'oderItem')->name('oderItem');
-    route::get('/transactions', 'transactions')->name('transactions');
+    // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : route::get('/transactions', 'transactions')->name('transactions');
     route::get('/traitement/{commande}', 'traitementPage')->name('traitement');
     route::post('/traitement/{commande}', 'traitement')->name('traitement.post');
     route::get('/reduction-{commande}', 'reduction')->name('reduction');
@@ -503,9 +574,14 @@ Route::name('grandLivre.')->controller(GrandLivreController::class)->middleware(
 });
 
 //ROUTE FOR PAIEMENT
-Route::get('/facture/{reference?}-{action?}',[PaiementController::class,'facture'])->name('paye.facture');
-Route::post('effectuer/paiement/{client}', [PaiementController::class,'effectuerPaiementTraitement'])->name('paye.effectuerPaiementTraitement');
+// Le reçu de paiement (paye.facture) et l'enregistrement d'un encaissement
+// (effectuerPaiementTraitement) étaient déclarés HORS du groupe ci-dessous : reçu de
+// n'importe quel client téléchargeable sans être connecté, et POST d'écriture non
+// authentifié. Ils rejoignent le groupe de leurs routes sœurs (mêmes utilisateurs).
 Route::name('paye.')->controller(PaiementController::class)->middleware('auth.type:Admin,Gestionnaire,client')->group(function (){
+
+    Route::get('/facture/{reference?}-{action?}', 'facture')->name('facture');
+    Route::post('effectuer/paiement/{client}', 'effectuerPaiementTraitement')->name('effectuerPaiementTraitement');
 
     // route::get('/paiement/liste/{commande}')->name('liste');
     route::get('/paiement/create/{commande}', 'paiementPage')->name('create');
@@ -526,8 +602,8 @@ route::post('/seller/login', [SellerController::class,'validLogin']);
 
 Route::name('sellers.')->controller(SellerController::class)->middleware('auth.type:fournisseur')->group(function(){
 
-    Route::get('/demande-de-paiement', 'demandeDepaie')->name('demandeDepaie');
-    Route::post('/demande-de-paiement', 'demandeDepaieTraitement')->name('demandeDepaieTraitement');
+    // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::get('/demande-de-paiement', 'demandeDepaie')->name('demandeDepaie');
+    // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::post('/demande-de-paiement', 'demandeDepaieTraitement')->name('demandeDepaieTraitement');
     Route::get('/liste-des-demande-de-paiement', 'listePaiements')->name('listePaiements');
 
     Route::get('/demande-de-paiement-fournisseur', 'demandeDepaieFournisseur')->name('demandeDepaieFournisseur');
@@ -550,7 +626,7 @@ Route::name('sellers.')->controller(SellerController::class)->middleware('auth.t
     Route::post('/seller/{product}/products', 'update')->name('update');
 
     // Route::post('/seller/update', 'updateSeller')->name('updateSeller');
-    Route::get('/fin-de-stock','finDeStock')->name('finDeStock');
+    // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::get('/fin-de-stock','finDeStock')->name('finDeStock');
     Route::get('/parametre-fournisseur','parametreFournisseur')->name('parametreFournisseur');
     Route::post('/parametre-fournisseur','FournisseurUpdate')->name('FournisseurUpdate');
 
@@ -568,7 +644,7 @@ Route::name('apporteur.')->controller(ApporteurController::class)->middleware('a
     Route::get('/apporteur/home', 'home')->name('home');
 
     Route::get('/apporteur/profile',  'profile')->name('profile');
-    Route::get('/apporteur/solde',  'solde')->name('solde');
+    // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::get('/apporteur/solde',  'solde')->name('solde');
     Route::get('/apporteur/paiement',  'paiement')->name('paiement');
     Route::get('/confirmation/user_{token}', 'confirmation')->name('confirmePage');
     Route::get('/filleule-liste', 'filleule')->name('filleule');
@@ -651,23 +727,48 @@ Route::controller(DevisController::class)->middleware('auth.type:client')->name(
     Route::get('devis/mode/paiement/{devis}', 'modePaiement')->name('modePaiement');
 });
 
+/*
+ * Pages du site accessibles SANS COMPTE.
+ *
+ * Ces routes vivaient dans le groupe ci-dessous, qui porte « auth.type:client » :
+ * un visiteur non connecté était renvoyé sur la page de connexion avec le message
+ * « Votre session a expiré ». Les articles de blog n'étaient donc jamais visibles
+ * du grand public, et le lien « Livraison », pourtant affiché à tout le monde dans
+ * le menu, menait au même mur.
+ *
+ * Le groupe contient d'ailleurs un SECOND « auth.type:client » à l'intérieur,
+ * appliqué aux routes réellement réservées : la protection du groupe extérieur
+ * n'était pas voulue à ce niveau. Les deux contrôleurs concernés le confirment,
+ * ils prévoient explicitement le cas du visiteur (« Auth::user() ? … : new Client »).
+ *
+ * Les ENVOIS restent réservés aux utilisateurs connectés : dépôt d'un commentaire
+ * (middleware « auth » ci-dessous) et envoi d'une demande de livraison
+ * (client.recapLivraison, resté dans le groupe protégé).
+ */
+Route::name('client.')->controller(ClientController::class)->group(function(){
+    Route::get('/blog','blog')->name('blog');
+    Route::get('/detail-blog-{id}','detailBlog')->name('detailBlog');
+    Route::post('/detail-blog-{id}','commentaireEtNote')->name('commentaireEtNote')->middleware('auth');
+    Route::get('/demande-de-livraison','demandeLivraison')->name('demandeLivraison');
+});
+
 Route::name('client.')->controller(ClientController::class)->middleware('auth.type:client')->group(function(){
-        // Note: la syntaxe array [ClientController::class, 'cart'] est utilisée
-        // au lieu de 'cart' pour éviter une collision case-insensitive avec
+        // [ROUTE MORTE] /cart n'est référencée nulle part — ni lien, ni include, ni
+        // appel AJAX — et la vue client.cart est un fragment de tableau sans
+        // @extends : l'ouvrir affichait une page sans mise en page. Le panier réel
+        // du site est /client/mon-panier (client.panier).
+        // Note historique : la syntaxe array [ClientController::class, 'cart'] était
+        // utilisée au lieu de 'cart' pour éviter une collision case-insensitive avec
         // l'alias global `Cart` (Darryldecode\Cart\Facades\CartFacade). Sans cela,
         // au 2ème boot Laravel (cf. tests), class_exists('cart') retourne true et
         // Laravel tente de traiter 'cart' comme une classe invokable → exception.
-        Route::get('/cart', [ClientController::class, 'cart'])->name('cart');
+        // Route::get('/cart', [ClientController::class, 'cart'])->name('cart');
         Route::get('/client/accueil', 'accueil')->name('accueil');
         Route::get('/client/mon-panier', 'panierPage')->name('panier');
         Route::get('/incremente/{rowId}', 'incremente')->name('incremente');
         Route::get('/decremente/{rowId}', 'decremente')->name('decremente');
         Route::get('/confirmation/client_{token}', 'confirmationEmailClient')->name('confirmationEmailClient');
 
-        Route::get('/blog','blog')->name('blog');
-        Route::get('/detail-blog-{id}','detailBlog')->name('detailBlog');
-        Route::post('/detail-blog-{id}','commentaireEtNote')->name('commentaireEtNote')->middleware('auth');
-        Route::get('/demande-de-livraison','demandeLivraison')->name('demandeLivraison');
 
         Route::middleware('auth.type:client')->group(function () {
         Route::post('/recap-de-demande-de-livraison','recapLivraison')->name('recapLivraison');
@@ -709,7 +810,7 @@ Route::name('client.')->controller(ClientController::class)->middleware('auth.ty
         Route::match(['get','post'],'/recapitulatif-commande','recapCommande')->name('recapCommande')->middleware('auth');
         Route::post('/recapitulatif-commande-venant-dun-devis-{devis}','recapCommandeVenantDunDevis')->name('recapCommandeVenantDunDevis');
 
-        Route::get('/location-validee-{location}','locationValidee')->name('locationValidee');
+        // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::get('/location-validee-{location}','locationValidee')->name('locationValidee');
         Route::post('/recapitulatif-de-la-location','recapLocation')->name('recapLocation')->middleware('auth');
         // Route::post('/recapitulatif-devis-de-la-location','recapDevisLocation')->name('recapDevisLocation')->middleware('auth');
 
@@ -737,7 +838,7 @@ Route::name('client.')->controller(ClientController::class)->middleware('auth.ty
 
         Route::get('/detail-demandeDe-livraison-{livraison}','detaiDemandeDeLivraison')->name('detaiDemandeDeLivraison');
         Route::match(['get', 'post'],'/mode-de-paiement', 'modeDePaiement')->name('modeDePaiement');
-        Route::post('/commande-en-devis', 'CommandeEnDevis')->name('CommandeEnDevis');
+        // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::post('/commande-en-devis', 'CommandeEnDevis')->name('CommandeEnDevis');
 
         Route::get('/demande-de-client-a-terme','demandeClientATermePage')->name('demandeClientATermePage')->middleware('auth');
         Route::post('/demande-de-client-a-Terme','demandeClientATerme')->name('demandeClientATerme')->middleware('auth');
@@ -786,11 +887,15 @@ Route::name('client.')->controller(ClientController::class)->middleware('auth.ty
 
 })->middleware('auth.type:client');
 
-Route::controller(TestController::class)->name('test.')->group(function(){
-    Route::post('/recapitulatif-devis-de-la-location-a-partie-du-test','recapDevisLocation')->name('recapDevisLocation')->middleware('auth');
-
-    Route::get('/select-multiple','select')->name('select');
-});
+// [ROUTES DE TEST DÉSACTIVÉES — audit du 31/07/2026]
+// Aucun lien ni formulaire de l'application ne les utilise. 'recapDevisLocation'
+// se contentait d'un dd('ok') (page de débogage brute) et '/select-multiple'
+// exposait un script de vidage de tables. Le code reste dans TestController pour
+// mémoire, mais il n'est plus atteignable depuis le navigateur.
+// Route::controller(TestController::class)->name('test.')->group(function(){
+//     Route::post('/recapitulatif-devis-de-la-location-a-partie-du-test','recapDevisLocation')->name('recapDevisLocation')->middleware('auth');
+//     Route::get('/select-multiple','select')->name('select');
+// });
 
 // Processus de mot de passe oublié
 Route::controller(ResetProcessController::class)->group(function(){

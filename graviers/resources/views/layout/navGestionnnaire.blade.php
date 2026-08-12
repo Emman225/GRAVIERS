@@ -20,7 +20,7 @@
     $isPaiementsActive = request()->routeIs('paye.list');
     $isDemandesPaiementActive = request()->routeIs('show.listeDeDemandeLivreur', 'show.listeDeDemandeApporteur', 'show.listeDeDemandeFournisseur', 'show.historiqueDemande');
     $isDettesActive = request()->routeIs('show.dettesApporteurs', 'show.dettesFournisseurs', 'show.dettesLivreurs');
-    $isDiversActive = request()->routeIs('show.creationDeBlog', 'show.creationDeBanniere', 'show.lesRegions', 'dest.lesVilles', 'show.agences.*', 'show.statutMetier.*', 'show.typeVehiculeLivreur.*');
+    $isDiversActive = request()->routeIs('show.creationDeBlog', 'show.creationDeBanniere', 'show.lesRegions', 'dest.lesVilles', 'show.agences.*', 'show.statutMetier.*', 'show.typeVehiculeLivreur.*', 'newsletter.*');
     $isGrandLivreActive = request()->routeIs('grandLivre.*');
 @endphp
 
@@ -197,11 +197,18 @@
     </div>
 </li>
 
-<li class="menu-item {{ request()->routeIs('show.moderationCommentaire') ? 'active' : '' }}">
-    <a class="menu-link" href="{{ route('show.moderationCommentaire') }}">
+{{-- Deux sources de commentaires bien distinctes : les avis sur les produits et
+     les commentaires d'articles de blog. Ces derniers n'étaient accessibles que
+     article par article. --}}
+<li class="menu-item has-submenu {{ request()->routeIs('show.moderationCommentaire', 'show.moderationCommentairesBlog') ? 'active' : '' }}">
+    <a class="menu-link" href="javascript:void(0)">
         <i class="icon material-icons md-comment"></i>
-        <span class="text">Moderation de commentaire</span>
+        <span class="text">Modération des commentaires</span>
     </a>
+    <div class="submenu">
+        <a class="{{ request()->routeIs('show.moderationCommentaire') ? 'active' : '' }}" href="{{ route('show.moderationCommentaire') }}">Avis produits</a>
+        <a class="{{ request()->routeIs('show.moderationCommentairesBlog') ? 'active' : '' }}" href="{{ route('show.moderationCommentairesBlog') }}">Commentaires de blog</a>
+    </div>
 </li>
 
 
@@ -238,8 +245,18 @@
             <span class="text">Divers</span>
         </a>
         <div class="submenu">
-            <a class="{{ request()->routeIs('show.creationDeBlog') ? 'active' : '' }}" href="{{ route('show.creationDeBlog') }}">Blog</a>
-            <a class="{{ request()->routeIs('show.creationDeBanniere') ? 'active' : '' }}" href="{{ route('show.creationDeBanniere') }}">Bannière</a>
+            {{-- Comme pour les bannières : le menu ouvre la LISTE, la création se fait
+                 depuis le bouton d'ajout de cette liste. --}}
+            <a class="{{ request()->routeIs('show.listeDesBlogs', 'show.creationDeBlog', 'show.modificationDeBlogPage', 'show.commentaireBlogs') ? 'active' : '' }}" href="{{ route('show.listeDesBlogs') }}">Blog</a>
+            {{-- Le menu ouvre la LISTE des bannières ; la création se fait depuis le
+                 bouton « Ajout bannière » de cette liste. L'entrée reste surlignée sur
+                 les trois écrans (liste, création, modification). --}}
+            <a class="{{ request()->routeIs('show.listeDesBannieres', 'show.creationDeBanniere', 'show.modificationDeBannierePage') ? 'active' : '' }}" href="{{ route('show.listeDesBannieres') }}">Bannière</a>
+            {{-- Diapositives du carrousel d'accueil. Comme pour les bannières, le
+                 menu ouvre la LISTE ; la création se fait depuis son bouton d'ajout. --}}
+            <a class="{{ request()->routeIs('show.listeDesSlides', 'show.creationDeSlide', 'show.modificationDeSlidePage') ? 'active' : '' }}" href="{{ route('show.listeDesSlides') }}">Carrousel d'accueil</a>
+            {{-- Abonnés recueillis par le formulaire du pied de page du site. --}}
+            <a class="{{ request()->routeIs('newsletter.*') ? 'active' : '' }}" href="{{ route('newsletter.liste') }}">Lettre d'information</a>
             <a class="{{ request()->routeIs('show.lesRegions') ? 'active' : '' }}" href="{{ route('show.lesRegions') }}">Les régions</a>
             <a class="{{ request()->routeIs('dest.lesVilles') ? 'active' : '' }}" href="{{route('dest.lesVilles')}}">Villes</a>
             <a class="{{ request()->routeIs('show.agences.*') ? 'active' : '' }}" href="{{ route('show.agences.index') }}">Agences</a>
