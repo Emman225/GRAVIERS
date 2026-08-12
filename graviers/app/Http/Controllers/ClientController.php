@@ -109,19 +109,40 @@ class ClientController extends Controller
             ->where('produit.type_affaire', 'VENTE')
             ->where('produit.statut', 1);
 
+        // En DEUX temps, volontairement : d'abord le classement (uniquement des
+        // colonnes agrégées ou groupées), puis les fiches produits.
+        //
+        // Un « SELECT produit.* ... GROUP BY produit.id » n'est accepté que par
+        // les moteurs qui savent déduire la dépendance fonctionnelle à la clé
+        // primaire. MySQL 8 le fait, MariaDB non : sous ONLY_FULL_GROUP_BY, la
+        // même requête y échoue. Écrite ainsi, elle passe partout.
         $parVentes = function ($depuis = null) use ($catalogue) {
-            return $catalogue()
-                ->select('produit.*')
-                ->join('detail_commande as dc', 'dc.produit_id', '=', 'produit.id')
+            $classement = \Illuminate\Support\Facades\DB::table('detail_commande as dc')
                 ->join('commande as c', 'c.id', '=', 'dc.commande_id')
                 ->where('dc.statut', 1)
                 ->where('c.statut', 1)
                 ->where('c.etat_commande', '!=', 'ANNULEE')
                 ->when($depuis, fn ($q) => $q->where('c.date_commande', '>=', $depuis))
-                ->groupBy('produit.id')
+                ->groupBy('dc.produit_id')
                 ->orderByRaw('SUM(dc.qte) DESC')
-                ->limit(5)
-                ->get();
+                ->limit(30)
+                ->pluck('dc.produit_id')
+                ->all();
+
+            if (empty($classement)) {
+                return collect();
+            }
+
+            // Le classement porte sur l'historique : le catalogue tranche
+            // ensuite (un produit hors vente ou désactivé ne remonte pas).
+            // D'où la marge de 30 avant de retenir les 5 premiers.
+            $fiches = $catalogue()->whereIn('produit.id', $classement)->get()->keyBy('id');
+
+            return collect($classement)
+                ->map(fn ($id) => $fiches->get($id))
+                ->filter()
+                ->take(5)
+                ->values();
         };
 
         $mieuxNotes = $catalogue()->orderByDesc('meilleur_note')->limit(15)->get();
