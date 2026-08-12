@@ -4,6 +4,11 @@
     // dd(session())
 @endphp
 @extends('client.main')
+
+{{-- Cette page affiche des vignettes de produit avec un bouton « vue rapide » :
+     elle a donc besoin des fenêtres générées par client.quickView. --}}
+@section('quickView', 'oui')
+
 @section('title','Accueil')
 @section('content')
 @if(session('annule'))
@@ -61,7 +66,47 @@
     <!--End header-->
 
     <main class="main">
-        <div class="container-fluid px-4 mb-30" style="margin-top: -1px;">
+        {{-- Haut de l'accueil collé sous l'en-tête et étendu bord à bord.
+             Trois réglages, tous limités au grand écran (le mobile garde sa mise
+             en page) et à cette page :
+
+             1. body.client-layout réservait 80px sous l'en-tête fixe, qui n'en
+                mesure que 54 : 26px de vide au-dessus du slider ;
+             2. la colonne « Categories » portait « position: relative; top: 100px »
+                (premium-product-detail.css) — un décalage vers le bas, et non un
+                vrai collant, qui la faisait démarrer 100px sous le slider ;
+             3. le conteneur et ses colonnes posaient 24px de gouttière de chaque
+                côté, d'où les bandes blanches à gauche et à droite. --}}
+        <style>
+            /* 993px et non 992 : le bandeau promotionnel du thème s'affiche
+               jusqu'à 992px INCLUS (main.css, max-width: 992px). À cette largeur
+               exacte l'en-tête mesure 97px et non 54 — réserver 54px y ferait
+               passer le slider SOUS l'en-tête fixe. */
+            @media (min-width: 993px) {
+                body.client-layout { padding-top: 54px !important; }
+
+                .accueil-haut .primary-sidebar.sticky-sidebar {
+                    position: static !important;
+                    top: auto !important;
+                    padding-top: 0 !important;
+                }
+
+                .accueil-haut { padding-left: 0 !important; padding-right: 0 !important; }
+                .accueil-haut > .row { margin-left: 0 !important; margin-right: 0 !important; }
+                .accueil-haut > .row > [class*="col-"] { padding-left: 0 !important; padding-right: 0 !important; }
+
+                /* Le contenu SOUS le bandeau garde son appui : ses grilles internes
+                   (.row.product-grid-4) portent une gouttière négative de 12px qui,
+                   sans retrait sur la colonne, débordait de la page vers la droite
+                   et faisait apparaître une barre de défilement horizontale. */
+                .accueil-haut > .row > [class*="col-"] > section:not(.home-slider),
+                .accueil-haut > .row > [class*="col-"] > .theiaStickySidebar > *:not(:first-child) {
+                    padding-left: 12px !important;
+                    padding-right: 12px !important;
+                }
+            }
+        </style>
+        <div class="container-fluid px-4 mb-30 accueil-haut" style="margin-top: -1px;">
             <div class="row flex-row-reverse" style="margin-right: -15px;">
                 <div class="col-lg-4-5">
                     <!-- Hero Slider -->
@@ -420,177 +465,66 @@
                             </div>
                             <div class="hero-slider-1 style-4 dot-style-1 dot-style-1-position-1" style="visibility: hidden;">
 
-                                {{-- Slide 1 - Camion benne : Présentation générale --}}
-                                <div class="single-hero-slider single-animation-wrap" style="background-image: url('{{asset('frontend/assets/imgs/slider/slide-camion-benne.jpg')}}')">
-                                    <div class="slider-decoration">
-                                        <span class="deco-value">15+</span>
-                                        <span class="deco-label">années d'expérience</span>
-                                    </div>
-                                    <div class="slider-content">
-                                        <span class="slider-badge badge-new">
-                                            <i class="fi-rs-star"></i> N°1 EN CÔTE D'IVOIRE
-                                        </span>
-                                        <h1 class="slider-title">Construisez vos rêves,<br><span class="accent">on fournit le reste</span></h1>
-                                        <p class="slider-desc">Sable, gravier, ciment, fer, briques... toute la matière première de qualité pour réussir votre chantier au meilleur prix.</p>
-                                        <div class="slider-features">
-                                            <span class="slider-feature"><i class="fi-rs-check"></i> Qualité garantie</span>
-                                            <span class="slider-feature"><i class="fi-rs-check"></i> Prix professionnels</span>
-                                            <span class="slider-feature"><i class="fi-rs-check"></i> Catalogue complet</span>
-                                        </div>
-                                        <div class="slider-actions">
-                                            <a href="#popular-categories" class="btn-slider-primary">
-                                                <i class="fi-rs-shopping-cart"></i> Commander maintenant
-                                            </a>
-                                            <a href="{{ url('/demande-de-livraison') }}" class="btn-slider-outline">
-                                                Demander un devis
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
+                                {{-- Les diapositives viennent désormais de la base, et se
+                                     gèrent depuis le back-office : Divers → Carrousel
+                                     d'accueil. La structure HTML est celle d'origine ;
+                                     seul le contenu est devenu administrable. Chaque
+                                     élément facultatif (pastille, encart chiffré,
+                                     arguments, boutons) n'est rendu que s'il est
+                                     renseigné, pour ne jamais laisser de bloc vide. --}}
+                                @foreach ($slides as $slide)
+                                    <div class="single-hero-slider single-animation-wrap" style="background-image: url('{{ $slide->urlImage() }}')">
+                                        @if ($slide->deco_valeur)
+                                            <div class="slider-decoration">
+                                                <span class="deco-value">{{ $slide->deco_valeur }}</span>
+                                                <span class="deco-label">{{ $slide->deco_libelle }}</span>
+                                            </div>
+                                        @endif
+                                        <div class="slider-content">
+                                            @if ($slide->badge_texte)
+                                                <span class="{{ $slide->classeBadge() }}">
+                                                    <i class="{{ $slide->iconeBadge() }}"></i> {{ $slide->badge_texte }}
+                                                </span>
+                                            @endif
 
-                                {{-- Slide 2 - Camion sable : Livraison --}}
-                                <div class="single-hero-slider single-animation-wrap" style="background-image: url('{{asset('frontend/assets/imgs/slider/slide-camion-sable.jpg')}}')">
-                                    <div class="slider-decoration">
-                                        <span class="deco-value">&lt; 24h</span>
-                                        <span class="deco-label">livraison express</span>
-                                    </div>
-                                    <div class="slider-content">
-                                        <span class="slider-badge badge-promo">
-                                            <i class="fi-rs-truck"></i> LIVRAISON EXPRESS
-                                        </span>
-                                        <h1 class="slider-title">Livraison express<br><span class="accent">sur tous vos chantiers</span></h1>
-                                        <p class="slider-desc">Recevez vos matériaux directement sur site en moins de 24h, partout en Côte d'Ivoire. Flotte de camions dédiée.</p>
-                                        <div class="slider-features">
-                                            <span class="slider-feature"><i class="fi-rs-check"></i> Livraison rapide</span>
-                                            <span class="slider-feature"><i class="fi-rs-check"></i> Suivi en temps réel</span>
-                                            <span class="slider-feature"><i class="fi-rs-check"></i> Toute la CI</span>
-                                        </div>
-                                        <div class="slider-actions">
-                                            <a href="{{ url('/demande-de-livraison') }}" class="btn-slider-primary">
-                                                <i class="fi-rs-marker"></i> Demander une livraison
-                                            </a>
-                                            <a href="#popular-categories" class="btn-slider-outline">
-                                                Voir les produits
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
+                                            <h1 class="slider-title">{{ $slide->titre }}@if ($slide->titre_accent)<br><span class="accent">{{ $slide->titre_accent }}</span>@endif</h1>
 
-                                {{-- Slide 3 - Camion gravier : Tarifs --}}
-                                <div class="single-hero-slider single-animation-wrap" style="background-image: url('{{asset('frontend/assets/imgs/slider/slide-camion-gravier.jpg')}}')">
-                                    <div class="slider-decoration">
-                                        <span class="deco-value">-15%</span>
-                                        <span class="deco-label">sur commandes en gros</span>
-                                    </div>
-                                    <div class="slider-content">
-                                        <span class="slider-badge badge-hot">
-                                            <i class="fi-rs-percentage"></i> OFFRE LIMITÉE
-                                        </span>
-                                        <h1 class="slider-title">Des prix qui défient<br><span class="accent">toute concurrence</span></h1>
-                                        <p class="slider-desc">Profitez de tarifs professionnels sur toute notre gamme de matériaux. Plus vous commandez, plus vous économisez.</p>
-                                        <div class="slider-features">
-                                            <span class="slider-feature"><i class="fi-rs-check"></i> Tarifs dégressifs</span>
-                                            <span class="slider-feature"><i class="fi-rs-check"></i> Devis gratuit</span>
-                                            <span class="slider-feature"><i class="fi-rs-check"></i> Aucun frais caché</span>
-                                        </div>
-                                        <div class="slider-price">
-                                            <span class="slider-price-label">À partir de</span>
-                                            <span class="slider-price-value">15 000 FCFA / T</span>
-                                        </div>
-                                        <div class="slider-actions">
-                                            <a href="#popular-categories" class="btn-slider-primary">
-                                                <i class="fi-rs-eye"></i> Voir nos offres
-                                            </a>
-                                            <a href="{{ url('/demande-de-livraison') }}" class="btn-slider-outline">
-                                                Devis personnalisé
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
+                                            @if ($slide->description)
+                                                <p class="slider-desc">{{ $slide->description }}</p>
+                                            @endif
 
-                                {{-- Slide 4 - Ciment : Qualité --}}
-                                <div class="single-hero-slider single-animation-wrap" style="background-image: url('{{asset('frontend/assets/imgs/slider/slide-ciment.jpg')}}')">
-                                    <div class="slider-decoration">
-                                        <span class="deco-value">100%</span>
-                                        <span class="deco-label">certifié & contrôlé</span>
-                                    </div>
-                                    <div class="slider-content">
-                                        <span class="slider-badge">
-                                            <i class="fi-rs-shield-check"></i> QUALITÉ CERTIFIÉE
-                                        </span>
-                                        <h1 class="slider-title">Du ciment de qualité<br><span class="accent">pour des fondations solides</span></h1>
-                                        <p class="slider-desc">Large gamme de ciment certifié pour tous types de constructions : maison, bâtiment, ouvrages d'art.</p>
-                                        <div class="slider-features">
-                                            <span class="slider-feature"><i class="fi-rs-check"></i> Norme CEM I & II</span>
-                                            <span class="slider-feature"><i class="fi-rs-check"></i> Sacs 50 kg</span>
-                                            <span class="slider-feature"><i class="fi-rs-check"></i> Stock permanent</span>
-                                        </div>
-                                        <div class="slider-actions">
-                                            <a href="#popular-categories" class="btn-slider-primary">
-                                                <i class="fi-rs-list"></i> Voir le catalogue
-                                            </a>
-                                            <a href="{{ url('/demande-de-livraison') }}" class="btn-slider-outline">
-                                                Commander en gros
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
+                                            @php $arguments = $slide->caracteristiquesListe(); @endphp
+                                            @if (count($arguments))
+                                                <div class="slider-features">
+                                                    @foreach ($arguments as $argument)
+                                                        <span class="slider-feature"><i class="fi-rs-check"></i> {{ $argument }}</span>
+                                                    @endforeach
+                                                </div>
+                                            @endif
 
-                                {{-- Slide 5 - Barres de fer : Solidité --}}
-                                <div class="single-hero-slider single-animation-wrap" style="background-image: url('{{asset('frontend/assets/imgs/slider/slide-fer.jpg')}}')">
-                                    <div class="slider-decoration">
-                                        <span class="deco-value">Ø 6→32</span>
-                                        <span class="deco-label">tous diamètres</span>
-                                    </div>
-                                    <div class="slider-content">
-                                        <span class="slider-badge badge-hot">
-                                            <i class="fi-rs-medal"></i> BESTSELLER
-                                        </span>
-                                        <h1 class="slider-title">Barres de fer & armatures<br><span class="accent">au meilleur tarif</span></h1>
-                                        <p class="slider-desc">Renforcez vos ouvrages avec nos fers à béton de qualité supérieure. Disponibles en tous diamètres et longueurs.</p>
-                                        <div class="slider-features">
-                                            <span class="slider-feature"><i class="fi-rs-check"></i> Acier haute résistance</span>
-                                            <span class="slider-feature"><i class="fi-rs-check"></i> Sur-mesure possible</span>
-                                            <span class="slider-feature"><i class="fi-rs-check"></i> Coupe gratuite</span>
-                                        </div>
-                                        <div class="slider-actions">
-                                            <a href="#popular-categories" class="btn-slider-primary">
-                                                <i class="fi-rs-shopping-bag"></i> Acheter maintenant
-                                            </a>
-                                            <a href="{{ url('/demande-de-livraison') }}" class="btn-slider-outline">
-                                                Calculer le besoin
-                                            </a>
+                                            @php
+                                                // Un lien commençant par « # » vise une section de la page
+                                                // et doit rester tel quel ; les autres passent par url(),
+                                                // qui laisse intactes les adresses complètes.
+                                                $lien = fn ($l) => str_starts_with((string) $l, '#') ? $l : url($l);
+                                            @endphp
+                                            @if (($slide->bouton1_texte && $slide->bouton1_lien) || ($slide->bouton2_texte && $slide->bouton2_lien))
+                                                <div class="slider-actions">
+                                                    @if ($slide->bouton1_texte && $slide->bouton1_lien)
+                                                        <a href="{{ $lien($slide->bouton1_lien) }}" class="btn-slider-primary">
+                                                            <i class="fi-rs-shopping-cart"></i> {{ $slide->bouton1_texte }}
+                                                        </a>
+                                                    @endif
+                                                    @if ($slide->bouton2_texte && $slide->bouton2_lien)
+                                                        <a href="{{ $lien($slide->bouton2_lien) }}" class="btn-slider-outline">
+                                                            {{ $slide->bouton2_texte }}
+                                                        </a>
+                                                    @endif
+                                                </div>
+                                            @endif
                                         </div>
                                     </div>
-                                </div>
-
-                                {{-- Slide 6 - Briques : Volumes --}}
-                                <div class="single-hero-slider single-animation-wrap" style="background-image: url('{{asset('frontend/assets/imgs/slider/slide-briques.jpg')}}')">
-                                    <div class="slider-decoration">
-                                        <span class="deco-value">Gros</span>
-                                        <span class="deco-label">volumes -20%</span>
-                                    </div>
-                                    <div class="slider-content">
-                                        <span class="slider-badge badge-promo">
-                                            <i class="fi-rs-gift"></i> REMISE GROS VOLUMES
-                                        </span>
-                                        <h1 class="slider-title">Briques & parpaings<br><span class="accent">pour murs et clôtures</span></h1>
-                                        <p class="slider-desc">Commandez en gros et bénéficiez de remises exceptionnelles. Briques pleines, creuses et parpaings standards.</p>
-                                        <div class="slider-features">
-                                            <span class="slider-feature"><i class="fi-rs-check"></i> Plusieurs formats</span>
-                                            <span class="slider-feature"><i class="fi-rs-check"></i> Robustesse certifiée</span>
-                                            <span class="slider-feature"><i class="fi-rs-check"></i> Stock permanent</span>
-                                        </div>
-                                        <div class="slider-actions">
-                                            <a href="#popular-categories" class="btn-slider-primary">
-                                                <i class="fi-rs-shopping-cart"></i> Passer commande
-                                            </a>
-                                            <a href="{{ url('/demande-de-livraison') }}" class="btn-slider-outline">
-                                                Devis gratuit
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
+                                @endforeach
 
                             </div>
                             <div class="slider-arrow hero-slider-1-arrow"></div>
