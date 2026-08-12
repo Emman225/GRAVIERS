@@ -131,12 +131,16 @@
                 <div class="footer-link-widget col">
                     <h4 class="widget-title">IMLOD</h4>
                     <ul class="footer-list mb-sm-5 mb-md-0">
+                        {{-- Ces entrées renvoyaient toutes vers « Site en construction ».
+                             Elles mènent désormais à de vraies pages. --}}
                         <li><a href="{{route('aPropos')}}">A propos de nous</a></li>
-                        <li><a href="{{route('enConstruction')}}">Informations sur les livraisons</a></li>
-                        <li><a href="{{route('enConstruction')}}">Politique et confidentialité</a></li>
-                        <li><a href="{{route('enConstruction')}}">Termes &amp; Conditions</a></li>
+                        <li><a href="{{route('infosLivraisons')}}">Informations sur les livraisons</a></li>
+                        <li><a href="{{route('confidentialite')}}">Politique et confidentialité</a></li>
+                        <li><a href="{{route('termesConditions')}}">Termes &amp; Conditions</a></li>
                         <li><a href="{{route('contact')}}">Nous contacter</a></li>
-                        <li><a href="{{route('enConstruction')}}">Centre d'aide</a></li>
+                        {{-- centreAidePublic, et non show.centreAide : ce dernier est le
+                             centre d'aide du personnel et exige d'être connecté. --}}
+                        <li><a href="{{route('centreAidePublic')}}">Centre d'aide</a></li>
                         {{-- <li><a href="#">Careers</a></li> --}}
                     </ul>
                 </div>
@@ -151,8 +155,11 @@
                 <div class="footer-link-widget col">
                     <h4 class="widget-title">Coorperation</h4>
                     <ul class="footer-list mb-sm-5 mb-md-0">
-                        <li><a href="{{route('enConstruction')}}">Devenir Livreur</a></li>
-                        <li><a href="{{route('enConstruction')}}">Devenir Fournisseur</a></li>
+                        {{-- Pages publiques de candidature, à ne pas confondre avec
+                             show.registerLivreur / show.registerSeller, qui sont les
+                             formulaires du back-office réservés aux administrateurs. --}}
+                        <li><a href="{{route('devenirLivreur')}}">Devenir Livreur</a></li>
+                        <li><a href="{{route('devenirFournisseur')}}">Devenir Fournisseur</a></li>
                         <li><a href="#deal">Voir les promotions</a></li>
                         {{-- <li><a href="#">Farm Careers</a></li>
                         <li><a href="#">Our Suppliers</a></li>

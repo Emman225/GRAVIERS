@@ -66,7 +66,7 @@
                     </div>
                     <div class="contact-info-card">
                         <div class="ico"><i class="fi-rs-envelope"></i></div>
-                        <div><h6>Email</h6><p><a href="mailto:support@gravier.com" style="color:#14855a;">support@gravier.com</a></p></div>
+                        <div><h6>Email</h6><p><a href="mailto:info@fneconnect.net" style="color:#14855a;">info@fneconnect.net</a></p></div>
                     </div>
                     <div class="contact-info-card">
                         <div class="ico"><i class="fi-rs-clock"></i></div>
@@ -104,7 +104,12 @@
                                 </div>
                                 <div class="col-md-6">
                                     <label>Sujet <span style="color:#d9534f">*</span></label>
-                                    <input type="text" name="sujet" class="form-control" value="{{ old('sujet') }}" placeholder="Objet de votre message" maxlength="50" required>
+                                    {{-- L'objet peut être pré-rempli depuis les pages
+                                         institutionnelles (candidature livreur, question
+                                         sur une livraison…) : le visiteur arrive avec son
+                                         motif déjà renseigné. Une saisie en cours (old)
+                                         reste prioritaire sur ce pré-remplissage. --}}
+                                    <input type="text" name="sujet" class="form-control" value="{{ old('sujet', request('sujet')) }}" placeholder="Objet de votre message" maxlength="50" required>
                                     @error('sujet') <span class="contact-field-error">{{ $message }}</span> @enderror
                                 </div>
                                 <div class="col-12">

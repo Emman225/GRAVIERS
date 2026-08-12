@@ -1,0 +1,229 @@
+/* ============================================================
+   Pages institutionnelles du site public
+   (livraisons, confidentialité, centre d'aide, devenir livreur,
+    devenir fournisseur)
+
+   Une seule feuille pour les cinq pages : la page « Termes et
+   conditions » embarquait ses 400 lignes de styles dans son propre
+   gabarit, ce qui aurait signifié les recopier cinq fois.
+   ============================================================ */
+
+:root {
+    --inst-bleu: #1c57a3;
+    --inst-bleu-fonce: #0a2540;
+    --inst-or: #ffb300;
+    --inst-texte: #253d4e;
+    --inst-gris: #6b7c8c;
+    --inst-fond: #f6f8fb;
+    --inst-bord: #e3e9f0;
+}
+
+.page-inst {
+    background: var(--inst-fond);
+    color: var(--inst-texte);
+    font-size: 15px;
+    line-height: 1.7;
+}
+
+/* ---------- Bandeau ---------- */
+.page-inst__hero {
+    background: linear-gradient(135deg, var(--inst-bleu-fonce) 0%, var(--inst-bleu) 100%);
+    color: #fff;
+    padding: 56px 20px 48px;
+    text-align: center;
+}
+.page-inst__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 40px;
+    padding: 6px 16px;
+    font-size: 13px;
+    letter-spacing: .3px;
+    margin-bottom: 18px;
+}
+.page-inst__titre {
+    font-size: 2.1rem;
+    font-weight: 700;
+    margin: 0 0 12px;
+    color: #fff;
+}
+.page-inst__titre em { color: var(--inst-or); font-style: normal; }
+.page-inst__accroche {
+    max-width: 760px;
+    margin: 0 auto;
+    font-size: 1rem;
+    color: rgba(255, 255, 255, 0.88);
+}
+.page-inst__maj {
+    margin-top: 18px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* ---------- Corps ---------- */
+.page-inst__corps {
+    max-width: 1060px;
+    margin: 0 auto;
+    padding: 44px 18px 60px;
+}
+.page-inst__carte {
+    background: #fff;
+    border: 1px solid var(--inst-bord);
+    border-radius: 16px;
+    padding: 30px 32px;
+    margin-bottom: 22px;
+    box-shadow: 0 6px 18px rgba(16, 42, 72, .05);
+}
+.page-inst__carte h2 {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--inst-bleu-fonce);
+    margin: 0 0 16px;
+}
+.page-inst__carte h2 .material-icons { color: var(--inst-bleu); }
+.page-inst__carte h3 {
+    font-size: 1.02rem;
+    font-weight: 700;
+    color: var(--inst-bleu-fonce);
+    margin: 22px 0 8px;
+}
+.page-inst__carte p { margin: 0 0 12px; }
+.page-inst__carte ul { margin: 0 0 12px; padding-left: 20px; }
+.page-inst__carte li { margin-bottom: 7px; }
+.page-inst__carte a { color: var(--inst-bleu); text-decoration: underline; }
+
+/* ---------- Grille de points forts ---------- */
+.page-inst__grille {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 16px;
+    margin: 4px 0 6px;
+}
+.page-inst__tuile {
+    background: var(--inst-fond);
+    border: 1px solid var(--inst-bord);
+    border-radius: 12px;
+    padding: 18px 18px 16px;
+}
+.page-inst__tuile .material-icons {
+    color: var(--inst-bleu);
+    font-size: 26px;
+    margin-bottom: 6px;
+}
+.page-inst__tuile strong { display: block; margin-bottom: 4px; color: var(--inst-bleu-fonce); }
+.page-inst__tuile span { font-size: 14px; color: var(--inst-gris); }
+
+/* ---------- Étapes numérotées ---------- */
+.page-inst__etapes { list-style: none; margin: 0; padding: 0; counter-reset: etape; }
+.page-inst__etapes li {
+    counter-increment: etape;
+    position: relative;
+    padding: 0 0 20px 52px;
+    border-left: 2px solid var(--inst-bord);
+    margin-left: 17px;
+}
+.page-inst__etapes li:last-child { border-left-color: transparent; padding-bottom: 0; }
+.page-inst__etapes li::before {
+    content: counter(etape);
+    position: absolute;
+    left: -18px;
+    top: -2px;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--inst-bleu);
+    color: #fff;
+    font-weight: 700;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.page-inst__etapes strong { display: block; color: var(--inst-bleu-fonce); margin-bottom: 2px; }
+
+/* ---------- Questions fréquentes ---------- */
+.page-inst__faq { border-top: 1px solid var(--inst-bord); }
+.page-inst__faq details {
+    border-bottom: 1px solid var(--inst-bord);
+    padding: 14px 2px;
+}
+.page-inst__faq summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--inst-bleu-fonce);
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+}
+.page-inst__faq summary::-webkit-details-marker { display: none; }
+.page-inst__faq summary::after {
+    content: '+';
+    color: var(--inst-bleu);
+    font-size: 20px;
+    line-height: 1;
+    flex: 0 0 auto;
+}
+.page-inst__faq details[open] summary::after { content: '−'; }
+.page-inst__faq details > *:not(summary) { margin-top: 10px; color: var(--inst-gris); }
+
+/* ---------- Appel à l'action ---------- */
+.page-inst__cta {
+    background: linear-gradient(135deg, var(--inst-bleu) 0%, var(--inst-bleu-fonce) 100%);
+    border-radius: 16px;
+    padding: 32px 30px;
+    color: #fff;
+    text-align: center;
+}
+.page-inst__cta h2 { color: #fff; justify-content: center; }
+.page-inst__cta p { color: rgba(255, 255, 255, .88); max-width: 640px; margin: 0 auto 20px; }
+.page-inst__bouton {
+    display: inline-block;
+    background: var(--inst-or);
+    color: var(--inst-bleu-fonce) !important;
+    font-weight: 700;
+    padding: 12px 28px;
+    border-radius: 40px;
+    text-decoration: none !important;
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+.page-inst__bouton:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0, 0, 0, .2); }
+.page-inst__bouton--clair {
+    background: #fff;
+    color: var(--inst-bleu) !important;
+    margin-left: 10px;
+}
+
+/* ---------- Encadré d'avertissement ---------- */
+.page-inst__note {
+    background: #fff8e6;
+    border: 1px solid #ffe0a3;
+    border-radius: 12px;
+    padding: 16px 18px;
+    font-size: 14px;
+    color: #7a5b12;
+}
+.page-inst__note strong { color: #6b4e0c; }
+
+/* ---------- Tableau ---------- */
+.page-inst__tableau { width: 100%; border-collapse: collapse; margin: 6px 0 14px; }
+.page-inst__tableau th,
+.page-inst__tableau td { border: 1px solid var(--inst-bord); padding: 10px 12px; text-align: left; }
+.page-inst__tableau th { background: var(--inst-fond); color: var(--inst-bleu-fonce); font-weight: 700; }
+.page-inst__tableau caption { caption-side: bottom; font-size: 13px; color: var(--inst-gris); padding-top: 8px; text-align: left; }
+
+/* ---------- Petits écrans ---------- */
+@media (max-width: 767px) {
+    .page-inst__hero { padding: 44px 16px 36px; }
+    .page-inst__titre { font-size: 1.6rem; }
+    .page-inst__corps { padding: 30px 12px 46px; }
+    .page-inst__carte { padding: 22px 18px; border-radius: 13px; }
+    .page-inst__bouton--clair { margin: 12px 0 0; display: block; }
+    .page-inst__tableau { display: block; overflow-x: auto; }
+}

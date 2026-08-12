@@ -86,6 +86,18 @@ Route::get('/a-propos',[UserController::class,'pageAPropos'])->name('aPropos');
 Route::get('/nous-contacter',[UserController::class,'pageContact'])->name('contact');
 Route::post('/nous-contacter',[UserController::class,'contactStore'])->name('contact.store');
 
+// Pages institutionnelles appelées depuis le pied de page. Elles renvoyaient
+// toutes vers « Site en construction ».
+Route::controller(\App\Http\Controllers\PagesPubliquesController::class)->group(function () {
+    Route::get('/informations-livraisons', 'livraisons')->name('infosLivraisons');
+    Route::get('/politique-de-confidentialite', 'confidentialite')->name('confidentialite');
+    // Distinct de show.centreAide, qui est le centre d'aide du PERSONNEL et
+    // exige d'être connecté : celui-ci s'adresse aux visiteurs.
+    Route::get('/aide', 'centreAide')->name('centreAidePublic');
+    Route::get('/devenir-livreur', 'devenirLivreur')->name('devenirLivreur');
+    Route::get('/devenir-fournisseur', 'devenirFournisseur')->name('devenirFournisseur');
+});
+
 // Inscription à la lettre d'information depuis le pied de page du site.
 // Limitée en cadence : l'adresse est publique et sans authentification.
 Route::post('/inscription-lettre-information', [\App\Http\Controllers\NewsletterController::class, 'store'])
