@@ -95,12 +95,32 @@
                 .accueil-haut > .row { margin-left: 0 !important; margin-right: 0 !important; }
                 .accueil-haut > .row > [class*="col-"] { padding-left: 0 !important; padding-right: 0 !important; }
 
+                /* Bords supérieurs francs. Ce qui se lisait comme une bordure en
+                   haut du slider et de la carte « Categories » était l'arrondi des
+                   angles — 20px pour le slider, 15px pour la carte — qui laissait
+                   voir le fond de page, plus un filet gris d'1px sur la carte.
+                   Les angles du BAS sont conservés : eux ne touchent rien. */
+                .accueil-haut .home-slider,
+                .accueil-haut .home-slider .single-hero-slider {
+                    border-top-left-radius: 0 !important;
+                    border-top-right-radius: 0 !important;
+                }
+                .accueil-haut .primary-sidebar .sidebar-widget:first-child {
+                    border-top: 0 !important;
+                    border-top-left-radius: 0 !important;
+                    border-top-right-radius: 0 !important;
+                }
+
+                /* Respiration entre la colonne « Categories » et le slider, qui se
+                   touchaient depuis la suppression des gouttières. Le retrait est
+                   porté à droite de la colonne : son bord gauche reste au ras. */
+                .accueil-haut > .row > .col-lg-1-5 { padding-right: 18px !important; }
+
                 /* Le contenu SOUS le bandeau garde son appui : ses grilles internes
                    (.row.product-grid-4) portent une gouttière négative de 12px qui,
                    sans retrait sur la colonne, débordait de la page vers la droite
                    et faisait apparaître une barre de défilement horizontale. */
-                .accueil-haut > .row > [class*="col-"] > section:not(.home-slider),
-                .accueil-haut > .row > [class*="col-"] > .theiaStickySidebar > *:not(:first-child) {
+                .accueil-haut > .row > [class*="col-"] > section:not(.home-slider) {
                     padding-left: 12px !important;
                     padding-right: 12px !important;
                 }
