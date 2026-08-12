@@ -12,8 +12,20 @@
         <div class="card">
             <div class="card-body">
 
-                {{-- ===== ONGLETS ===== --}}
-                <ul class="nav nav-tabs mb-4" id="parametreTabs" role="tablist">
+                {{-- ===== ONGLETS =====
+                     Les neuf onglets passaient à la ligne dès que la fenêtre se
+                     rétrécissait, sur deux ou trois rangs. Ils tiennent désormais
+                     sur une seule ligne qui défile horizontalement, avec deux
+                     flèches et un fondu aux extrémités pour signaler ce qui reste
+                     hors champ — sans quoi rien n'indique qu'il y a d'autres
+                     onglets à droite. --}}
+                <div class="onglets-defilants" id="ongletsParametre">
+                    <button type="button" class="onglets-defilants__fleche onglets-defilants__fleche--gauche"
+                            aria-label="Onglets précédents" hidden>
+                        <i class="material-icons md-chevron_left"></i>
+                    </button>
+
+                <ul class="nav nav-tabs" id="parametreTabs" role="tablist">
                     <li class="nav-item" role="presentation">
                         <button class="nav-link active" id="tab-general-tab" data-bs-toggle="tab"
                             data-toggle="tab" data-bs-target="#tab-general" data-target="#tab-general"
@@ -87,6 +99,12 @@
                         </button>
                     </li>
                 </ul>
+
+                    <button type="button" class="onglets-defilants__fleche onglets-defilants__fleche--droite"
+                            aria-label="Onglets suivants" hidden>
+                        <i class="material-icons md-chevron_right"></i>
+                    </button>
+                </div>
 
                 {{-- ===== CONTENU DES ONGLETS ===== --}}
                 <div class="tab-content" id="parametreTabsContent">
@@ -241,7 +259,7 @@
                                                 <option value="">-- Sélectionner un client --</option>
                                                 @foreach ($clients as $client)
                                                     <option value="{{ $client->id }}" {{ old('client_id') == $client->id ? 'selected' : '' }}>
-                                                        {{ $client->display_name }} - {{ $client->user->email ?? '' }} ({{ $client->type_client }})
+                                                        {{ $client->display_name }} - {{ $client->user?->email ?? '' }} ({{ $client->type_client }})
                                                     </option>
                                                 @endforeach
                                             </select>
@@ -322,14 +340,14 @@
                                             @foreach ($clientsAvecPrix as $item)
                                                 <tr>
                                                     <td class="text-center align-middle">
-                                                        {{ $item->client->display_name }}
+                                                        {{ $item->client?->display_name }}
                                                     </td>
                                                     <td class="text-center align-middle">
-                                                        {{ $item->client->user->email ?? '' }}
+                                                        {{ $item->client?->user?->email ?? '' }}
                                                     </td>
                                                     <td class="text-center align-middle">
-                                                        <span class="badge {{ $item->client->type_client == 'ENTREPRISE' ? 'badge-info' : 'badge-secondary' }}">
-                                                            {{ $item->client->type_client }}
+                                                        <span class="badge {{ $item->client?->type_client == 'ENTREPRISE' ? 'badge-info' : 'badge-secondary' }}">
+                                                            {{ $item->client?->type_client }}
                                                         </span>
                                                     </td>
                                                     <td class="text-center align-middle">
@@ -337,13 +355,14 @@
                                                     </td>
                                                     <td class="text-center align-middle">
                                                         <button type="button" class="btn btn-sm btn-primary btn-voir-produits"
-                                                            data-modal-id="modalProduits-{{ $item->client->id }}"
+                                                            data-modal-id="modalProduits-{{ $item->client?->id }}"
                                                             title="Voir les produits">
                                                             <i class="fas fa-eye"></i>
                                                         </button>
                                                         <button type="button" class="btn btn-sm btn-danger btn-supprimer-client"
-                                                            data-url="{{ route('configPrix.supprimerClient', $item->client->id) }}"
-                                                            data-nom="{{ $item->client->display_name }}"
+                                                            {{-- Client supprimé : sans le ?? 0, route() ferait tomber la page entière. --}}
+                                                            data-url="{{ route('configPrix.supprimerClient', $item->client?->id ?? 0) }}"
+                                                            data-nom="{{ $item->client?->display_name }}"
                                                             title="Supprimer tous les prix du client">
                                                             <i class="fas fa-trash-alt"></i>
                                                         </button>
@@ -583,15 +602,15 @@
          deux versions de Bootstrap sont chargées simultanément.
          ============================================================ --}}
     @foreach ($clientsAvecPrix as $item)
-        <div class="modal fade param-modal-produits" id="modalProduits-{{ $item->client->id }}" tabindex="-1"
-            role="dialog" aria-labelledby="modalProduitsLabel-{{ $item->client->id }}" aria-hidden="true"
+        <div class="modal fade param-modal-produits" id="modalProduits-{{ $item->client?->id }}" tabindex="-1"
+            role="dialog" aria-labelledby="modalProduitsLabel-{{ $item->client?->id }}" aria-hidden="true"
             style="display:none;">
             <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
                 <div class="modal-content">
                     <div class="modal-header" style="background-color: #1c57a3;">
                         <h5 class="modal-title" style="color: white;"
-                            id="modalProduitsLabel-{{ $item->client->id }}">
-                            Produits & Prix personnalisés — {{ $item->client->display_name }}
+                            id="modalProduitsLabel-{{ $item->client?->id }}">
+                            Produits & Prix personnalisés — {{ $item->client?->display_name }}
                         </h5>
                         <button type="button" class="close text-white btn-close-modal" aria-label="Fermer"
                             style="background:transparent;border:0;color:#fff;font-size:1.5rem;line-height:1;">
@@ -611,14 +630,14 @@
                             <tbody>
                                 @foreach ($item->produits as $p)
                                     <tr>
-                                        <td>{{ $p->produit->nom }}</td>
-                                        <td>{{ number_format($prixFournisseur[$p->produit->id] ?? $p->produit->prix_moyen, 0, ',', ' ') }} FCFA</td>
+                                        <td>{{ $p->produit?->nom }}</td>
+                                        <td>{{ number_format($prixFournisseur[$p->produit?->id] ?? $p->produit?->prix_moyen, 0, ',', ' ') }} FCFA</td>
                                         <td><strong>{{ number_format($p->prix, 0, ',', ' ') }} FCFA</strong></td>
                                         <td class="text-center">
                                             <button type="button"
                                                 class="btn btn-sm btn-danger btn-supprimer-produit"
                                                 data-url="{{ route('configPrix.supprimerProduit', $p->id) }}"
-                                                data-nom="{{ $p->produit->nom }}"
+                                                data-nom="{{ $p->produit?->nom }}"
                                                 title="Supprimer ce prix">
                                                 <i class="fas fa-trash-alt"></i>
                                             </button>
@@ -640,6 +659,129 @@
 @section('cssParts')
     <link rel="stylesheet" href="{{ asset('backend/plugins/DataTables/datatables.min.css') }}">
     <link rel="stylesheet" href="{{ asset('backend/assets/css/vendors/select2.min.css') }}">
+    <style>
+        /* ===== Onglets sur une seule ligne, défilables ===== */
+        .onglets-defilants {
+            position: relative;
+            display: flex;
+            align-items: center;
+            margin-bottom: 24px;
+            border-bottom: 2px solid #e7ecf3;
+        }
+
+        /* La piste : une seule ligne, qui défile. flex-wrap est forcé car
+           .nav de Bootstrap l'impose à « wrap ». */
+        .onglets-defilants .nav-tabs {
+            flex-wrap: nowrap !important;
+            overflow-x: auto;
+            overflow-y: hidden;
+            border-bottom: 0;
+            margin-bottom: -2px;
+            /* Adoucissement confié au CSS : le script se contente de poser
+               scrollLeft. Si le navigateur ne sait pas l'animer, le déplacement
+               se fait d'un coup — la barre défile dans tous les cas. */
+            /* Barre de défilement discrète : elle reste accessible à la souris
+               et au pavé tactile, mais n'alourdit pas la barre d'onglets. */
+            scrollbar-width: thin;
+            scrollbar-color: #c7d3e2 transparent;
+            -webkit-overflow-scrolling: touch;
+        }
+        .onglets-defilants .nav-tabs::-webkit-scrollbar { height: 4px; }
+        .onglets-defilants .nav-tabs::-webkit-scrollbar-track { background: transparent; }
+        .onglets-defilants .nav-tabs::-webkit-scrollbar-thumb { background: #c7d3e2; border-radius: 4px; }
+
+        /* Respecte le réglage système « animations réduites ». */
+        @media (prefers-reduced-motion: no-preference) {
+            .onglets-defilants .nav-tabs { scroll-behavior: smooth; }
+        }
+
+        .onglets-defilants .nav-item { flex: 0 0 auto; }
+
+        .onglets-defilants .nav-tabs .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+            border: 0;
+            border-bottom: 3px solid transparent;
+            border-radius: 8px 8px 0 0;
+            padding: 12px 18px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #64748b;
+            background: transparent;
+            transition: color .18s ease, background-color .18s ease, border-color .18s ease;
+        }
+        .onglets-defilants .nav-tabs .nav-link .material-icons { font-size: 19px; }
+
+        .onglets-defilants .nav-tabs .nav-link:hover {
+            color: #1c57a3;
+            background: #f2f6fb;
+        }
+        .onglets-defilants .nav-tabs .nav-link.active {
+            color: #1c57a3;
+            background: transparent;
+            border-bottom-color: #1c57a3;
+        }
+        .onglets-defilants .nav-tabs .nav-link:focus-visible {
+            outline: 2px solid #1c57a3;
+            outline-offset: -2px;
+        }
+
+        /* Flèches de défilement, masquées quand il n'y a rien de plus de ce côté. */
+        .onglets-defilants__fleche {
+            flex: 0 0 auto;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #dbe3ec;
+            border-radius: 50%;
+            background: #fff;
+            color: #1c57a3;
+            cursor: pointer;
+            z-index: 2;
+            transition: background-color .15s ease, box-shadow .15s ease;
+        }
+        .onglets-defilants__fleche:hover:not(:disabled) { background: #eef4fb; box-shadow: 0 2px 6px rgba(16,42,72,.12); }
+        .onglets-defilants__fleche:disabled { opacity: .35; cursor: default; }
+        .onglets-defilants__fleche[hidden] { display: none; }
+        .onglets-defilants__fleche--gauche { margin-right: 6px; }
+        .onglets-defilants__fleche--droite { margin-left: 6px; }
+
+        /* Fondu aux extrémités : indique qu'il reste des onglets hors champ.
+           pointer-events:none pour ne pas voler le clic à l'onglet du dessous. */
+        .onglets-defilants::before,
+        .onglets-defilants::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 2px;
+            width: 28px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity .18s ease;
+            z-index: 1;
+        }
+        .onglets-defilants::before {
+            left: 38px;
+            background: linear-gradient(90deg, #fff 30%, rgba(255,255,255,0));
+        }
+        .onglets-defilants::after {
+            right: 38px;
+            background: linear-gradient(270deg, #fff 30%, rgba(255,255,255,0));
+        }
+        .onglets-defilants.a-gauche::before { opacity: 1; }
+        .onglets-defilants.a-droite::after  { opacity: 1; }
+
+        @media (max-width: 575px) {
+            .onglets-defilants .nav-tabs .nav-link { padding: 10px 13px; font-size: 13px; }
+            .onglets-defilants__fleche { width: 28px; height: 28px; }
+            .onglets-defilants::before { left: 34px; }
+            .onglets-defilants::after  { right: 34px; }
+        }
+    </style>
 @endsection
 
 @section('jsParts')
@@ -647,6 +789,79 @@
     <script src="{{ asset('backend/assets/js/vendors/select2.min.js') }}"></script>
     <script type="text/javascript">
         $(document).ready(function() {
+
+            // ===== Barre d'onglets défilante =====
+            (function () {
+                var zone  = document.getElementById('ongletsParametre');
+                if (!zone) return;
+                var piste = zone.querySelector('.nav-tabs');
+                var gauche = zone.querySelector('.onglets-defilants__fleche--gauche');
+                var droite = zone.querySelector('.onglets-defilants__fleche--droite');
+
+                // Les deux flèches apparaissent ensemble dès que la barre déborde,
+                // et celle qui ne mène nulle part est simplement désactivée : les
+                // faire disparaître une à une décalerait la barre à chaque bout de
+                // course. Le fondu, lui, ne s'affiche que du côté encore masqué.
+                // La marge de 2px absorbe les arrondis de sous-pixel, qui
+                // laissaient sinon une flèche active sans rien à atteindre.
+                function actualiser() {
+                    var debordement = piste.scrollWidth - piste.clientWidth;
+                    var deborde    = debordement > 2;
+                    var aGauche    = deborde && piste.scrollLeft > 2;
+                    var aDroite    = deborde && piste.scrollLeft < debordement - 2;
+
+                    zone.classList.toggle('a-gauche', aGauche);
+                    zone.classList.toggle('a-droite', aDroite);
+
+                    gauche.hidden = droite.hidden = !deborde;
+                    gauche.disabled = !aGauche;
+                    droite.disabled = !aDroite;
+                }
+
+                // Déplacement DIRECT de scrollLeft, sans animation en JavaScript.
+                // L'adoucissement est confié au CSS (scroll-behavior), qui s'en
+                // charge quand le navigateur sait le faire et ne coûte rien sinon.
+                //
+                // Ni « behavior: 'smooth' » ni une boucle requestAnimationFrame :
+                // les deux dépendent du rendu des images. Dans un onglet qui ne
+                // compose pas — arrière-plan, économie d'énergie — les flèches
+                // restaient alors sans aucun effet, ce que la vérification a montré.
+                function allerA(cible) {
+                    var max = piste.scrollWidth - piste.clientWidth;
+                    piste.scrollLeft = Math.max(0, Math.min(cible, max));
+                    actualiser();
+                }
+
+                function defiler(sens) {
+                    allerA(piste.scrollLeft + sens * Math.max(160, piste.clientWidth * 0.6));
+                }
+
+                // Centre un onglet dans la piste. Position calculée à partir des
+                // rectangles plutôt qu'avec scrollIntoView : celui-ci fait aussi
+                // défiler les ancêtres, donc la page entière verticalement.
+                // offsetLeft est écarté pour la même raison de fiabilité : il se
+                // mesure depuis le premier ancêtre positionné, qui n'est pas
+                // forcément la piste.
+                function centrer(onglet) {
+                    if (!onglet) return;
+                    var ro = onglet.getBoundingClientRect();
+                    var rp = piste.getBoundingClientRect();
+                    allerA(piste.scrollLeft + (ro.left - rp.left) - (piste.clientWidth - ro.width) / 2);
+                }
+
+                gauche.addEventListener('click', function () { defiler(-1); });
+                droite.addEventListener('click', function () { defiler(1); });
+                piste.addEventListener('scroll', actualiser, { passive: true });
+                window.addEventListener('resize', actualiser);
+
+                $(piste).on('click', '.nav-link', function () { centrer(this); });
+
+                // L'onglet actif est amené dans le champ de vision : après un
+                // enregistrement, la page revient sur un onglet qui pouvait se
+                // trouver hors écran, donnant l'impression d'avoir tout perdu.
+                actualiser();
+                setTimeout(function () { centrer(piste.querySelector('.nav-link.active')); }, 60);
+            })();
 
             // ===== Onglet à ouvrir au chargement (depuis URL hash ou query) =====
             var hash = window.location.hash;
