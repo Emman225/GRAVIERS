@@ -8,6 +8,7 @@ use App\Mail\MailAccesUsers;
 use App\Models\Admin;
 use App\Models\Apporteur;
 use App\Models\Banniere;
+use App\Models\Slide;
 use App\Models\blog_commentaire;
 use App\Models\blog;
 use App\Models\Categorie;
@@ -366,13 +367,19 @@ class UserController extends Controller
 
     public function selectionneVehicule($id,$detail){
         $car = Vehicule::find($id);
+        // Véhicule inexistant (identifiant modifié dans l'URL) ou véhicule non rattaché
+        // à un livreur : les lectures ci-dessous tombaient en erreur 500 au moment de
+        // sélectionner un véhicule pour une livraison.
+        if ($car == null) {
+            return response()->json(['erreur' => "Véhicule introuvable"], 404);
+        }
         $data = [
             'idCar' => $car->id,
             'marque' => $car->marque,
             'capacite' => $car->capacite,
             'livreur' => [
-                'id' => $car->livreur->id,
-                'numero' => $car->livreur->user->contact
+                'id' => $car->livreur?->id,
+                'numero' => $car->livreur?->user?->contact
             ],
             'vehicule_id' => $car->id,
             'immatriculation' => $car->immatriculation,
@@ -387,8 +394,11 @@ class UserController extends Controller
      * jamais une location payée (statut 3) ni déjà validée (EN COURS / TERMINE).
      */
     public function supprimerLocation(\App\Models\Location $location){
-        if ($location->statut == 3) {
-            return back()->with('error', 'Cette location est payée (soldée) : suppression impossible.');
+        // Suppression réservée aux locations SANS AUCUN paiement (statut 1) :
+        // dès qu'un acompte est encaissé (statut 2) ou que c'est soldé (statut 3),
+        // on ne supprime plus — il y a de l'argent sur cette location.
+        if ($location->statut != 1) {
+            return back()->with('error', 'Un paiement a déjà été enregistré sur cette location : suppression impossible.');
         }
         if ($location->etatLibelle() !== Help::$LOCATION_EN_ATTENTE) {
             return back()->with('error', 'Seules les locations EN ATTENTE non payées peuvent être supprimées.');
@@ -420,6 +430,12 @@ class UserController extends Controller
         if ($location->etatLibelle() !== Help::$LOCATION_EN_ATTENTE) {
             return redirect()->route('show.listeLocationEnAttente')
                 ->with('info', 'Cette location est déjà traitée (état : ' . $location->etatLibelle() . ').');
+        }
+        // Paiement soldé exigé avant validation (même règle que les commandes),
+        // sauf client à terme qui paie à crédit.
+        if ($location->statut != 3 && $location->client->client_a_terme != 1) {
+            return redirect()->route('show.listeLocationEnAttente')
+                ->with('error', 'Le paiement de cette location doit être soldé avant de pouvoir la valider.');
         }
         $location->load('detailLocation.produit', 'client');
         // Caution suggérée = somme (caution unitaire du produit × quantité) des lignes.
@@ -461,6 +477,12 @@ class UserController extends Controller
         if ($location->etatLibelle() !== Help::$LOCATION_EN_ATTENTE) {
             return redirect()->route('show.listeLocationEnAttente')
                 ->with('info', 'Cette location est déjà traitée.');
+        }
+        // Paiement soldé exigé avant validation (même règle que les commandes),
+        // sauf client à terme qui paie à crédit.
+        if ($location->statut != 3 && $location->client->client_a_terme != 1) {
+            return redirect()->route('show.listeLocationEnAttente')
+                ->with('error', 'Le paiement de cette location doit être soldé avant de pouvoir la valider.');
         }
 
         $conf    = Configuration::first();
@@ -942,12 +964,21 @@ class UserController extends Controller
     {
         $user = Auth::user();
 
+        // Bornes alignées sur ce que la base accepte réellement.
+        //
+        // « contact » autorisait 30 caractères pour une colonne qui n'en tenait
+        // que 15 : un numéro avec indicatif et espaces — « +225 07 12 34 56 78 »,
+        // 19 caractères — passait toutes les vérifications avant d'être refusé
+        // par la base, en pleine écriture. Résultat : page blanche et erreur 500,
+        // sans le moindre message. La colonne est passée à 20 par migration.
         $request->validate([
             'nom_prenoms' => 'required|string|max:150',
             'email'       => 'required|email|max:150',
-            'contact'     => 'nullable|string|max:30',
+            'contact'     => 'nullable|string|max:20',
             'adresse'     => 'nullable|string|max:200',
             'photo'       => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+        ], [
+            'contact.max' => 'Le numéro de téléphone ne doit pas dépasser 20 caractères.',
         ]);
 
         // Unicité email
@@ -988,7 +1019,12 @@ class UserController extends Controller
         // Champs simples
         $user->nom_prenoms = $request->nom_prenoms;
         $user->email       = $request->email;
-        $user->contact     = $request->contact;
+        // Numéro normalisé — espaces retirés — comme le font déjà les
+        // formulaires d'inscription. « 07 12 34 56 78 », que l'exemple du champ
+        // invite pourtant à saisir, occupe 14 caractères pour 10 chiffres.
+        // La colonne n'accepte pas de valeur nulle : on y met une chaîne vide
+        // si le champ est laissé libre, jamais null.
+        $user->contact     = preg_replace('/\s+/', '', (string) $request->contact);
         $user->adresse     = $request->adresse;
 
         // Mot de passe (optionnel)
@@ -1186,9 +1222,59 @@ class UserController extends Controller
     public function listeGestionnaire(){
 
         return view('admin.listeGestionnaire',[
-            'gestionnaires' => User::where('type_user_id', 3)->whereNull('deleted_at')->orderByDesc('created_at')->get()
+            'gestionnaires' => User::with('agence')->where('type_user_id', 3)->whereNull('deleted_at')->orderByDesc('created_at')->get(),
+            'agences'       => \App\Models\Agence::where('statut', \Help::$STATUT_ACTIF)->orderBy('nom')->get(),
         ]);
 
+    }
+
+    /**
+     * Affecte — ou réaffecte — un utilisateur à une agence.
+     *
+     * L'agence d'un encaissement était choisie dans une liste au moment de la
+     * saisie : un caissier pouvait imputer sa recette à un autre guichet que le
+     * sien. Elle est désormais une propriété de la personne, décidée ici par
+     * l'administrateur, et reprise automatiquement à chaque opération.
+     *
+     * Réservé aux profils qui encaissent — gestionnaires, agents,
+     * administrateurs. Rattacher un client ou un livreur à un guichet n'aurait
+     * aucun sens et ouvrirait une porte inutile.
+     */
+    public function affecterAgence(Request $request, $userId)
+    {
+        $utilisateur = User::whereNull('deleted_at')->find($userId);
+
+        if (!$utilisateur) {
+            return back()->with('error', "Utilisateur introuvable.");
+        }
+
+        $profilsAutorises = [
+            \Help::$USER_SA, \Help::$USER_ADMIN,
+            \Help::$USER_GESTIONNAIRE, \Help::$USER_AGENT_SAV,
+        ];
+
+        if (!in_array((int) $utilisateur->type_user_id, $profilsAutorises, true)) {
+            return back()->with('error', "Seuls les gestionnaires, agents et administrateurs sont rattachés à une agence.");
+        }
+
+        $donnees = $request->validate([
+            // Vide = retirer le rattachement, ce qui interdit à nouveau
+            // l'encaissement à cette personne.
+            'agence_id' => 'nullable|integer|exists:agence,id',
+        ], [
+            'agence_id.exists' => "Cette agence n'existe pas.",
+        ]);
+
+        $utilisateur->agence_id = $donnees['agence_id'] ?: null;
+        $utilisateur->save();
+
+        $nomAgence = $utilisateur->agence_id
+            ? (\App\Models\Agence::find($utilisateur->agence_id)?->nom ?? '')
+            : null;
+
+        return back()->with('success', $nomAgence
+            ? "{$utilisateur->nom_prenoms} est rattaché à l'agence {$nomAgence}."
+            : "{$utilisateur->nom_prenoms} n'est plus rattaché à aucune agence : il ne peut plus encaisser.");
     }
 
     /**
@@ -1196,10 +1282,15 @@ class UserController extends Controller
      */
     public function listeAdmin(){
         return view('admin.listeAdmin', [
-            'admins' => User::where('type_user_id', Help::$USER_ADMIN)
+            'admins' => User::with('agence')
+                ->where('type_user_id', Help::$USER_ADMIN)
                 ->whereNull('deleted_at')
                 ->orderByDesc('created_at')
                 ->get(),
+            // Les administrateurs se rattachent à une agence comme les autres :
+            // sans cela, aucun d'eux ne pourrait encaisser, et la toute
+            // première affectation serait impossible à faire.
+            'agences' => \App\Models\Agence::where('statut', \Help::$STATUT_ACTIF)->orderBy('nom')->get(),
         ]);
     }
 
@@ -1275,7 +1366,8 @@ class UserController extends Controller
 
     public function listeAgent(){
         return view('gestionnaire.listeAgent',[
-            'agents' => User::where('type_user_id', 7)->whereNull('deleted_at')->orderByDesc('created_at')->get()
+            'agents'  => User::with('agence')->where('type_user_id', 7)->whereNull('deleted_at')->orderByDesc('created_at')->get(),
+            'agences' => \App\Models\Agence::where('statut', \Help::$STATUT_ACTIF)->orderBy('nom')->get(),
         ]);
     }
 
@@ -1515,7 +1607,9 @@ class UserController extends Controller
         $montantTotal = 0;
         foreach($enlevementTraite as $enlevement){
 
-            $montantTotal += $enlevement->qte_servi * $enlevement->livraison->detailCommande->prix;
+            // Un seul enlèvement sans livraison (ou sans ligne de commande) faisait
+            // tomber toute la page « Enlèvements par fournisseur » en erreur 500.
+            $montantTotal += $enlevement->qte_servi * ($enlevement->livraison?->detailCommande?->prix ?? 0);
         }
 
         // dd($montantTotal);
@@ -2059,7 +2153,12 @@ class UserController extends Controller
 
         $anciennete = $client->created_at ? \Carbon\Carbon::parse($client->created_at)->diffInDays(now()) : 0;
         $nbCommandes = \DB::table('commande')->where('client_id', $client->id)->whereNull('deleted_at')->count();
-        $montantTotal = (float) \DB::table('commande')->where('client_id', $client->id)->whereNull('deleted_at')->sum('montant_total');
+        // Total NET commandé, recalculé depuis les lignes : commande.montant_total
+        // contient le HT côté site et le NET côté mobile, le taux de paiement affiché
+        // dépassait donc 100 % pour un client ayant commandé depuis l'application.
+        $montantTotal = (float) \App\Models\Commande::where('client_id', $client->id)
+            ->get()
+            ->sum(fn ($commande) => $commande->montantAPayer());
         $nbPaiementsValides = \DB::table('paiement')->where('client_id', $client->id)->where('statut', 1)->whereNull('deleted_at')->count();
         $montantPaye = (float) \DB::table('paiement')->where('client_id', $client->id)->where('statut', 1)->whereNull('deleted_at')->sum('montant_total');
         $tauxPaiement = $montantTotal > 0 ? round(($montantPaye / $montantTotal) * 100, 1) : 0;
@@ -2363,7 +2462,10 @@ class UserController extends Controller
         return view('compte.account-register', [
             'villes' => $villes,
             'pays' => $pays,
-            'typeUsers' => $typeUsers
+            'typeUsers' => $typeUsers,
+            // Agences proposées dès la création : sans rattachement, le
+            // gestionnaire ne pourra encaisser nulle part.
+            'agences' => \App\Models\Agence::where('statut', \Help::$STATUT_ACTIF)->orderBy('nom')->get(),
         ]);
 
     }
@@ -2378,6 +2480,9 @@ class UserController extends Controller
             'email'       => 'required|email|max:255',
             'contact'     => 'required|string|max:15',
             'adresse'     => 'required|string|max:255',
+            // Facultative : elle peut être décidée plus tard depuis la liste
+            // des gestionnaires. Tant qu'elle manque, il ne peut pas encaisser.
+            'agence_id'   => 'nullable|integer|exists:agence,id',
         ], [
             'nom_prenoms.required' => 'Le nom et prénoms est obligatoire.',
             'email.required'       => 'L\'adresse email est obligatoire.',
@@ -2445,6 +2550,9 @@ class UserController extends Controller
             'photo' => $nomImage,
             'adresse' => $request->adresse,
             'type_user_id' => $typeUserId,
+            // Agence de rattachement : elle décide du guichet auquel ses
+            // encaissements seront imputés. Vide = il ne peut pas encaisser.
+            'agence_id' => $request->agence_id ?: null,
             'statut' => true,
         ]);
         // $user->assignRole('gestionnaire');
@@ -2464,7 +2572,11 @@ class UserController extends Controller
 
     public function AgentRegister(){
 
-        return view('compte.agentRegister');
+        // Agences proposées dès la création : sans rattachement, l'agent ne
+        // pourra encaisser nulle part et il faudra revenir le lui affecter.
+        return view('compte.agentRegister', [
+            'agences' => \App\Models\Agence::where('statut', \Help::$STATUT_ACTIF)->orderBy('nom')->get(),
+        ]);
 
     }
 
@@ -2474,6 +2586,9 @@ class UserController extends Controller
             'email'       => 'required|email|unique:users,email',
             'contact'     => 'required',
             'login'       => 'required|string|max:150|unique:users,login',
+            // Facultative : elle peut être décidée plus tard depuis la liste
+            // des agents. Tant qu'elle manque, l'agent ne peut pas encaisser.
+            'agence_id'   => 'nullable|integer|exists:agence,id',
             // 'password' retiré : généré automatiquement et envoyé par email.
         ], [
             'nom_prenoms.required' => 'Le nom et prénoms est obligatoire.',
@@ -2518,6 +2633,10 @@ class UserController extends Controller
             'photo' => $photo_path,
             'adresse' => $request->adresse,
             'type_user_id' => $typeUserId,
+            // Agence de rattachement : c'est elle qui décide du guichet auquel
+            // ses encaissements seront imputés. Vide = il ne peut pas encaisser
+            // tant qu'un administrateur ne l'a pas affecté.
+            'agence_id' => $request->agence_id ?: null,
             'statut' => true,
         ]);
 
@@ -2564,236 +2683,572 @@ class UserController extends Controller
 
     }
 
-    // LES BLOGS
+    // ------------------------------------------------------------------
+    // LES BLOGS — création, liste, modification, publication,
+    // mise à la corbeille, restauration et suppression définitive.
+    //
+    // Avant : aucune validation (un blog sans titre ni image partait en base),
+    // la création plantait si une seule des deux images manquait, la seconde
+    // image écrasait la première à la modification (les deux écrivaient dans
+    // la colonne `image`), et la liste ne montrait pas les blogs supprimés —
+    // ils n'étaient donc ni restaurables ni définitivement effaçables.
+    // ------------------------------------------------------------------
+
+    private function reglesBlog(bool $imagesObligatoires): array
+    {
+        $regleImage = ($imagesObligatoires ? 'required|' : 'nullable|') . 'image|mimes:jpg,jpeg,png,webp|max:2048';
+
+        return [
+            'titre'        => 'required|string|max:190',
+            'description'  => 'required|string',
+            'image'        => $regleImage,
+            'image_detail' => str_replace('required|', 'nullable|', $regleImage),
+        ];
+    }
+
+    private function messagesBlog(): array
+    {
+        return [
+            'titre.required'       => 'Le titre est obligatoire.',
+            'description.required' => 'La description est obligatoire.',
+            'image.required'       => 'Une image de couverture est obligatoire.',
+            'image.max'            => "L'image ne doit pas dépasser 2 Mo.",
+            'image.mimes'          => 'Formats acceptés : jpg, jpeg, png, webp.',
+            'image_detail.max'     => "L'image de détail ne doit pas dépasser 2 Mo.",
+            'image_detail.mimes'   => 'Formats acceptés : jpg, jpeg, png, webp.',
+        ];
+    }
+
     public function creationDeBlog(){
-        // dd('ok');
         return view('gestionnaire.blog',['blog' => new blog]);
     }
 
-    public function creationDeBlogTraitement(Request $request, imageRequest $image){
-        // $img = $image->validated('image');
-        $img = $image->validated('image');
-        $imagePath = $img->store('imageBlog','public');
+    public function creationDeBlogTraitement(Request $request){
 
-        $img_detail = $image->validated('image_detail');
-        $img_detail_path = $img_detail->store('imageBlog','public');
+        $donnees = $request->validate($this->reglesBlog(true), $this->messagesBlog());
 
-
-        $blog = blog::create([
-            'image' => $imagePath,
-            'titre' => $request->titre,
-            'description' => $request->description,
-            'user_publie_id' => Auth::user()->id,
-            'image_detail' => $img_detail_path
+        blog::create([
+            'image'          => $request->file('image')->store('imageBlog','public'),
+            // L'image de détail est facultative : l'ancienne version plantait
+            // lorsqu'elle n'était pas fournie.
+            'image_detail'   => $request->hasFile('image_detail')
+                ? $request->file('image_detail')->store('imageBlog','public')
+                : null,
+            'titre'          => $donnees['titre'],
+            'description'    => $donnees['description'],
+            'user_publie_id' => Auth::id(),
+            'publie'         => 1,
         ]);
 
-        return redirect()->route('show.creationDeBlog')->with('ok','Bien enregistré');
-
+        return redirect()->route('show.listeDesBlogs')->with('success','Blog créé avec succès');
     }
 
     public function listeDesBlogs(){
 
+        // withTrashed : sans cela un blog mis à la corbeille disparaît de la liste
+        // et ne peut plus être ni restauré ni supprimé définitivement.
+        // withCount : le nombre de commentaires et surtout ceux en attente sont
+        // affichés dans la liste, pour repérer d'un coup d'œil ce qui doit être
+        // modéré — sans une requête par ligne.
         return view('gestionnaire.listBlog',[
-            'blogs' => blog::all()
+            'blogs' => blog::withTrashed()
+                ->withCount([
+                    'commentaires as nb_commentaires',
+                    'commentaires as nb_commentaires_attente' => fn($q) => $q->where('statut', blog_commentaire::EN_ATTENTE),
+                ])
+                ->orderByDesc('created_at')->get()
         ]);
     }
 
-    public function supprimerPublierBlog($id){
-        $blog = blog::find($id);
+    public function supprimerPublierBlog($id, $action = 'publier'){
 
-        if($blog->publie == 1 ){
-            $blog->update([
-                'publie' => 0
-            ]);
-            $action = "retiré";
-        } else{
-            $blog->update([
-                'publie' => 1
-            ]);
-            $action = "republié";
+        $blog = blog::withTrashed()->find($id);
+
+        if (!$blog) {
+            return redirect()->route('show.listeDesBlogs')->with('error','Blog introuvable');
         }
 
-        return redirect()->route('show.listeDesBlogs')->with('success',"Blog $action avec success");
+        if ($action === 'supprimer') {
+            if ($blog->trashed()) {
+                $blog->restore();
+                $libelle = 'restauré';
+            } else {
+                $blog->delete();
+                $libelle = 'mis à la corbeille';
+            }
+        } else {
+            $blog->update(['publie' => $blog->publie == 1 ? 0 : 1]);
+            $libelle = $blog->publie == 1 ? 'republié' : 'retiré de l\'affichage';
+        }
+
+        return redirect()->route('show.listeDesBlogs')->with('success',"Blog $libelle avec succès");
+    }
+
+    /**
+     * Suppression DÉFINITIVE : la ligne, ses images et ses commentaires
+     * disparaissent. Réservée aux blogs déjà mis à la corbeille.
+     */
+    public function suppressionDefinitiveBlog($id){
+
+        $blog = blog::withTrashed()->find($id);
+
+        if (!$blog) {
+            return redirect()->route('show.listeDesBlogs')->with('error','Blog introuvable');
+        }
+
+        if (!$blog->trashed()) {
+            return redirect()->route('show.listeDesBlogs')
+                ->with('error','Mettez d\'abord ce blog à la corbeille avant de le supprimer définitivement.');
+        }
+
+        foreach ([$blog->image, $blog->image_detail] as $fichier) {
+            if ($fichier) {
+                Storage::disk('public')->delete($fichier);
+            }
+        }
+
+        // Les commentaires pointent sur le blog par une clé étrangère : les laisser
+        // ferait échouer la suppression.
+        // forceDelete + withTrashed : depuis que blog_commentaire applique
+        // SoftDeletes, un simple delete() ne ferait que marquer les lignes, qui
+        // resteraient en base et bloqueraient la contrainte de clé étrangère.
+        \App\Models\blog_commentaire::withTrashed()->where('blog_id', $blog->id)->forceDelete();
+        $blog->forceDelete();
+
+        return redirect()->route('show.listeDesBlogs')->with('success','Blog supprimé définitivement');
     }
 
     public function modificationDeBlogPage($id){
-        $blog = blog::find($id);
-         return view('gestionnaire.blogUpdate',[
-            'blog' => $blog
-         ]);
+        $blog = blog::withTrashed()->find($id);
+
+        if (!$blog) {
+            return redirect()->route('show.listeDesBlogs')->with('error','Blog introuvable');
+        }
+
+        return view('gestionnaire.blogUpdate',['blog' => $blog]);
     }
 
-    public function modificationDeBlog(Request $request , imageRequest $image, $id){
+    public function modificationDeBlog(Request $request, $id){
 
-        $blog = blog::find($id);
-        // dd(
-        // $request->titre,
-        //     $request->description,
-        //     $image->image,
-        //     $image->image_detail,
-        //     $id
-        // );
+        $blog = blog::withTrashed()->find($id);
+
+        if (!$blog) {
+            return redirect()->route('show.listeDesBlogs')->with('error','Blog introuvable');
+        }
+
+        $donnees = $request->validate($this->reglesBlog(false), $this->messagesBlog());
+
         $blog->update([
-            'titre' => $request->titre,
-            'description' => $request->description
+            'titre'       => $donnees['titre'],
+            'description' => $donnees['description'],
         ]);
 
-        if($request->hasFile('image')){
-            Storage::disk('public')->delete($blog->image);
-            $image = $image->validated('image');
-            $imagePath = $image->store('imageBlog','public');
-
-            $blog->update([
-                'image' => $imagePath
-            ]);
-            // dd('ok');
+        // Chaque image va dans SA colonne : l'ancienne version enregistrait
+        // l'image de détail dans la colonne `image`, écrasant la couverture.
+        foreach (['image' => 'image', 'image_detail' => 'image_detail'] as $champ => $colonne) {
+            if ($request->hasFile($champ)) {
+                $ancienne = $blog->{$colonne};
+                $blog->update([
+                    $colonne => $request->file($champ)->store('imageBlog','public')
+                ]);
+                // L'ancienne image n'est effacée qu'APRÈS l'enregistrement de la nouvelle.
+                if ($ancienne) {
+                    Storage::disk('public')->delete($ancienne);
+                }
+            }
         }
 
-        if($request->hasFile('image_detail')){
-            Storage::disk('public')->delete($blog->image_detail);
-            $image_detail = $image->validated('image_detail');
-            $image->store('imageBlog','public');
-            $image_detail_Path = $image->store('imageBlog','public');
+        return redirect()->route('show.listeDesBlogs')->with('success','Blog modifié avec succès');
+    }
+    // ------------------------------------------------------------------
+    // LES BANNIÈRES — création, liste, modification, publication,
+    // mise à la corbeille, restauration et suppression définitive.
+    //
+    // Avant : la création plantait si aucune image n'était jointe (variable
+    // $nomImage non définie), la modification n'enregistrait jamais la date de
+    // décompte, les images étaient rangées à deux endroits différents selon
+    // qu'on créait ou qu'on modifiait, et une bannière supprimée n'apparaissait
+    // plus dans la liste — le bouton « restaurer » était donc inatteignable.
+    // ------------------------------------------------------------------
 
-            $blog->update([
-                'image' => $image_detail_Path
-            ]);
-        }
-
-        return redirect()->route('show.modificationDeBlogPage',$id)->with('success','Modification effectuée');
+    /** Règles communes à la création et à la modification. */
+    private function reglesBanniere(bool $imageObligatoire): array
+    {
+        return [
+            'titre'          => 'required|string|max:150',
+            'sous_titre'     => 'nullable|string|max:255',
+            'num_ordre'      => 'required|integer|min:0|max:999',
+            'type_banniere'  => 'required|in:TOP,FLASH,BOTTOM',
+            'heure_decompte' => 'nullable|date',
+            'image'          => ($imageObligatoire ? 'required|' : 'nullable|') . 'image|mimes:jpg,jpeg,png,webp|max:2048',
+        ];
     }
 
-    // LES BANNIERE
+    private function messagesBanniere(): array
+    {
+        return [
+            'titre.required'         => 'Le titre est obligatoire.',
+            'num_ordre.required'     => "Le numéro d'ordre est obligatoire.",
+            'type_banniere.required' => 'Choisissez le type de bannière.',
+            'type_banniere.in'       => 'Le type de bannière doit être Top, Flash ou Bottom.',
+            'image.required'         => 'Une image est obligatoire pour créer une bannière.',
+            'image.max'              => "L'image ne doit pas dépasser 2 Mo.",
+            'image.mimes'            => 'Formats acceptés : jpg, jpeg, png, webp.',
+        ];
+    }
+
     public function creationDeBanniere(){
         return view('gestionnaire.banniere',['banniere' => new Banniere]);
     }
 
-    public function creationDeBanniereTraitement(Request $request, imageRequest $image){
+    public function creationDeBanniereTraitement(Request $request){
 
-        // dd($request->heure_decompte);
+        $donnees = $request->validate($this->reglesBanniere(true), $this->messagesBanniere());
 
-        if ($request->hasFile('image')) {
-            $request->validate([
-                'image' => 'required|file|mimes:jpg,jpeg,png,pdf|max:2048', // Exemple de validation
-            ]);
+        // Toutes les images de bannière vont dans storage/app/public/imageBanniere,
+        // servi par le lien symbolique public/storage. L'ancienne création les
+        // déposait ailleurs (productsBanniere) que la modification.
+        $chemin = $request->file('image')->store('imageBanniere', 'public');
 
-            $nomImage = time().'.'.$request->file('image')->getClientOriginalExtension();
-
-            $request->file('image')->move(public_path('storage/productsBanniere'), $nomImage);
-
-            // $imageProduit = ImageProduit::create([
-            //     'image' => 'productsBanniere/'.$nomImage,
-            //     'produit_id' => $produit->id,
-            //     'defaut' => 1
-            // ]);
-        }
-
-
-        $banniere = Banniere::create([
-            'titre' => $request->titre,
-            'sous_titre' => $request->sous_titre,
-            'image' => 'productsBanniere/'.$nomImage,
-            'num_ordre' => $request->num_ordre,
-            'type_banniere' => $request->type_banniere,
-            'date_heure_decompte' => $request->heure_decompte,
-            'statut' => 1,
+        Banniere::create([
+            'titre'               => $donnees['titre'],
+            'sous_titre'          => $donnees['sous_titre'] ?? null,
+            'image'               => $chemin,
+            'num_ordre'           => $donnees['num_ordre'],
+            'type_banniere'       => $donnees['type_banniere'],
+            'date_heure_decompte' => $donnees['heure_decompte'] ?? null,
+            'statut'              => 1,
         ]);
 
-        return redirect()->route('show.creationDeBanniere')->with('success','Bien enregistré');
-
+        return redirect()->route('show.listeDesBannieres')->with('success','Bannière créée avec succès');
     }
 
     public function listeDesBannieres(){
 
+        // withTrashed : les bannières mises à la corbeille doivent rester visibles,
+        // sinon elles ne peuvent plus être ni restaurées ni supprimées définitivement.
         return view('gestionnaire.listBanniere',[
-            'bannieres' => Banniere::where('deleted_at', null)->get()
+            'bannieres' => Banniere::withTrashed()
+                ->orderBy('type_banniere')
+                ->orderBy('num_ordre')
+                ->get()
         ]);
     }
 
     public function supprimerPublierBanniere($id, $action){
 
+        $banniere = Banniere::withTrashed()->find($id);
 
-        $banniere = Banniere::find($id);
-
-        if($action == 'supprimer'){
-
-            if($banniere->deleted_at == null ){
-                $banniere->update([
-                    'deleted_at' => date('Y-m-d H:i:s')
-                ]);
-                $action = "Suppimée";
-            } else{
-                $banniere->update([
-                    'deleted_at' => null
-                ]);
-                $action = "restaurée";
-            }
-
-        }else{
-
-            if($banniere->statut == 1 ){
-                $banniere->update([
-                    'statut' => 0
-                ]);
-                $action = "retirée";
-            } else{
-                $banniere->update([
-                    'statut' => 1
-                ]);
-                $action = "republiée";
-            }
-
-
+        if (!$banniere) {
+            return redirect()->route('show.listeDesBannieres')->with('error','Bannière introuvable');
         }
 
-        return redirect()->route('show.listeDesBannieres')->with('success',"Bannière $action avec succès");
+        if($action == 'supprimer'){
+            if($banniere->trashed()){
+                $banniere->restore();
+                $libelle = 'restaurée';
+            } else {
+                $banniere->delete();
+                $libelle = 'mise à la corbeille';
+            }
+        } else {
+            $banniere->update(['statut' => $banniere->statut == 1 ? 0 : 1]);
+            $libelle = $banniere->statut == 1 ? 'republiée' : 'retirée de l\'affichage';
+        }
+
+        return redirect()->route('show.listeDesBannieres')->with('success',"Bannière $libelle avec succès");
+    }
+
+    /**
+     * Suppression DÉFINITIVE : la ligne et son image disparaissent. Réservée aux
+     * bannières déjà mises à la corbeille, pour éviter une perte en un seul clic.
+     */
+    // ==================================================================
+    // DIAPOSITIVES DU CARROUSEL D'ACCUEIL
+    // Même mécanique que les bannières : liste avec corbeille, création,
+    // modification, retrait de l'affichage, suppression définitive.
+    // ==================================================================
+
+    private function reglesSlide(bool $imageObligatoire): array
+    {
+        return [
+            'titre'            => 'required|string|max:150',
+            'titre_accent'     => 'nullable|string|max:150',
+            'description'      => 'nullable|string|max:1000',
+            'badge_texte'      => 'nullable|string|max:100',
+            'badge_type'       => 'required|in:NEUTRE,NEW,PROMO,HOT',
+            'caracteristiques' => 'nullable|string|max:600',
+            'deco_valeur'      => 'nullable|string|max:40',
+            'deco_libelle'     => 'nullable|string|max:80',
+            'bouton1_texte'    => 'nullable|string|max:60',
+            'bouton1_lien'     => 'nullable|string|max:255',
+            'bouton2_texte'    => 'nullable|string|max:60',
+            'bouton2_lien'     => 'nullable|string|max:255',
+            'num_ordre'        => 'required|integer|min:0|max:999',
+            'image'            => ($imageObligatoire ? 'required|' : 'nullable|') . 'image|mimes:jpg,jpeg,png,webp|max:4096',
+        ];
+    }
+
+    private function messagesSlide(): array
+    {
+        return [
+            'titre.required'      => 'Le titre est obligatoire.',
+            'badge_type.required' => 'Choisissez un type de pastille.',
+            'badge_type.in'       => 'Type de pastille invalide.',
+            'num_ordre.required'  => "L'ordre d'affichage est obligatoire.",
+            'num_ordre.integer'   => "L'ordre d'affichage doit être un nombre entier.",
+            'image.required'      => "L'image de fond est obligatoire.",
+            'image.image'         => 'Le fichier envoyé doit être une image.',
+            'image.mimes'         => 'Formats acceptés : JPG, JPEG, PNG ou WEBP.',
+            'image.max'           => "L'image ne doit pas dépasser 4 Mo.",
+        ];
+    }
+
+    public function listeDesSlides(){
+
+        // withTrashed : sans cela une diapositive mise à la corbeille disparaît
+        // de la liste et ne peut plus être ni restaurée ni supprimée.
+        return view('gestionnaire.listSlide',[
+            'slides' => Slide::withTrashed()->orderBy('num_ordre')->orderBy('id')->get()
+        ]);
+    }
+
+    public function creationDeSlide(){
+
+        return view('gestionnaire.formSlide',[
+            'slide' => new Slide(['badge_type' => 'NEUTRE', 'num_ordre' => (int) Slide::max('num_ordre') + 1]),
+        ]);
+    }
+
+    public function creationDeSlideTraitement(Request $request){
+
+        $donnees = $request->validate($this->reglesSlide(true), $this->messagesSlide());
+
+        $donnees['image']  = $request->file('image')->store('imageSlide', 'public');
+        $donnees['statut'] = 1;
+
+        Slide::create($donnees);
+
+        return redirect()->route('show.listeDesSlides')->with('success','Diapositive créée avec succès');
+    }
+
+    public function modificationDeSlidePage($id){
+
+        $slide = Slide::withTrashed()->find($id);
+
+        if (!$slide) {
+            return redirect()->route('show.listeDesSlides')->with('error','Diapositive introuvable');
+        }
+
+        return view('gestionnaire.formSlide', ['slide' => $slide]);
+    }
+
+    public function modificationDeSlide(Request $request, $id){
+
+        $slide = Slide::withTrashed()->find($id);
+
+        if (!$slide) {
+            return redirect()->route('show.listeDesSlides')->with('error','Diapositive introuvable');
+        }
+
+        $donnees = $request->validate($this->reglesSlide(false), $this->messagesSlide());
+
+        if ($request->hasFile('image')) {
+            // L'ancienne image n'est effacée que si elle avait été téléversée :
+            // les visuels livrés avec le thème (frontend/...) sont partagés et
+            // ne doivent jamais être supprimés.
+            if ($slide->image && !str_starts_with($slide->image, 'frontend/')) {
+                Storage::disk('public')->delete($slide->image);
+            }
+            $donnees['image'] = $request->file('image')->store('imageSlide', 'public');
+        } else {
+            unset($donnees['image']);
+        }
+
+        $slide->update($donnees);
+
+        return redirect()->route('show.listeDesSlides')->with('success','Diapositive modifiée avec succès');
+    }
+
+    public function supprimerPublierSlide($id, $action = 'publier'){
+
+        $slide = Slide::withTrashed()->find($id);
+
+        if (!$slide) {
+            return redirect()->route('show.listeDesSlides')->with('error','Diapositive introuvable');
+        }
+
+        if ($action == 'supprimer') {
+            if ($slide->trashed()) {
+                $slide->restore();
+                $libelle = 'restaurée';
+            } else {
+                $slide->delete();
+                $libelle = 'mise à la corbeille';
+            }
+        } else {
+            $slide->update(['statut' => $slide->statut == 1 ? 0 : 1]);
+            $libelle = $slide->statut == 1 ? 'remise en ligne' : 'retirée du carrousel';
+        }
+
+        return redirect()->route('show.listeDesSlides')->with('success',"Diapositive $libelle avec succès");
+    }
+
+    public function suppressionDefinitiveSlide($id){
+
+        $slide = Slide::withTrashed()->find($id);
+
+        if (!$slide) {
+            return redirect()->route('show.listeDesSlides')->with('error','Diapositive introuvable');
+        }
+
+        if (!$slide->trashed()) {
+            return redirect()->route('show.listeDesSlides')
+                ->with('error','Mettez d\'abord cette diapositive à la corbeille avant de la supprimer définitivement.');
+        }
+
+        // Là encore, on ne touche pas aux visuels du thème.
+        if ($slide->image && !str_starts_with($slide->image, 'frontend/')) {
+            Storage::disk('public')->delete($slide->image);
+        }
+        $slide->forceDelete();
+
+        return redirect()->route('show.listeDesSlides')->with('success','Diapositive supprimée définitivement');
+    }
+
+    public function suppressionDefinitiveBanniere($id){
+
+        $banniere = Banniere::withTrashed()->find($id);
+
+        if (!$banniere) {
+            return redirect()->route('show.listeDesBannieres')->with('error','Bannière introuvable');
+        }
+
+        if (!$banniere->trashed()) {
+            return redirect()->route('show.listeDesBannieres')
+                ->with('error','Mettez d\'abord cette bannière à la corbeille avant de la supprimer définitivement.');
+        }
+
+        if ($banniere->image) {
+            Storage::disk('public')->delete($banniere->image);
+        }
+        $banniere->forceDelete();
+
+        return redirect()->route('show.listeDesBannieres')->with('success','Bannière supprimée définitivement');
     }
 
     public function modificationDeBannierePage($id){
-        $banniere = Banniere::find($id);
-         return view('gestionnaire.banniereUpdate',[
-            'banniere' => $banniere
-         ]);
+        $banniere = Banniere::withTrashed()->find($id);
+
+        if (!$banniere) {
+            return redirect()->route('show.listeDesBannieres')->with('error','Bannière introuvable');
+        }
+
+        return view('gestionnaire.banniereUpdate',['banniere' => $banniere]);
     }
 
-    public function modificationDeBanniere(Request $request , imageRequest $image, $id){
+    public function modificationDeBanniere(Request $request, $id){
 
-        $banniere = Banniere::find($id);
-        // dd(
-        // $request->titre,
-        //     $request->description,
-        //     $image->image,
-        //     $image->image_detail,
-        //     $id
-        // );
+        $banniere = Banniere::withTrashed()->find($id);
+
+        if (!$banniere) {
+            return redirect()->route('show.listeDesBannieres')->with('error','Bannière introuvable');
+        }
+
+        $donnees = $request->validate($this->reglesBanniere(false), $this->messagesBanniere());
+
         $banniere->update([
-            'titre' => $request->titre,
-            'sous_titre' => $request->sous_titre,
-            'type_banniere' => $request->type_banniere,
-            'num_ordre' => $request->num_ordre,
-            // 'date_heure_decompte' => $request->num_ordre,
+            'titre'               => $donnees['titre'],
+            'sous_titre'          => $donnees['sous_titre'] ?? null,
+            'num_ordre'           => $donnees['num_ordre'],
+            'type_banniere'       => $donnees['type_banniere'],
+            // La date de décompte n'était jamais enregistrée à la modification.
+            'date_heure_decompte' => $donnees['heure_decompte'] ?? null,
         ]);
 
         if($request->hasFile('image')){
-            Storage::disk('public')->delete($banniere->image);
-            $image = $image->validated('image');
-            $imagePath = $image->store('imageBanniere','public');
-
+            $ancienne = $banniere->image;
             $banniere->update([
-                'image' => $imagePath
+                'image' => $request->file('image')->store('imageBanniere', 'public')
             ]);
-            // dd('ok');
+            // L'ancienne image n'est effacée qu'APRÈS l'enregistrement de la nouvelle.
+            if ($ancienne) {
+                Storage::disk('public')->delete($ancienne);
+            }
         }
 
-
-
-        return redirect()->route('show.modificationDeBannierePage',$id)->with('success','Modification effectuée');
+        return redirect()->route('show.listeDesBannieres')->with('success','Bannière modifiée avec succès');
     }
-
+    /**
+     * [MÉTHODE MORTE] Aucune route ni aucun lien n'y mène (une bannière ne porte
+     * pas de commentaire) ; elle affichait la vue des commentaires de blog.
+     * Conservée par prudence, elle délègue simplement à la bonne méthode pour ne
+     * pas tomber en erreur si un appel oublié refaisait surface.
+     */
     public function commentaireBannieres($id){
 
+        return $this->commentaireBlogs($id);
+    }
+
+    /**
+     * Commentaires d'un article de blog (back-office).
+     *
+     * La méthode n'existait PAS alors que la route 'show.commentaireBlogs', le lien
+     * de la liste des blogs ET les deux redirections de modération ci-dessous y
+     * renvoyaient : chaque clic aboutissait à une erreur 500
+     * (« Method commentaireBlogs does not exist »). La vue, elle, existait déjà.
+     */
+    public function commentaireBlogs($id){
+
+        // Casse EXACTE de la classe (app/Models/blog.php déclare « class blog ») :
+        // « Blog » passerait en local Windows mais donnerait « Class not found » en
+        // production Linux.
+        // withTrashed : on veut pouvoir consulter les commentaires d'un article mis
+        // à la corbeille avant de le supprimer définitivement.
+        $blog = blog::withTrashed()->find($id);
+
+        if($blog == null){
+            return redirect()->route('show.listeDesBlogs')->with('fail','Cet article de blog est introuvable');
+        }
+
+        // withTrashed sur les commentaires : sinon un commentaire mis à la
+        // corbeille disparaît de l'écran et ne peut plus être restauré.
+        $commentaires = $blog->commentaires()->withTrashed()->with('client')->latest()->get();
+
         return view('gestionnaire.commentaireBlog',[
-            'blog' => blog::find($id),
+            'blog' => $blog,
+            'commentaires' => $commentaires,
+        ]);
+    }
+
+    /**
+     * Modération de tous les commentaires de blog, tous articles confondus.
+     *
+     * Il n'existait qu'un écran par article : pour savoir si un commentaire
+     * attendait une validation, il fallait ouvrir chaque blog un par un. Les
+     * nouveaux commentaires arrivent ici, en attente par défaut.
+     */
+    public function moderationCommentairesBlog(Request $request){
+
+        $statut = $request->query('statut');
+
+        // withTrashed sur le blog : un commentaire peut porter sur un article mis
+        // à la corbeille, et la relation renverrait alors null.
+        $requete = blog_commentaire::with(['client', 'blog' => fn($q) => $q->withTrashed()]);
+
+        if ($statut === 'corbeille') {
+            $requete->onlyTrashed();
+        } elseif (in_array($statut, ['1','2','3'], true)) {
+            $requete->where('statut', (int) $statut);
+        }
+
+        return view('gestionnaire.moderationCommentaireBlog',[
+            'commentaires' => $requete->orderByDesc('created_at')->get(),
+            'statutFiltre' => $statut,
+            'nbEnAttente'  => blog_commentaire::enAttente()->count(),
+            'nbPublies'    => blog_commentaire::publies()->count(),
+            'nbRefuses'    => blog_commentaire::where('statut', blog_commentaire::REFUSE)->count(),
+            'nbCorbeille'  => blog_commentaire::onlyTrashed()->count(),
         ]);
     }
 
@@ -2801,25 +3256,83 @@ class UserController extends Controller
 
         $commentaire = blog_commentaire::find($id);
 
+        // Commentaire déjà supprimé : ->update() sur null renvoyait une erreur 500.
+        if($commentaire == null){
+            return back()->with('fail','Ce commentaire est introuvable');
+        }
+
         $commentaire->update([
-            'statut' => 2
+            'statut' => blog_commentaire::PUBLIE
         ]);
-            toastr()->success('Commentaire publié!');
-            return redirect()->route('show.commentaireBlogs',$commentaire->blog->id);
-        // return redirect()->route('show.commentaireBlogs',$commentaire->blog->id)->with('success','Commentaire publié');
+
+        toastr()->success('Commentaire publié !');
+
+        // back() plutôt qu'une redirection vers l'article : l'action est désormais
+        // lancée depuis deux écrans (article et modération générale), et
+        // $commentaire->blog->id tombait en erreur si l'article était à la corbeille.
+        return back();
     }
 
     public function annulerCommentaireBlog($id){
-        // dd($id);
 
         $commentaire = blog_commentaire::find($id);
 
+        if($commentaire == null){
+            return back()->with('fail','Ce commentaire est introuvable');
+        }
+
         $commentaire->update([
-            'statut' => 3
+            'statut' => blog_commentaire::REFUSE
         ]);
-        toastr()->success('Commentaire supprimé !');
-        return redirect()->route('show.commentaireBlogs',$commentaire->blog->id);
-        // return redirect()->route('show.commentaireBlogs',$commentaire->blog->id)->with('success','Commentaire supprimé');
+
+        toastr()->success('Commentaire refusé : il n\'est plus visible sur le site.');
+
+        return back();
+    }
+
+    /**
+     * Met un commentaire à la corbeille, ou l'en ressort.
+     *
+     * Distinct du refus : un commentaire refusé reste consultable en modération,
+     * un commentaire à la corbeille n'apparaît plus dans les listes courantes.
+     */
+    public function supprimerCommentaireBlog($id){
+
+        $commentaire = blog_commentaire::withTrashed()->find($id);
+
+        if($commentaire == null){
+            return back()->with('fail','Ce commentaire est introuvable');
+        }
+
+        if($commentaire->trashed()){
+            $commentaire->restore();
+            toastr()->success('Commentaire restauré.');
+        } else {
+            $commentaire->delete();
+            toastr()->success('Commentaire mis à la corbeille.');
+        }
+
+        return back();
+    }
+
+    /** Suppression irréversible, réservée aux commentaires déjà à la corbeille. */
+    public function suppressionDefinitiveCommentaireBlog($id){
+
+        $commentaire = blog_commentaire::withTrashed()->find($id);
+
+        if($commentaire == null){
+            return back()->with('fail','Ce commentaire est introuvable');
+        }
+
+        if(!$commentaire->trashed()){
+            return back()->with('fail','Mettez d\'abord ce commentaire à la corbeille.');
+        }
+
+        $commentaire->forceDelete();
+
+        toastr()->success('Commentaire supprimé définitivement.');
+
+        return back();
     }
 
     // Commentaire sur les produits
@@ -2848,16 +3361,58 @@ class UserController extends Controller
     }
 
     public function ticketSAV(){
+        // Relations chargées d'avance : la vue lit le client, la commande, le
+        // produit et le destinataire de CHAQUE ligne. Sans cela, une liste de
+        // cinquante tickets déclenchait deux cents requêtes.
+        // Les plus récents d'abord : la liste sortait dans l'ordre des
+        // identifiants, si bien qu'un ticket du jour se retrouvait en dernier.
         return view('gestionnaire.ticketSAV',[
-            'tickets' => TicketSAV::all()
+            'tickets' => TicketSAV::with([
+                    'client',
+                    'detailCommande.commande',
+                    'detailCommande.produit',
+                    'agent',
+                ])
+                ->orderByDesc('created_at')
+                ->get()
         ]);
     }
 
     public function ticketSAVTraitement(ticketSAV $ticket){
         // Bug : on listait type_user_id=8 (LIVREURS) au lieu de 7 (AGENTS SAV) pour
         // l'assignation d'un ticket SAV. Corrigé.
+        //
+        // La liste ne retenait ensuite QUE les agents SAV. Sans agent enregistré,
+        // elle était vide : le ticket ne pouvait être assigné à personne, et
+        // restait bloqué « en attente » sans que rien n'explique pourquoi.
+        //
+        // Elle comprend désormais aussi les administrateurs et les
+        // gestionnaires. Ce n'est pas un contournement : l'espace de traitement
+        // des tickets leur est DÉJÀ ouvert par le middleware
+        // « auth.type:Admin,Gestionnaire,User_agent ». Un ticket qui leur est
+        // assigné peut donc réellement être traité par eux.
+        $roles = [
+            \Help::$USER_AGENT_SAV   => 'Agents SAV',
+            \Help::$USER_ADMIN       => 'Administrateurs',
+            \Help::$USER_GESTIONNAIRE => 'Gestionnaires',
+        ];
+
+        // Groupés par rôle : la personne qui assigne doit savoir à qui elle
+        // confie le ticket. L'ordre suit celui de $roles — agents SAV d'abord,
+        // puisque c'est leur métier — et non l'ordre des identifiants de type,
+        // qui aurait placé les administrateurs en tête.
+        $ordre = array_flip(array_keys($roles));
+
+        $agents = User::whereIn('type_user_id', array_keys($roles))
+            ->whereNull('deleted_at')
+            ->orderBy('nom_prenoms')
+            ->get()
+            ->groupBy('type_user_id')
+            ->sortBy(fn ($personnes, $typeId) => $ordre[$typeId] ?? 99);
+
         return view('gestionnaire.ticcketTraite',[
-            'agents' => User::where('type_user_id', \Help::$USER_AGENT_SAV)->whereNull('deleted_at')->get(),
+            'agents' => $agents,
+            'roles'  => $roles,
             'ticket' => $ticket
         ]);
     }
@@ -2865,12 +3420,34 @@ class UserController extends Controller
     public function ticketSAVTraitements(Request $request, ticketSAV $ticket){
         // dd($ticket, $request->agent);
 
+        // L'identifiant était repris tel quel : une requête envoyée directement
+        // pouvait confier le ticket à n'importe qui — un client, un livreur —
+        // qui n'aurait jamais eu accès à l'espace de traitement. Le ticket
+        // aurait alors disparu de la liste sans que personne ne puisse le
+        // clore.
+        $request->validate([
+            'agent' => 'required|integer',
+        ], [
+            'agent.required' => 'Veuillez choisir la personne à qui confier ce ticket.',
+        ]);
+
+        $destinataire = User::whereIn('type_user_id', [
+                \Help::$USER_AGENT_SAV, \Help::$USER_ADMIN, \Help::$USER_GESTIONNAIRE,
+            ])
+            ->whereNull('deleted_at')
+            ->find($request->agent);
+
+        if (!$destinataire) {
+            return back()->with('error', "Cette personne ne peut pas traiter un ticket : choisissez un agent SAV, un administrateur ou un gestionnaire.");
+        }
+
         $ticket->update([
-            'user_id' => $request->agent,
+            'user_id' => $destinataire->id,
             'statut' => 2
         ]);
 
-        return redirect()->route('show.ticketSAV')->with('success','Assignation effectuée');
+        return redirect()->route('show.ticketSAV')
+            ->with('success', 'Ticket confié à ' . $destinataire->nom_prenoms . '.');
     }
 
     // ===================== ESPACE AGENT SAV =====================
@@ -2923,6 +3500,35 @@ class UserController extends Controller
 
         return view('admin.listClient',[
             'clients' => Client::where('statut',1)->where('client_a_terme',0)->get(),
+        ]);
+    }
+
+    /**
+     * Inscriptions commencées mais jamais confirmées.
+     *
+     * L'inscription depuis l'application mobile crée le compte ET la fiche client
+     * en statut inactif, puis envoie un code par e-mail ; les deux passent à actif
+     * quand le client saisit ce code. Tant qu'il ne l'a pas fait, sa fiche
+     * n'apparaissait NULLE PART au back-office — les listes ne montrent que les
+     * clients actifs.
+     *
+     * Personne ne pouvait donc savoir qu'un client s'était arrêté en chemin, ni le
+     * relancer. Pire : son adresse restait prise, et une tentative de le
+     * réinscrire se heurtait à « Cet Email est déjà utilisé » sans explication.
+     *
+     * Cet écran les rend visibles, avec leur ancienneté — c'est elle qui distingue
+     * l'inscription d'il y a dix minutes, encore en cours, de celle d'il y a trois
+     * semaines, définitivement abandonnée.
+     */
+    public function listClientEnAttente(){
+
+        $clients = Client::with('user')
+            ->where('statut', Help::$STATUT_INACTIF)
+            ->orderByDesc('created_at')
+            ->get();
+
+        return view('admin.listClientEnAttente', [
+            'clients' => $clients,
         ]);
     }
 
@@ -3244,11 +3850,20 @@ class UserController extends Controller
         // Création d'une DemandePaiement EN ATTENTE de 2e validation.
         // Le solde du tier n'est décrémenté qu'au moment de la 2e validation
         // (cf. valideDemande), conformément au point 16.
+        // L'agence vient de la personne connectée, jamais d'un choix : un
+        // décaissement doit sortir de la caisse où il a réellement été fait.
+        $agenceId = Auth::user()?->agence_id;
+        if (!$agenceId) {
+            return back()->with('error',
+                "Vous n'êtes rattaché à aucune agence : un administrateur doit vous affecter à un guichet avant que vous puissiez régler une dette.");
+        }
+
         DemandePaiement::create([
             'montant' => $montant,
             'numero' => Help::genererNumeroUnique('demande_paiement'),
             'mode_paiement_id' => $request->mode_paiement_id,
             'user_id' => $userId,
+            'agence_id' => $agenceId,
             'user_valide_id' => Auth::id(),  // 1re validation (initiateur)
             'user_valide2_id' => null,       // en attente
             'date_validation' => null,
@@ -3298,7 +3913,11 @@ class UserController extends Controller
         // $roleUser = Role::where('name','gestionnaire')->first();
         // $roleUser->givePermissionTo("gest");
 
-        return view('admin.register');
+        // Agences proposées dès la création : sans rattachement, ce nouvel
+        // administrateur ne pourra effectuer aucun encaissement.
+        return view('admin.register', [
+            'agences' => \App\Models\Agence::where('statut', \Help::$STATUT_ACTIF)->orderBy('nom')->get(),
+        ]);
     }
 
     public function editGestionnaire(User $user){
@@ -3342,7 +3961,10 @@ class UserController extends Controller
         // a été soumis avec un champ vide.
         $payload = [];
         if ($request->filled('nom_prenoms')) $payload['nom_prenoms'] = $request->nom_prenoms;
-        if ($request->filled('contact'))     $payload['contact']     = $request->contact;
+        // Numéro normalisé — espaces retirés — puis borné à la taille de la
+        // colonne : un numéro saisi avec indicatif et espaces la dépassait et
+        // faisait échouer l'enregistrement en base par une erreur 500.
+        if ($request->filled('contact'))     $payload['contact']     = mb_substr(preg_replace('/\s+/', '', (string) $request->contact), 0, 20);
         if ($request->filled('adresse'))     $payload['adresse']     = $request->adresse;
         if (!empty($payload)) {
             $user->update($payload);
@@ -3363,6 +3985,9 @@ class UserController extends Controller
             'contact'  => 'required|string|max:15',
             'email'    => 'required|email|unique:users,email',
             'login'    => 'required|string|max:100|unique:users,login',
+            // Facultative : elle peut être décidée plus tard depuis la liste des
+            // administrateurs. Tant qu'elle manque, il ne peut pas encaisser.
+            'agence_id'=> 'nullable|integer|exists:agence,id',
             // 'password' retiré : généré automatiquement et envoyé par email.
             'photo'    => 'nullable|file|mimes:jpg,jpeg,png|max:2048',
         ], [
@@ -3416,6 +4041,9 @@ class UserController extends Controller
             'password'     => Help::HashPassword($rawPassword),
             'photo'        => $nomImage,
             'type_user_id' => $typeUserId,
+            // Agence de rattachement : elle décide du guichet auquel ses
+            // encaissements seront imputés. Vide = il ne peut pas encaisser.
+            'agence_id'    => $request->agence_id ?: null,
             'statut'       => 1,
         ]);
 
@@ -3596,7 +4224,9 @@ class UserController extends Controller
         $gCode = Help::ChaineAleatoire(5);
         $deja = Enlevement::where('code_enleve',  $gCode)->first();
         if(! is_null($deja)){
-            $this->generateCode();
+            // Le « return » manquait : en cas de collision, la fonction renvoyait null
+            // et l'enlèvement était créé sans code -> bon invalidable par le fournisseur.
+            return $this->generateCode();
         }else{
             return Str::start($gCode, 'ENV');
         }
