@@ -45,6 +45,7 @@ use App\Models\PreuveOperation;
 use App\Models\PreuveOpreation;
 use App\Models\PrixPersonnalise;
 use App\Models\Produit;
+use App\Models\Slide;
 use App\Models\Reduction;
 use App\Models\Region;
 use App\Models\RetourProduit;
@@ -77,6 +78,67 @@ use PDF;
 // require_once 'packages/dompdf/autoload.inc.php';
 class ClientController extends Controller
 {
+
+    /**
+     * Les quatre blocs mis en avant sur l'accueil, cinq produits chacun.
+     *
+     * Ils affichaient tous la même chose : même source, même critère
+     * (meilleur_note >= 90), aucune borne. Chacun repose désormais sur ce que
+     * son titre annonce :
+     *
+     *   - Meilleures ventes   : quantités vendues depuis toujours ;
+     *   - Produits tendance   : quantités vendues sur les 30 derniers jours,
+     *                           ce qui distingue l'élan récent du palmarès
+     *                           historique ;
+     *   - Ajoutés récemment   : date de création de la fiche produit ;
+     *   - Meilleure note      : note attribuée au produit.
+     *
+     * Les commandes ANNULÉES et les lignes désactivées sont exclues : une
+     * commande annulée n'est pas une vente.
+     *
+     * Un bloc incomplet est complété par les produits les mieux notés qu'il ne
+     * contient pas déjà. Sans ce repli, un site sans historique de ventes —
+     * juste après une remise à zéro de la base — afficherait deux colonnes
+     * vides sur sa page d'accueil.
+     */
+    private function blocsMisEnAvant(): array
+    {
+        // Colonnes qualifiées : « statut » et « type_affaire » existent aussi sur
+        // detail_commande et commande, et deviennent ambigus dès la jointure.
+        $catalogue = fn () => Produit::with('image')
+            ->where('produit.type_affaire', 'VENTE')
+            ->where('produit.statut', 1);
+
+        $parVentes = function ($depuis = null) use ($catalogue) {
+            return $catalogue()
+                ->select('produit.*')
+                ->join('detail_commande as dc', 'dc.produit_id', '=', 'produit.id')
+                ->join('commande as c', 'c.id', '=', 'dc.commande_id')
+                ->where('dc.statut', 1)
+                ->where('c.statut', 1)
+                ->where('c.etat_commande', '!=', 'ANNULEE')
+                ->when($depuis, fn ($q) => $q->where('c.date_commande', '>=', $depuis))
+                ->groupBy('produit.id')
+                ->orderByRaw('SUM(dc.qte) DESC')
+                ->limit(5)
+                ->get();
+        };
+
+        $mieuxNotes = $catalogue()->orderByDesc('meilleur_note')->limit(15)->get();
+
+        // Complète un bloc trop court sans jamais y répéter un produit.
+        $completer = function ($bloc) use ($mieuxNotes) {
+            $dejaLa = $bloc->pluck('id')->all();
+            return $bloc->concat($mieuxNotes->whereNotIn('id', $dejaLa))->take(5)->values();
+        };
+
+        return [
+            'blocMeilleuresVentes' => $completer($parVentes()),
+            'blocTendance'         => $completer($parVentes(now()->subDays(30))),
+            'blocRecents'          => $completer($catalogue()->orderByDesc('produit.created_at')->limit(5)->get()),
+            'blocMeilleureNote'    => $completer($mieuxNotes->take(5)),
+        ];
+    }
 
     public function accueil(){
         $client = Auth::user() ? Client::where('user_id', Auth::user()->id)->first() : null;
@@ -127,13 +189,18 @@ class ClientController extends Controller
             }
         }
 
-        return view('client.index',[
+        return view('client.index', array_merge($this->blocsMisEnAvant(), [
             'produits' => $produits,
             'categories' => $categories,
             'client' => $client,
             'prixPerso' => $prixPerso,
             'prixFournisseur' => $prixFournisseur,
-        ]);
+            // C'est CETTE méthode qui sert la racine du site (route client.index) ;
+            // index() rend la même vue mais depuis une autre adresse. Les deux
+            // doivent fournir les diapositives ET les quatre blocs mis en avant,
+            // sans quoi la page tombe sur « Undefined variable ».
+            'slides' => Slide::liste(),
+        ]));
     }
 
     public function gestionVehicule(){
@@ -330,17 +397,11 @@ class ClientController extends Controller
     }
 
     public function etatCommande(){
-        $client = Client::where('user_id',Auth::user()->id)->first();
-
-        $pdf = PDF::loadView('client.etatCommande',['client' => $client])
-                    ->setOptions(['isHTML5ParseEnebled' => true, 'defaultPaperOrientation' => 'portait'] );
-
-        return $pdf->stream();
-
-        return view('client.etatCommande',[
-            'client' => $client,
-        ]);
-
+        // La vue client.etatCommande n'a jamais été créée : PDF::loadView levait
+        // « View not found » (erreur 500) pour quiconque ouvrait /etat-commande.
+        // Aucune page du site ne pointe vers cette route ; on renvoie l'utilisateur
+        // vers son compte plutôt que de le laisser sur un écran cassé.
+        return redirect()->route('client.monCompte');
     }
 
     public function detailDeLocation(Location $location){
@@ -475,18 +536,45 @@ class ClientController extends Controller
             'client' => Auth::user() ? Client::where('user_id',Auth::user()->id)->first() : new Client,
             'categories' => Categorie::all(),
             'unites' => Uniteproduit::all(),
-            'paiements' => ModePaiement::liste(),
+            'paiements' => ModePaiement::listePourClient(),
             'types_livraison' => TypeLivraison::all()
         ]);
     }
 
     public function demandeClientATermePage(){
+
+        $client = Client::where('user_id', Auth::id())->first();
+
+        // Sans fiche client, la vue lisait $client->DemandeCompteClientATerme sur
+        // null : page blanche en erreur 500.
+        if ($client == null) {
+            return redirect()->route('client.monCompte')
+                ->with('error', "Votre fiche client est introuvable. Contactez-nous pour la régulariser.");
+        }
+
+        // La DERNIÈRE demande, explicitement. La relation hasOne du modèle ne
+        // porte aucun tri : après un refus suivi d'une nouvelle demande, elle
+        // pouvait renvoyer l'ancienne. Le traitement de l'envoi, lui, prend déjà
+        // orderByDesc('id') — les deux écrans doivent parler de la même demande.
+        $demande = DemandeCompteClientATerme::where('client_id', $client->id)
+            ->orderByDesc('id')
+            ->first();
+
+        // La clé 'client' était passée DEUX FOIS : la seconde écrasait la
+        // première, qui prévoyait pourtant le cas d'un visiteur.
         return view('client.clientATerme',[
             'villes' => Ville::all(),
             'produits' => Produit::all(),
-            'client' => (Auth::user()) ? Client::where('user_id',Auth::user()->id)->first() : new Client,
             'categories' => Categorie::all(),
-            'client' => client::where('user_id', Auth::user()->id)->first()
+            'client' => $client,
+            'demande' => $demande,
+            // Le compte à terme est réservé aux ENTREPRISES (décision de gestion
+            // du 08/08/2026) : le dossier exigé — RCCM, bilan, pièce du dirigeant
+            // — n'a pas d'équivalent pour un particulier, qui envoyait donc un
+            // dossier vide sans que rien ne l'en empêche.
+            // Un particulier ayant déjà une demande en cours continue de la voir :
+            // on ne lui masque pas une démarche engagée.
+            'reserveEntreprise' => $client->type_client !== 'ENTREPRISE' && $demande === null,
         ]);
     }
 
@@ -509,7 +597,7 @@ class ClientController extends Controller
             ]);
 
             // $destination = base_path('public/storage/productsImage');
-            $destination = storage_path('app/public/temp_pdfs'); // disque 'public' réel (cohérent avec move vers lesBons + lecture)
+            $destination = Storage::disk('public')->path('temp_pdfs'); // racine reelle du disque (cf. config/filesystems.php)
             $nomPdf = 'bon'.'-'.Auth::user()->client->nom.'-'.Auth::user()->client->prenom.'-'. date('YmdHis') .'.pdf'; // extension forcée : jamais l'extension d'origine (anti-upload de .php exécutable)
 
             $request->file('fichier')->move($destination, $nomPdf);
@@ -859,6 +947,20 @@ class ClientController extends Controller
 
         $client = Client::where('user_id',Auth::user()->id)->first();
 
+        // Sans cette fiche, $client->id plus bas serait lu sur null.
+        if ($client == null) {
+            return redirect()->route('client.monCompte')
+                ->with('error', "Votre fiche client est introuvable. Contactez-nous pour la régulariser.");
+        }
+
+        // Compte à terme réservé aux ENTREPRISES. Le contrôle est refait ICI et
+        // pas seulement à l'affichage : masquer un formulaire n'empêche pas
+        // d'envoyer la requête directement à cette adresse.
+        if ($client->type_client !== 'ENTREPRISE') {
+            return redirect()->route('client.demandeClientATermePage')
+                ->with('error', "Le compte à terme est réservé aux clients professionnels. Contactez-nous si votre activité relève de ce statut.");
+        }
+
         $demande = DemandeCompteClientATerme::where('client_id',$client->id)->orderByDesc('id')->first();
 
         if($demande){
@@ -944,6 +1046,15 @@ class ClientController extends Controller
 
     public function motifPage(DetailCommande $detail){
 
+        // Même protection que sur l'ouverture d'un ticket : la page expose le
+        // produit, sa quantité, son prix et le numéro de commande à partir d'un
+        // identifiant pris dans l'URL.
+        $leClient = Client::where('user_id', Auth::user()->id)->first();
+        if (!$leClient || optional($detail->commande)->client_id !== $leClient->id) {
+            return redirect()->route('client.retourProduitPage')
+                ->with('error', "Ce produit ne figure pas dans vos commandes.");
+        }
+
         return view('client.motifRetour',[
 
             'produits' => Produit::all(),
@@ -955,11 +1066,53 @@ class ClientController extends Controller
 
     public function motif(DetailCommande $detail, Request $request){
 
+        // Le motif n'était vérifié que par l'attribut « required » du champ,
+        // c'est-à-dire par le navigateur : une requête envoyée directement
+        // créait une demande de retour au motif VIDE, impossible à instruire.
+        $request->validate([
+            'motif' => 'required|string|min:15|max:1000',
+        ], [
+            'motif.required' => 'Veuillez indiquer le motif de votre retour.',
+            'motif.min'      => 'Décrivez le problème en quelques mots (15 caractères au minimum).',
+            'motif.max'      => 'Le motif ne doit pas dépasser 1000 caractères.',
+        ]);
+
         $client = Client::where('user_id',Auth::user()->id)->first();
+
+        if (!$client) {
+            return redirect()->route('client.monCompte')
+                ->with('error', "Votre fiche client est introuvable. Contactez-nous pour la régulariser.");
+        }
+
+        // La ligne de commande doit appartenir au client connecté. Rien ne le
+        // vérifiait : l'identifiant venant de l'URL, n'importe quel client
+        // connecté pouvait déposer un retour sur la commande d'un autre.
+        if (optional($detail->commande)->client_id !== $client->id) {
+            return redirect()->route('client.retourProduitPage')
+                ->with('error', "Ce produit ne figure pas dans vos commandes.");
+        }
+
+        // Une seule demande VIVANTE par ligne : le formulaire renvoyé, ou un
+        // double clic, en créait autant de copies sans que rien ne l'indique.
+        //
+        // Une demande REFUSÉE (statut 3) ne bloque pas : le client peut en
+        // déposer une nouvelle, avec un élément qu'il n'avait pas donné la
+        // première fois. Un refus n'est pas une fin de non-recevoir définitive.
+        if ($detail->retour && (int) $detail->retour->statut !== 3) {
+            $etat = (int) $detail->retour->statut === 2 ? 'déjà approuvée' : "en cours d'examen";
+            return redirect()->route('client.retourProduitPage')
+                ->with('success', "Une demande de retour existe déjà pour ce produit ; elle est $etat.");
+        }
+
+        // user_id n'était PAS renseigné alors que la colonne l'exige : sur un
+        // serveur en mode SQL strict, l'enregistrement échouait purement et
+        // simplement, et le client recevait une page d'erreur. Le comportement
+        // dépendait donc de la configuration de la base, pas du code.
         $dataRetour = [
             'motif' => $request->motif,
             'client_id' => $client->id,
-            'detail_commande_id' => $detail->id
+            'detail_commande_id' => $detail->id,
+            'user_id' => Auth::user()->id,
         ];
         // dd($dataRetour);
 
@@ -1015,19 +1168,72 @@ class ClientController extends Controller
 
     public function blog(){
 
+        // Pagination réelle : la vue affichait des numéros de page figés (1 à 6)
+        // qui ne menaient nulle part, et chargeait tous les articles d'un coup.
+        // withCount : le nombre de commentaires publiés est affiché sur chaque
+        // vignette, sans requête supplémentaire par article.
+        $blogs = blog::where('publie', 1)
+            ->withCount(['commentairesPublies as nb_commentaires'])
+            ->orderByDesc('created_at')
+            ->paginate(6);
+
+        // 'commande' n'était utilisé que par une variable morte de la vue, mais
+        // Commande::first() renvoie null sur une base sans commande : la page
+        // tombait alors en erreur. La variable a disparu des deux côtés.
         return view('client.blogPage',[
             'produits' => Produit::all(),
             'client' => Auth::user() ? Client::where('user_id',Auth::user()->id)->first() : new Client,
             'categories' => Categorie::all(),
-            'commande' => Commande::first(),
-            'blogs' => blog::where('publie',1)->orderBy('created_at','desc')->get()
+            'blogs' => $blogs
         ]);
     }
 
     public function detailBlog($id){
 
+        // find() seul renvoyait null sur un identifiant inconnu ou sur un article
+        // retiré du site, et la vue tombait en erreur 500 dès la première ligne.
+        // On ne sert ici que ce qui est réellement publié.
+        $blog = blog::where('publie', 1)->find($id);
+
+        if ($blog == null) {
+            return redirect()->route('client.blog')
+                ->with('fail', "Cet article n'est plus disponible.");
+        }
+
+        // Compteur de lectures : la vue l'affiche depuis toujours mais personne
+        // ne l'incrémentait, il restait donc vide.
+        // COALESCE est indispensable : la colonne est nulle sur tous les articles
+        // existants, et « vu + 1 » vaut NULL en SQL — le compteur serait resté
+        // bloqué à vide indéfiniment. Le calcul est fait par la base, sans
+        // écraser une lecture concurrente.
+        blog::whereKey($blog->id)->update([
+            'vu' => \Illuminate\Support\Facades\DB::raw('COALESCE(`vu`, 0) + 1')
+        ]);
+        $blog->refresh();
+
+        // Seuls les commentaires validés par la modération sont visibles.
+        $commentaires = $blog->commentairesPublies()->with('client')->latest()->get();
+
+        // Le client connecté doit savoir que son propre commentaire attend
+        // encore une validation, sinon il croit que l'envoi a échoué.
+        $monCommentaireEnAttente = null;
+        $clientConnecte = Auth::check() ? Client::where('user_id', Auth::id())->first() : null;
+
+        if ($clientConnecte) {
+            $monCommentaireEnAttente = blog_commentaire::where('blog_id', $blog->id)
+                ->where('client_id', $clientConnecte->id)
+                ->where('statut', blog_commentaire::EN_ATTENTE)
+                ->latest()
+                ->first();
+        }
+
         return view('client.blogDetail',[
-            'blog' => blog::find($id),
+            'blog' => $blog,
+            'commentaires' => $commentaires,
+            'monCommentaireEnAttente' => $monCommentaireEnAttente,
+            // Quelques autres articles, pour ne pas laisser le lecteur sans suite.
+            'autresBlogs' => blog::where('publie', 1)->where('id', '!=', $blog->id)
+                ->orderByDesc('created_at')->take(3)->get(),
             'produits' => Produit::all(),
             'client' => Auth::user() ? Client::where('user_id',Auth::user()->id)->first() : new Client,
             'categories' => Categorie::all(),
@@ -1036,14 +1242,49 @@ class ClientController extends Controller
 
     public function commentaireEtNote(Request $request,$id){
 
-        $commentaire = blog_commentaire::create([
-            'note' => $request->note,
-            'commentaire' => $request->commentaire,
-            'client_id' => Client::where('user_id',Auth::user()->id)->value('id'),
-            'blog_id' => $id
+        // Aucun contrôle n'était fait : on pouvait enregistrer un commentaire
+        // vide, une note de 900, ou commenter un article inexistant.
+        $donnees = $request->validate([
+            'commentaire' => ['required','string','min:2','max:2000'],
+            'note'        => ['nullable','integer','min:1','max:5'],
+        ],[
+            'commentaire.required' => 'Merci de saisir votre commentaire.',
+            'commentaire.min'      => 'Votre commentaire est trop court.',
+            'commentaire.max'      => 'Votre commentaire ne doit pas dépasser 2000 caractères.',
+            'note.integer'         => 'La note doit être un nombre entier.',
+            'note.min'             => 'La note doit être comprise entre 1 et 5.',
+            'note.max'             => 'La note doit être comprise entre 1 et 5.',
         ]);
 
-        return redirect()->back()->with('success','Commentaire bien envoyé');
+        $blog = blog::where('publie', 1)->find($id);
+
+        if ($blog == null) {
+            return redirect()->route('client.blog')
+                ->with('fail', "Cet article n'est plus disponible.");
+        }
+
+        // Le middleware 'auth' garantit un utilisateur connecté, mais pas qu'il
+        // possède une fiche client : sans elle, client_id partait à null et
+        // l'insertion échouait sur la contrainte de clé étrangère.
+        $clientId = Client::where('user_id', Auth::id())->value('id');
+
+        if ($clientId == null) {
+            return redirect()->back()
+                ->with('fail', "Votre compte client doit être complété avant de pouvoir commenter.");
+        }
+
+        blog_commentaire::create([
+            'note'        => $donnees['note'] ?? null,
+            'commentaire' => $donnees['commentaire'],
+            'client_id'   => $clientId,
+            'blog_id'     => $blog->id,
+            // En attente : un commentaire n'apparaît sur le site qu'une fois
+            // validé en back-office.
+            'statut'      => blog_commentaire::EN_ATTENTE,
+        ]);
+
+        return redirect()->back()
+            ->with('success','Merci ! Votre commentaire a bien été envoyé. Il sera visible après validation.');
     }
 
 
@@ -1092,7 +1333,7 @@ class ClientController extends Controller
             'villes' => Ville::all(),
             'client' => Auth::user() ?  Client::where('user_id',Auth::user()->id)->first(): new Client,
             'categories' => Categorie::all(),
-            'modes'=> ModePaiement::liste(),
+            'modes'=> ModePaiement::listePourClient(),
             'total' => $total,
             'typeLivraison' => TypeLivraison::all(),
             'conf' => Configuration::first(),
@@ -1229,7 +1470,7 @@ class ClientController extends Controller
             'villes' => Ville::all(),
             'client' => $client,
             'categories' => Categorie::all(),
-            'modes'=> ModePaiement::liste(),
+            'modes'=> ModePaiement::listePourClient(),
             'total' => $devis->montant,
             'devis' => $devis,
             'typeLivraison' => TypeLivraison::orderBy('libelle')->get(),
@@ -1274,7 +1515,11 @@ class ClientController extends Controller
 
 
 
-        return redirect()->route('client.validationLivraisonPageGet',$commande->numero)->with('livree','Livraison vallidée');
+        // La route s'appelle 'client.validationLivraisonPage' (il n'a jamais existé de
+        // route 'client.validationLivraisonPageGet') : le client validait son produit,
+        // l'enregistrement passait, puis la redirection provoquait une erreur 500.
+        // Le paramètre est l'objet Commande (liaison sur l'id), pas le numéro.
+        return redirect()->route('client.validationLivraisonPage',$commande)->with('livree','Livraison vallidée');
     }
 
     public function like($id){
@@ -1357,12 +1602,16 @@ class ClientController extends Controller
 
         $produits = Produit::where('type_affaire','VENTE')->where('statut', 1)->paginate(12)->onEachSide(2);
 
-        return view('client.index',[
+        return view('client.index', array_merge($this->blocsMisEnAvant(), [
             'categories' => Categorie::all(),
             'produits' => $produits,
             'client' => $client,
             'prixPerso' => $prixPerso,
-        ]);
+            // Diapositives du carrousel : elles étaient écrites en dur dans la vue,
+            // elles se gèrent désormais depuis le back-office. Seules celles dont le
+            // statut est actif remontent, dans l'ordre choisi (Slide::liste()).
+            'slides' => Slide::liste(),
+        ]));
     }
 
     public function ValidationLocationPage(){
@@ -1638,7 +1887,7 @@ class ClientController extends Controller
             // 'reduc' => $dataPromo['config'],
             // 'montantPoint' => $dataPromo['montantPoint'],
             // 'montantPromo' => $dataPromo['montantPromo'],
-            'modes' => ModePaiement::liste(),
+            'modes' => ModePaiement::listePourClient(),
             'typeLivraison' => TypeLivraison::all(),
             'conf' => Configuration::first(),
             'tva' => Client::tva($client),
@@ -1928,14 +2177,35 @@ class ClientController extends Controller
     }
 
     public function incremente($rowId){
-        Cart::update($rowId,Cart::get($rowId)->qty+1 );
-        if(Auth::user()){
-
-            return redirect()->route('client.paniier')->with('ok','La quantité de l\'article a été mis à jour');
-        }else{
-
-            return redirect()->route('client.panier')->with('ok','La quantité de l\'article a été mis à jour');
+        // Ligne absente du panier (page rouverte après expiration de la session) :
+        // Cart::get() renvoyait null et ->qty faisait tomber la page en erreur 500.
+        $ligne = Cart::get($rowId);
+        if(!$ligne){
+            return redirect()->route('client.panier')->with('fail','Cet article n\'est plus dans votre panier');
         }
+        Cart::update($rowId, $ligne->qty + 1);
+
+        return redirect()->route('client.panier')->with('ok','La quantité de l\'article a été mis à jour');
+    }
+
+    /**
+     * Diminuer d'une unité la quantité d'une ligne du panier.
+     *
+     * Cette méthode n'existait PAS alors que la route 'client.decremente' et le
+     * bouton « − » du panier y renvoyaient : le clic produisait systématiquement
+     * une erreur 500 (« Method decremente does not exist »). Symétrique de
+     * incremente(), avec un plancher à 1 (la suppression se fait par la croix).
+     */
+    public function decremente($rowId){
+        $ligne = Cart::get($rowId);
+        if(!$ligne){
+            return redirect()->route('client.panier')->with('fail','Cet article n\'est plus dans votre panier');
+        }
+
+        $nouvelleQte = max(1, $ligne->qty - 1);
+        Cart::update($rowId, $nouvelleQte);
+
+        return redirect()->route('client.panier')->with('ok','La quantité de l\'article a été mis à jour');
     }
 
     public function listeDevis(){
@@ -2109,7 +2379,10 @@ class ClientController extends Controller
 
 
         if(session('devisAModifier')){
-            return redirect()->route('client.editDevis',session('devisAModifier'))->with('ok','Le panier a été mis à jour');
+            // Route réellement déclarée : 'devis.editDevis' (modification-de-devis-{devis}).
+            // 'client.editDevis' n'existe pas -> erreur 500 en mettant à jour le panier
+            // pendant la modification d'un devis.
+            return redirect()->route('devis.editDevis',session('devisAModifier'))->with('ok','Le panier a été mis à jour');
         }
 
         foreach(Cart::content() as $produit){
@@ -2359,10 +2632,69 @@ class ClientController extends Controller
             'villes' => Ville::all(),
             'client' => $clientObj,
             'categories' => Categorie::all(),
-            'modes'=> ModePaiement::liste(),
+            'modes'=> ModePaiement::listePourClient(),
             'total' => $total,
             'prixPerso' => $prixPerso,
         ]);
+    }
+
+    /**
+     * Reprend une inscription commencée mais jamais confirmée.
+     *
+     * L'inscription depuis l'application mobile crée le compte et la fiche client
+     * en statut inactif, puis attend la saisie d'un code envoyé par e-mail. Tant
+     * que le client ne l'a pas saisi, son adresse est prise sans qu'il existe de
+     * compte utilisable.
+     *
+     * Le formulaire web opposait alors « Cet Email est déjà utilisé » et s'arrêtait
+     * là : une impasse, pour quelqu'un qui essayait précisément de finir ce qu'il
+     * avait commencé. L'application mobile, elle, renvoie un code dans ce cas.
+     *
+     * On fait pareil : un nouveau code part, et le client est conduit à l'écran de
+     * saisie. Un compte réellement ACTIF continue, lui, d'être refusé — l'adresse
+     * appartient bien à quelqu'un.
+     *
+     * @return \Illuminate\Http\RedirectResponse|null  null si rien à reprendre
+     */
+    private function reprendreInscriptionEnAttente(?User $user)
+    {
+        if (!$user) {
+            return null;
+        }
+
+        $client = Client::where('user_id', $user->id)->first();
+
+        $enAttente = (int) $user->statut === (int) Help::$STATUT_INACTIF
+            || ($client && (int) $client->statut === (int) Help::$STATUT_INACTIF);
+
+        if (!$enAttente) {
+            return null;
+        }
+
+        $token = Help::getNumberToken(4);
+        $user->update(['token' => $token]);
+
+        // Envoi non bloquant : si le SMTP tombe, on ne renvoie pas le client sur une
+        // erreur 500 après lui avoir promis un code. On le lui dit.
+        try {
+            Mail::send(new confirmClient($client?->nom ?: $user->nom_prenoms, $user->email, $token));
+        } catch (\Throwable $e) {
+            \Log::error("Echec envoi du code de reprise d'inscription à {$user->email} : " . $e->getMessage());
+
+            return redirect()->route('client.register')->withInput()->with(
+                'existEmail',
+                "Votre inscription a déjà été commencée avec cette adresse mais n'a jamais "
+                . "été confirmée. L'envoi du code vient d'échouer : contactez-nous pour "
+                . "finaliser votre compte."
+            );
+        }
+
+        return redirect()->route('client.pageToken', ['email' => $user->email])->with(
+            'success',
+            "Votre inscription avait été commencée sans être confirmée. Un nouveau code "
+            . "vient d'être envoyé à {$user->email} : saisissez-le ci-dessous pour activer "
+            . "votre compte."
+        );
     }
 
     public function register(Request $request){
@@ -2370,6 +2702,9 @@ class ClientController extends Controller
         // dd($request->all());
         $userEmail = User::where('email',$request->email)->orWhere('login',$request->email)->first();
         if($userEmail){
+            if ($reprise = $this->reprendreInscriptionEnAttente($userEmail)) {
+                return $reprise;
+            }
             return redirect()->route('client.register')->with('existEmail','Cet Email est déjà utilisé')->withInput();
         }
 
@@ -2444,6 +2779,9 @@ class ClientController extends Controller
             // on verifie si l'email ou le login n'est pas déjà utilisé
             $userEmail = User::where('email',$request->email)->orWhere('login',$request->email)->first();
             if($userEmail){
+                if ($reprise = $this->reprendreInscriptionEnAttente($userEmail)) {
+                    return $reprise;
+                }
                 return redirect()->route('client.register')->with('existEmail','Cet Email est déjà utilisé')->withInput();
             }
 
@@ -2599,6 +2937,23 @@ class ClientController extends Controller
                         'token' => null
                     ]);
 
+                    // Une inscription née sur l'application mobile laisse le compte ET
+                    // la fiche client inactifs jusqu'à la saisie du code. Cette page ne
+                    // faisait qu'effacer le jeton — parce qu'une inscription web naît
+                    // déjà active — et le client restait bloqué après avoir pourtant
+                    // saisi le bon code.
+                    //
+                    // On active les deux, exactement comme le fait la validation du code
+                    // côté application (UtilisateurController::557 de l'API).
+                    if ((int) $user->statut === (int) Help::$STATUT_INACTIF) {
+                        $user->update(['statut' => Help::$STATUT_ACTIF]);
+                    }
+
+                    $clientDuCompte = Client::where('user_id', $user->id)->first();
+                    if ($clientDuCompte && (int) $clientDuCompte->statut === (int) Help::$STATUT_INACTIF) {
+                        $clientDuCompte->update(['statut' => Help::$STATUT_ACTIF]);
+                    }
+
                     // Auth::login($user);
 
                     return redirect()->route('client.login')->with('success', 'Votre compte a bien été confirmé, connectez-vous !');
@@ -2736,7 +3091,11 @@ class ClientController extends Controller
             'contact1' => $request->contact1,
             'contact2' => $request->contact2,
             'ncc_clt' => $request->ncc,
-            'rccm_clt' => $request->rmmc
+            // Le champ du formulaire s'appelle « rccm ». La faute de frappe
+            // « rmmc » lisait un champ inexistant : chaque modification de la
+            // fiche remplaçait donc le RCCM de l'entreprise par une valeur
+            // vide, sans que rien ne le signale.
+            'rccm_clt' => $request->rccm
         ];
 
         $dataClient = array_merge($dataClientAdd, $dataClient ?? []);
@@ -2768,6 +3127,15 @@ class ClientController extends Controller
     public function infoTicketSAV(DetailCommande $detail){
         // dd($detail);
 
+        // La page affiche le produit, sa quantité, son prix et le numéro de
+        // commande à partir d'un simple identifiant d'URL : sans ce contrôle,
+        // n'importe quel client connecté lisait le détail des commandes des
+        // autres en changeant le numéro dans la barre d'adresse.
+        $leClient = Client::where('user_id', Auth::user()->id)->first();
+        if (!$leClient || optional($detail->commande)->client_id !== $leClient->id) {
+            return redirect()->route('client.ticketSAV')
+                ->with('error', "Ce produit ne figure pas dans vos commandes.");
+        }
 
         return view('client.infoTicketSAV',[
             'produits' => Produit::all(),
@@ -2786,13 +3154,37 @@ class ClientController extends Controller
             return redirect()->route('client.monCompte')->with('error','Client introuvable.');
         }
 
+        // Bornes alignées sur celles du formulaire : sans elles, une requête
+        // envoyée directement passait avec un message d'un seul caractère.
         $request->validate([
             'objet'   => 'required|string|max:255',
-            'message' => 'required|string',
+            'message' => 'required|string|min:15|max:2000',
         ], [
             'objet.required'   => "Veuillez préciser l'objet du ticket.",
+            'objet.max'        => "L'objet ne doit pas dépasser 255 caractères.",
             'message.required' => 'Veuillez décrire votre demande.',
+            'message.min'      => 'Décrivez le problème en quelques mots (15 caractères au minimum).',
+            'message.max'      => 'La description ne doit pas dépasser 2000 caractères.',
         ]);
+
+        // Mêmes garde-fous que sur la demande de retour, et pour les mêmes
+        // raisons : l'identifiant de la ligne vient de l'URL.
+        if (optional($detail->commande)->client_id !== $client->id) {
+            return redirect()->route('client.ticketSAV')
+                ->with('error', "Ce produit ne figure pas dans vos commandes.");
+        }
+
+        // Le service après-vente porte sur une marchandise reçue : la page
+        // l'annonce, mais rien ne l'imposait au traitement.
+        if ($detail->etat_livraison !== 'LIVREE') {
+            return redirect()->route('client.ticketSAV')
+                ->with('error', "Un ticket ne peut être ouvert que sur un produit qui vous a été livré.");
+        }
+
+        if ($detail->ticket) {
+            return redirect()->route('client.mesTicketsSAV')
+                ->with('success', "Un ticket existe déjà pour ce produit ; suivez-le ci-dessous.");
+        }
 
         // user_id = AGENT SAV assigné : reste NULL tant que le gestionnaire n'a pas
         // assigné le ticket. (Avant : la clé 'user' — inexistante — était ignorée et
@@ -2837,7 +3229,10 @@ class ClientController extends Controller
             return redirect()->route('client.login')->with('error', 'Client introuvable. Connectez-vous à nouveau.');
         }
 
-        $commandes = Commande::where('client_id', $client->id)->where('statut', Help::$STATUT_ACTIF)->orderBy('created_at','desc')->get();
+        // La demande d'annulation est chargée avec les commandes : sans cela,
+        // la vue interrogerait la base une fois par ligne du tableau.
+        $commandes = Commande::with('derniereDemandeAnnulation')
+            ->where('client_id', $client->id)->where('statut', Help::$STATUT_ACTIF)->orderBy('created_at','desc')->get();
         $demandes = DemandeLivraison::where('client_id', $client->id)->orderBy('created_at','desc')->get();
         $paiements = Paiement::where('client_id', $client->id)->where('statut', 2)->orderBy('created_at','desc')->get();
 
@@ -3116,6 +3511,108 @@ class ClientController extends Controller
         ]);
     }
 
+    /**
+     * PLAFOND DE CRÉDIT — client à terme.
+     *
+     * Renvoie le message de refus si la commande dépasse le crédit encore
+     * disponible, ou null si elle peut passer.
+     *
+     * Le plafond accordé à l'approbation n'était opposé à RIEN : il ne servait
+     * qu'à l'affichage — liste des clients à terme, page du compte, tableau de
+     * bord, e-mail d'accord. Un client plafonné à 5 000 pouvait commander 6 500
+     * en paiement différé, et la commande passait.
+     *
+     * SEULES les commandes prises à crédit consomment le plafond. Un règlement
+     * en ligne est encaissé immédiatement : il n'engage aucun crédit, et
+     * l'appelant doit alors sauter ce contrôle (cf. panierCommande). C'est à
+     * l'appelant d'en décider, car lui seul sait si la passerelle sera
+     * réellement sollicitée.
+     *
+     * Regroupé ici parce que QUATRE méthodes créent une commande —
+     * panierCommande, validationReference, devisCommande et recapCommande. Ne
+     * garder le contrôle qu'à un seul endroit laissait trois portes ouvertes.
+     */
+    private function refusPlafondCredit(?Client $client, float $montantCommande): ?string
+    {
+        if (!$client || !$client->client_a_terme) {
+            return null;
+        }
+
+        $disponible = $client->plafondDisponible();
+
+        // null = aucun plafond accordé : on ne fait pas respecter une limite qui
+        // n'existe pas, et on ne bloque pas une commande sur une donnée absente.
+        if ($disponible === null || $montantCommande <= $disponible) {
+            return null;
+        }
+
+        $format = fn ($m) => number_format($m, 0, ',', ' ') . ' FCFA';
+
+        return sprintf(
+            "Cette commande de %s dépasse votre crédit disponible. "
+            . "Plafond accordé : %s. Déjà engagé : %s. Reste disponible : %s. "
+            . "Réglez une facture en cours ou réduisez votre commande pour continuer.",
+            $format($montantCommande),
+            $format((float) $client->plafond_credit),
+            $format($client->encoursCredit()),
+            $format($disponible)
+        );
+    }
+
+    /**
+     * Où renvoyer le client quand sa commande est refusée.
+     *
+     * SURTOUT PAS back() : le bouton « Valider la commande » de la page de
+     * récapitulatif est un LIEN (GET) dont le référent est
+     * /recapitulatif-commande-venant-dun-devis-{id}, une route déclarée en POST
+     * seulement. back() y renvoyait en GET et produisait un « 405 Method Not
+     * Allowed » à la place du message d'erreur.
+     *
+     * On vise donc une page réellement accessible en GET : l'écran de choix du
+     * mode de paiement du devis concerné, où le client peut ajuster sa commande,
+     * ou le panier à défaut.
+     */
+    private function retourApresRefusCommande(?Devis $devis)
+    {
+        if ($devis && $devis->id) {
+            return redirect()->route('devis.modePaiement', $devis);
+        }
+
+        return redirect()->route('client.monPanier');
+    }
+
+    /** Montant net d'un devis : HT + TVA + livraison - remise. */
+    /**
+     * Montant net d'une location au moment où elle est créée depuis le panier.
+     *
+     * Même formule qu'à la facturation (OrdersController::genererFactureLocation)
+     * et que Location::montantAPayer() : HT − remise, puis TVA et livraison. La
+     * TVA et la livraison sont lues dans la session, seule source disponible à cet
+     * instant — la location n'existe pas encore.
+     */
+    private function montantNetLocation(float $totalHt, float $remise): float
+    {
+        $tva = (float) (session('0')['tva']
+            ?? ($totalHt * Client::tva(Client::where('user_id', Auth::id())->first())));
+
+        $livraison = (float) (session('0')['cout_livraison'] ?? 0);
+
+        return max(0, $totalHt - $remise) + $tva + $livraison;
+    }
+
+    /**
+     * Montant engagé par un devis, pour le contrôle du plafond de crédit.
+     *
+     * Délègue au modèle : la colonne `montant` ne veut pas dire la même chose
+     * selon que le devis vient du site (HT) ou de l'application (total déjà net).
+     * L'addition faite ici comptait donc la TVA deux fois pour un devis mobile,
+     * et pouvait refuser une commande qui tenait pourtant dans le plafond.
+     */
+    private function montantNetDevis(Devis $devis): float
+    {
+        return $devis->montantAPayer();
+    }
+
     public function panierCommande(Request $request, Devis $devis ){
 
         // $request->validate([
@@ -3151,6 +3648,38 @@ class ClientController extends Controller
                     }
                     return redirect()->route('client.commande')
                         ->with('info', 'Votre commande a déjà été enregistrée.');
+                }
+
+                // Même garde pour le flux DEVIS, où le panier est vide et ne peut donc
+                // rien signaler. « Valider la commande » est un lien GET : retour
+                // arrière, rafraîchissement, double-clic ou simple reprise de l'onglet
+                // le rejouent. Or commande.numero est UNIQUE et reprend celui du devis
+                // — la seconde validation partait en violation de contrainte, donc 500
+                // et page blanche, alors que la commande était bel et bien enregistrée.
+                if ($devis->id) {
+                    $dejaCommande = Commande::withTrashed()
+                        ->where(function ($q) use ($devis) {
+                            $q->where('devis_id', $devis->id)
+                                ->orWhere('numero', $devis->numero);
+                        })
+                        ->latest('id')
+                        ->first();
+
+                    if ($dejaCommande && !$dejaCommande->trashed()) {
+                        return redirect()->route('client.commandeValidee', $dejaCommande->numero)
+                            ->with('info', 'Votre commande a déjà été enregistrée.');
+                    }
+
+                    // Commande supprimée : son numéro occupe toujours l'index unique,
+                    // la recréer échouerait. On le dit plutôt que de laisser un 500.
+                    if ($dejaCommande) {
+                        return redirect()->route('client.commande')->with(
+                            'info',
+                            "Ce devis a déjà été transformé en commande, et cette "
+                            . "commande a été annulée. Contactez-nous pour la rétablir "
+                            . "ou passez une nouvelle commande."
+                        );
+                    }
                 }
 
                 // on initialise les variables qui peuvent changer de valeur selon que nous sommes dans une modification de devis ou pas
@@ -3209,7 +3738,6 @@ class ClientController extends Controller
                     $config = Configuration::first();
 
                     $dataDevis = [
-                        'numero' => Help::genererNumeroUnique('devis'),
                         'client_id' => $client->id,
                         'date_livraison' => session('date_livraison'),
                         'adresse_livraison_id' => $adresse_id,
@@ -3226,7 +3754,10 @@ class ClientController extends Controller
                         'service' => session('type') == 'commande' ? 1 : 2,
                     ];
 
-                    $devis = Devis::create($dataDevis);
+                    $devis = Help::creerAvecNumeroUnique(function ($numero) use ($dataDevis) {
+                        $dataDevis['numero'] = $numero;
+                        return Devis::create($dataDevis);
+                    });
 
                     $devisId = $devis->id;
 
@@ -3263,20 +3794,49 @@ class ClientController extends Controller
                 }else{
 
                     $adresse_id = $devis->adresse_livraison_id;
-                    // $date_livraison = $devis->date_Livraison;
-                    // $mode_paiement = $devis->mode_paiement_id;
+
+                    // Repli sur le devis quand la session ne porte plus ces valeurs.
+                    // /panier-en-commande{devis} est un simple lien GET : rouvert
+                    // depuis l'historique, un favori, un second onglet ou après
+                    // expiration de la session, il arrivait ici sans date de
+                    // livraison — et l'insertion échouait sur une contrainte NOT
+                    // NULL, donc page blanche et 500. Le devis porte déjà ces
+                    // informations : on les reprend plutôt que d'échouer.
+                    $date_livraison = $date_livraison ?: $devis->date_livraison;
+                    $type_livraison = $type_livraison ?: $devis->type_livraison_id;
+                    $mode_paiement  = $mode_paiement  ?: $devis->mode_paiement_id;
+
                     // Remise = celle appliquée par le client sur la page de paiement
                     // (code promo / points, en session) si présente ; sinon la remise
                     // d'origine du devis. Sans ça, la réduction saisie au paiement était
                     // ignorée et le client payait plein tarif.
+                    // Les montants du devis sont nullables, ceux de la commande ne le
+                    // sont pas. Un devis SANS réduction porte cout_reduction à NULL, et
+                    // l'insertion partait en « Column 'remise' cannot be null » : page
+                    // blanche, commande perdue, alors que le devis était parfaitement
+                    // valide. On ramène chaque montant à un nombre avant de s'en servir.
                     $remise = (session('reduction_id') || session('point_reduc'))
                         ? ceil((float) session('remise'))
-                        : $devis->cout_reduction;
+                        : (float) ($devis->cout_reduction ?? 0);
                     // $type_livraison = $devis->type_livraison_id;
-                    $cout_livraison = $devis->cout_livraison;
+                    $cout_livraison = (float) ($devis->cout_livraison ?? 0);
                     $livrable = $devis->adresse_livraison_id != null ? 1 : 0;
-                    $montantTva = $devis->tva;
+                    $montantTva = (float) ($devis->tva ?? 0);
 
+                }
+
+                // Dernier filet : sans date de livraison, l'insertion échoue sur une
+                // contrainte NOT NULL et le client reçoit une page blanche. On le
+                // ramène là où il peut la saisir, avec une explication — un parcours
+                // interrompu n'est pas une erreur serveur.
+                if (!$date_livraison) {
+                    return $this->retourApresRefusCommande($devis)->with(
+                        'error',
+                        "Votre commande n'a pas pu être validée : la date de livraison "
+                        . "et le mode de paiement n'ont pas été retenus. Cela arrive "
+                        . "lorsque la page est rouverte après un long moment. "
+                        . "Renseignez-les à nouveau, puis validez."
+                    );
                 }
 
                 // Le mode choisi est-il un mode EN LIGNE ? On se base sur le flag
@@ -3293,8 +3853,33 @@ class ClientController extends Controller
                 // gestionnaire tant que le paiement n'est pas confirmé (sinon on
                 // traiterait une commande non payée). Le callback / la vérification
                 // pull la passe en « EN ATTENTE » à la confirmation du paiement.
-                $paiementEnLigneRequis = ($client->client_a_terme == false && $modeEstEnLigne && config('paysecure.url'));
+                // Un client à terme n'était JAMAIS envoyé à la passerelle, même en
+                // choisissant Wave ou Orange Money : son choix était enregistré puis
+                // ignoré, et la commande partait à crédit. Il paie désormais en ligne
+                // comme un autre lorsqu'il retient un mode en ligne — c'est le sens
+                // même de ces modes.
+                $paiementEnLigneRequis = ($modeEstEnLigne && config('paysecure.url'));
                 $etatInitial = $paiementEnLigneRequis ? Help::$COMMANDE_EN_ATTENTE_PAIEMENT : $etat[0];
+
+                // Montant engagé, pour le seul contrôle du plafond. On passe par le
+                // devis, qui porte la valeur de référence : additionner $devis->montant
+                // et la TVA comptait celle-ci deux fois pour un devis venu du mobile,
+                // où `montant` est déjà le total net.
+                $montantCommande = $this->montantNetDevis($devis);
+
+                // PLAFOND : seules les commandes réellement prises À CRÉDIT le
+                // consomment. Un règlement en ligne est encaissé immédiatement, il
+                // n'engage donc aucun crédit et n'a pas à être plafonné.
+                //
+                // La condition porte sur $paiementEnLigneRequis et non sur le seul
+                // mode choisi : si la passerelle n'est pas configurée, la commande
+                // est enregistrée SANS être payée — elle redevient du crédit, et le
+                // plafond doit s'appliquer. Sans cette nuance, choisir « Wave » sur
+                // une installation sans passerelle aurait suffi à contourner la
+                // limite.
+                if (!$paiementEnLigneRequis && ($refus = $this->refusPlafondCredit($client, $montantCommande))) {
+                    return $this->retourApresRefusCommande($devis)->with('error', $refus);
+                }
 
                 $commande = Commande::create([
                     'numero' => $devis->numero,
@@ -3304,10 +3889,12 @@ class ClientController extends Controller
                     'date_livraison' => $date_livraison,
                     'adresse_livraison_id' => $adresse_id,
                     'mode_paiement_id' => $mode_paiement,
-                    'montant_total' => $devis->montant,
-                    'remise' => $remise,
+                    // Ces trois colonnes sont NOT NULL en base : on garantit un nombre,
+                    // quelle que soit la façon dont on est arrivé jusqu'ici.
+                    'montant_total' => (float) ($devis->montant ?? 0),
+                    'remise' => (float) ($remise ?? 0),
                     'type_livraison_id' => $type_livraison,
-                    'cout_livraison_client' => $cout_livraison,
+                    'cout_livraison_client' => (float) ($cout_livraison ?? 0),
                     'est_livrable' => $livrable,
                 ]);
 
@@ -3425,7 +4012,9 @@ class ClientController extends Controller
                 // (en_ligne = 1). Un mode hors ligne comme « Paiement en agence »
                 // (en_ligne = 0) ne passe pas par la passerelle : la commande est
                 // simplement enregistrée, le client paie ensuite en agence.
-                if ($client->client_a_terme == false && $modeEstEnLigne) {
+                // Le client à terme n'est plus exclu : s'il a choisi un mode en
+                // ligne, il règle en ligne. Seul compte le caractère du mode.
+                if ($modeEstEnLigne) {
 
                     // Vérifier que le service de paiement en ligne est configuré
                     if (!config('paysecure.url')) {
@@ -3480,7 +4069,11 @@ class ClientController extends Controller
                             ->with('warning', 'Votre commande a été enregistrée mais le paiement en ligne a échoué (' . ($ret['message'] ?? 'Erreur inconnue') . '). Rendez-vous dans Mon Compte pour réessayer le paiement.');
                     }
                 }
-                $modePaiment = ModePaiement::find($commande->mode_paiement_id)->value('description');
+                // Relation avec withDefault() : jamais null même si mode_paiement_id l'est
+                // (commande en agence / client à terme). L'ancien
+                // ModePaiement::find(...)->value('description') fatalisait dans ce cas, et
+                // renvoyait de toute façon la description de la 1re ligne de la table.
+                $modePaiment = $commande->modePaiement->libelle ?: ($commande->modePaiement->description ?? '');
 
                 // toastr()->success('Commande validée');
                 // Montants depuis les LIGNES (cf. Commande::montantAPayer/montantHT).
@@ -3488,7 +4081,7 @@ class ClientController extends Controller
                 try {
                     Mail::send(new emailCommande(
                                     $commande,
-                                    $commande->TvaCommande->montant,
+                                    $commande->TvaCommande?->montant ?? 0,
                                     $commande->montantAPayer(),
                                     $commande->cout_livraison_client,
                                     $commande->remise,
@@ -3748,14 +4341,16 @@ class ClientController extends Controller
                     // On verifie s'il n'y a pas de devis on en crée un nouveau
                     if($devis->id == null){
                         $dataDevis = [
-                            'numero' => Help::genererNumeroUnique('devis'),
                             'client_id' => $client->id,
                             'adresse_livraison_id' => session('date_livraison'),
                             'montant' => session('0')['montantTTC'] - session('0')['tva'] //$totalPlusTva,
                         ];
 
 
-                        $devis = Devis::create($dataDevis);
+                        $devis = Help::creerAvecNumeroUnique(function ($numero) use ($dataDevis) {
+                            $dataDevis['numero'] = $numero;
+                            return Devis::create($dataDevis);
+                        });
 
                         foreach(Cart::content() as $produit){
                             DetailDevis::create([
@@ -3785,6 +4380,12 @@ class ClientController extends Controller
 
 
                     // dd( $promo);
+                    // Plafond de crédit : même contrôle qu'en flux panier. Cette méthode
+                    // crée aussi une commande, elle doit donc l'appliquer.
+                    if ($refus = $this->refusPlafondCredit($client, $this->montantNetDevis($devis))) {
+                        return $this->retourApresRefusCommande($devis)->with('error', $refus);
+                    }
+
                     $commande = Commande::create([
                         'numero' => $devis->numero,
                         'etat_commande' => $etat[0],
@@ -3864,6 +4465,13 @@ class ClientController extends Controller
                     $dataPromo = $this->reductionAppliquee();
 
                     $remise = ceil(session('remise')) ?? 0;
+
+                    // Plafond de crédit : une location l'engage comme une commande.
+                    // Le client repart avec le matériel et paiera plus tard.
+                    if ($refus = $this->refusPlafondCredit($client, $this->montantNetLocation($total, $remise))) {
+                        return $this->retourApresRefusCommande($devis)->with('error', $refus);
+                    }
+
                     $location = [
                         'numero' => uniqid(),
                         'client_id' => $client->id,
@@ -3939,7 +4547,8 @@ class ClientController extends Controller
                         // 'promo' => $reduction,
                         'config' => Configuration::first()
                     ]);
-                    return redirect()->route('client.locationValidee',$location->numero)->with('success','Votre location a bien été enregistrée ! Rendez-vous dans la rubrique Mon Compte pour suivre votre location');
+                    // Ligne morte : le return view() ci-dessus s'exécute toujours avant.
+                    // La route 'client.locationValidee' n'existe plus (méthode absente).
                 }
 
     }
@@ -3977,6 +4586,12 @@ class ClientController extends Controller
          * mode
          * est
          */
+
+        // Plafond de crédit : même contrôle qu'en flux panier. Cette méthode
+        // crée aussi une commande, elle doit donc l'appliquer.
+        if ($refus = $this->refusPlafondCredit($client, $this->montantNetDevis($devis))) {
+            return $this->retourApresRefusCommande($devis)->with('error', $refus);
+        }
 
         $commande = Commande::create([
             'numero' => $devis->numero,
@@ -4020,12 +4635,24 @@ class ClientController extends Controller
 
         $nomPrenom = $client->nom.' '.$client->prenom;
 
-        Mail::send(new emailCommande($client->user->email,
-                                        $nomPrenom,
-                                        $commande,
-                                        $commande->montant_total,
-                                        $montantPoint,
-                                        $pourcentPromo));
+        // La signature de emailCommande est (commande, tva, total, fraisLivraison, remise,
+        // modepaiement, ht) : l'ancien appel à 6 arguments (email, nom, ...) provoquait un
+        // ArgumentCountError fatal ALORS QUE la commande venait d'être créée -> le client
+        // voyait une page cassée et une commande « fantôme » restait en base.
+        // Envoi NON bloquant, comme les autres appels de ce contrôleur.
+        try {
+            Mail::send(new emailCommande(
+                $commande,
+                $commande->TvaCommande?->montant ?? 0,
+                $commande->montantAPayer(),
+                $commande->cout_livraison_client,
+                $commande->remise,
+                $commande->modePaiement->libelle ?: ($commande->modePaiement->description ?? ''),
+                $commande->montantHT()
+            ));
+        } catch (\Throwable $e) {
+            \Log::warning('Email commande (devis) non envoyé: '.$e->getMessage());
+        }
 
         session()->forget('type');
         return redirect()->route('client.commandeValidee',$commande->numero)->with('success','Votre commande a bien été enregistrée ! Rendez-vous dans la rubrique Mon Compte pour suivre votre commande');
@@ -4136,7 +4763,7 @@ class ClientController extends Controller
             if ($request->hasFile('fichier')) {
 
                 // $destination = base_path('public/storage/productsImage');
-                $destination = storage_path('app/public/temp_pdfs'); // disque 'public' réel (cohérent avec move vers lesBons + lecture)
+                $destination = Storage::disk('public')->path('temp_pdfs'); // racine reelle du disque (cf. config/filesystems.php)
                 $nomPdf = 'bon'.'-'.Auth::user()->client->nom.'-'.Auth::user()->client->prenom.'-'. date('YmdHis') .'.pdf'; // extension forcée : jamais l'extension d'origine (anti-upload de .php exécutable)
                 $request->file('fichier')->move($destination, $nomPdf);
                 // $path = $request->file('fichier')->move($destination, 'public');
@@ -4228,7 +4855,7 @@ class ClientController extends Controller
             if ($request->hasFile('fichier')) {
 
                 // $destination = base_path('public/storage/productsImage');
-                $destination = storage_path('app/public/temp_pdfs'); // disque 'public' réel (cohérent avec move vers lesBons + lecture)
+                $destination = Storage::disk('public')->path('temp_pdfs'); // racine reelle du disque (cf. config/filesystems.php)
                 $nomPdf = 'bon'.'-'.Auth::user()->client->nom.'-'.Auth::user()->client->prenom.'-'. date('YmdHis') .'.pdf'; // extension forcée : jamais l'extension d'origine (anti-upload de .php exécutable)
                 $request->file('fichier')->move($destination, $nomPdf);
                 // $path = $request->file('fichier')->move($destination, 'public');
@@ -4341,17 +4968,31 @@ class ClientController extends Controller
     public function panierDevis(){
 
         // dd('ok');
-        if(Auth::user()){
-
-            $devis = $this->panierEnDevis(Auth::user()->id);
-            return redirect()->route('client.devisValide',$devis)->with('success','Votre dévis a été enregistré');
-
-        }else{
-
+        if(!Auth::user()){
             return redirect()->route('client.login');
         }
 
+        // Panier vide : sans cette garde, un devis sans aucune ligne était créé
+        // (rechargement de la page, retour arrière, lien ouvert deux fois) et
+        // venait encombrer « Mes devis » avec un montant nul.
+        if (Cart::content()->isEmpty()) {
+            return redirect()->route('client.panier')
+                ->with('error', "Votre panier est vide : il n'y a rien à mettre en devis.");
+        }
 
+        $devis = $this->panierEnDevis(Auth::user()->id);
+
+        // Étape de livraison non franchie ou session expirée. Auparavant la
+        // méthode lisait directement session('0')['cout_livraison'] : sur une
+        // session perdue, PHP signale un accès à un index sur une valeur nulle,
+        // que Laravel transforme en exception — donc une page d'erreur 500,
+        // alors que le client n'avait rien fait de fautif.
+        if (!$devis) {
+            return redirect()->route('client.panier')
+                ->with('error', "Vos informations de livraison ont expiré. Reprenez depuis le panier, puis validez à nouveau.");
+        }
+
+        return redirect()->route('client.devisValide',$devis)->with('success','Votre dévis a été enregistré');
     }
 
     public function devisValide(Devis $devis){
@@ -4375,7 +5016,7 @@ class ClientController extends Controller
                 ]);
 
                 // $destination = base_path('public/storage/productsImage');
-                $destination = storage_path('app/public/temp_pdfs'); // disque 'public' réel (corrige le double public/ + cohérence move/lecture)
+                $destination = Storage::disk('public')->path('temp_pdfs'); // racine reelle du disque (cf. config/filesystems.php)
                 $nomPdf = 'bon'.'-'.Auth::user()->client->nom.'-'.Auth::user()->client->prenom.'-'. date('YmdHis') .'.pdf'; // extension forcée : jamais l'extension d'origine (anti-upload de .php exécutable)
                 $request->file('fichier')->move($destination, $nomPdf);
                 // $path = $request->file('fichier')->move($destination, 'public');
@@ -4466,6 +5107,16 @@ class ClientController extends Controller
 
         $client = Client::where('user_id',Auth::user()->id)->first();
 
+        // Un compte connecté sans fiche client (fiche jamais créée, ou supprimée)
+        // faisait tomber la page en erreur 500 : $client->id et
+        // $client->client_a_terme étaient lus sur null, et la vue construit une URL
+        // à partir de $client->id. On sort proprement plutôt que d'exposer une
+        // page blanche.
+        if($client == null){
+            return redirect()->route('client.monCompte')
+                ->with('error', "Votre fiche client est introuvable. Contactez-nous pour la régulariser.");
+        }
+
         if($etat =='effectues'){
 
             $req  ="SELECT cde.id AS commande_id,
@@ -4496,22 +5147,47 @@ class ClientController extends Controller
                             cde.client_id,
                             cde.numero AS num_commande,
                             cde.created_at AS date_commande,
+                            -- Chaque ligne EST une facture, pas une commande. Sans son
+                            -- numéro ni sa date, une commande livrée en deux fois — donc
+                            -- facturée deux fois — produisait deux lignes rigoureusement
+                            -- identiques à l'écran : le client ne pouvait pas savoir
+                            -- laquelle il réglait.
+                            f.numero AS num_facture,
+                            f.created_at AS date_facture,
                             f.montant AS montant_a_payer,
                             p.montant_total AS total_paye,
-                            (SELECT montant_restant FROM paiement WHERE service_id = cde.id ORDER BY created_at DESC LIMIT 1) AS montant_restant
+                            (f.montant - IFNULL((SELECT SUM(pf.montant_total) FROM paiement pf
+                                                  WHERE pf.facture_id = f.id
+                                                    AND pf.statut = " . Help::$STATUT_ACTIF . "
+                                                    AND pf.deleted_at IS NULL), 0)) AS montant_restant
                         FROM facture f
                         JOIN commande cde ON f.service_id = cde.id
                         LEFT JOIN paiement p ON p.facture_id = f.id AND p.statut = 2
                         WHERE cde.client_id = $client->id
-                        -- GROUP BY f.id, cde.id
-                        -- HAVING montant_restant > 0
+                        -- « Paiements en attente » listait TOUTES les factures du client,
+                        -- soldées comprises : le filtre était désactivé et le client voyait
+                        -- des lignes à « reste à payer : 0 ».
+                        --
+                        -- Le reste se calcule PAR FACTURE, en sommant les paiements qui lui
+                        -- sont rattachés — la formule qui fait déjà foi à l'encaissement
+                        -- (CreanceClientTermeController::enregistrerPaiement). L'ancienne
+                        -- colonne lisait le dernier paiement de la COMMANDE : avec une
+                        -- facturation fractionnée, un règlement soldant la première facture
+                        -- faisait passer les suivantes pour payées.
+                        HAVING montant_restant > 0
                         ORDER BY cde.created_at
                         ";
             }else{
                 // liste de paiement en attente pour les clients ordinaire
+                // Le HT est recalculé depuis les lignes (detail_commande) et non lu dans
+                // cde.montant_total : cette colonne contient le HT pour une commande créée
+                // sur le site mais le NET pour une commande créée depuis l'application
+                // mobile. Y ajouter TVA et livraison double-comptait donc pour le mobile,
+                // et la commande restait affichée « en attente de paiement » alors qu'elle
+                // était soldée.
                 $req = "SELECT IFNULL(SUM(li.montant), 0) AS paye,
-                                (cde.montant_total + cde.cout_livraison_client + tva.montant - cde.remise) AS montant_a_payer,
-                                ((cde.montant_total + cde.cout_livraison_client + tva.montant - cde.remise) - IFNULL(SUM(li.montant), 0) ) AS montant_restant,
+                                (COALESCE(NULLIF(ht.montant_ht, 0), cde.montant_total, 0) + cde.cout_livraison_client + tva.montant - cde.remise) AS montant_a_payer,
+                                ((COALESCE(NULLIF(ht.montant_ht, 0), cde.montant_total, 0) + cde.cout_livraison_client + tva.montant - cde.remise) - IFNULL(SUM(li.montant), 0) ) AS montant_restant,
                                 cde.numero AS num_commande,
                                 cde.created_at AS date_commande,
                                 cde.id as commande_id
@@ -4519,9 +5195,21 @@ class ClientController extends Controller
                         FROM commande cde
                         LEFT JOIN ligne_paiement li ON li.service_id = cde.id
                         LEFT JOIN tva_commande tva ON tva.commande_id = cde.id
+                        LEFT JOIN (SELECT d.commande_id, SUM(d.prix * d.qte) AS montant_ht
+                                     FROM detail_commande d
+                                    WHERE d.deleted_at IS NULL
+                                 GROUP BY d.commande_id) ht ON ht.commande_id = cde.id
                         WHERE cde.client_id = $client->id
                         GROUP BY cde.id,
                                 tva.montant,
+                                ht.montant_ht,
+                                -- cde.montant_total est utilisé dans le COALESCE ci-dessus mais
+                                -- ne figurait pas ici. MySQL 8 l'accepte : il déduit que toutes
+                                -- les colonnes de « commande » dépendent de cde.id, sa clé
+                                -- primaire. MariaDB, qui fait tourner la production, n'a PAS
+                                -- cette déduction : la page tombait en erreur
+                                -- « 1055 'cde.montant_total' isn't in GROUP BY », donc en 500,
+                                -- alors qu'elle s'affichait sans broncher en local.
                                 cde.montant_total,
                                 cde.cout_livraison_client,
                                 cde.remise,
@@ -4538,8 +5226,10 @@ class ClientController extends Controller
             'etat' => $etat,
             'categories' => Categorie::all(),
             'produits' => Produit::all(),
-            'client' => Client::where('user_id',Auth::user()->id)->first(),
-            'moyens' => ModePaiement::liste()
+            // Le client était rechargé une seconde fois depuis la base alors qu'il
+            // est déjà en main : même requête, deux fois par affichage.
+            'client' => $client,
+            'moyens' => ModePaiement::listePourClient()
         ]);
 
     }
@@ -4598,7 +5288,7 @@ class ClientController extends Controller
                         'fichier.mimes' => 'Le fichier doit être au format PDF',
                         'fichier.max' => 'Le fichier ne doit pas dépasser 2 Mo',
                     ]);
-                    $destination = storage_path('app/public/temp_pdfs'); // disque 'public' réel (corrige le double public/ + cohérence move/lecture)
+                    $destination = Storage::disk('public')->path('temp_pdfs'); // racine reelle du disque (cf. config/filesystems.php)
                     $nomPdf = 'bon'.'-'.Auth::user()->client->nom.'-'.Auth::user()->client->prenom.'-'. date('YmdHis') .'.pdf'; // extension forcée : jamais l'extension d'origine (anti-upload de .php exécutable)
                     $request->file('fichier')->move($destination, $nomPdf);
                     session()->put([
@@ -4642,28 +5332,45 @@ class ClientController extends Controller
 
             $client = Client::where('user_id',$id)->first();
 
+            // Même précaution que dans panierEnCommande() : sans fiche client,
+            // $client->id plus bas est une erreur fatale. L'appelant redirige.
+            if (!$client) {
+                return null;
+            }
+
             $config = Configuration::first();
 
             $total = Cart::total();
             // $promo = null;
 
+            // Les informations de livraison sont lues UNE fois, et jamais
+            // supposées présentes : sur une session expirée, session('0')
+            // vaut null et chaque session('0')['...'] provoquait une erreur
+            // fatale au lieu d'un simple retour au panier.
+            $livraison = is_array(session('0')) ? session('0') : [];
+
             $cout_livraison = 0;
             $remise = 0;
             $adresse_livraison_id = null;
-            if(session('0')['cout_livraison']){
-                $cout_livraison = session('0')['cout_livraison'];
+            if(!empty($livraison['cout_livraison'])){
+                $cout_livraison = $livraison['cout_livraison'];
 
-                $ville = Ville::find(session('0')['ville']);
+                $ville = Ville::find($livraison['ville'] ?? null);
 
-                $adresse_livraison = AdresseLivraison::create([
-                    'client_id' => $client->id,
-                    'ville_id' => session('0')['ville'],
-                    'pays_id' => $ville->pays_id,
-                    'affichage' => session('0')['infoSup'],
-                    'longitude' => session('0')['long'],
-                    'latitude' => session('0')['lat'],
-                ]);
-                $adresse_livraison_id = $adresse_livraison->id;
+                // Ville inconnue : AdresseLivraison exige ville_id et pays_id.
+                // Le devis reste créé, mais sans adresse de livraison — mieux
+                // vaut un devis à compléter qu'une page d'erreur.
+                if ($ville) {
+                    $adresse_livraison = AdresseLivraison::create([
+                        'client_id' => $client->id,
+                        'ville_id' => $ville->id,
+                        'pays_id' => $ville->pays_id,
+                        'affichage' => $livraison['infoSup'] ?? null,
+                        'longitude' => $livraison['long'] ?? null,
+                        'latitude' => $livraison['lat'] ?? null,
+                    ]);
+                    $adresse_livraison_id = $adresse_livraison->id;
+                }
 
             }
 
@@ -4672,10 +5379,9 @@ class ClientController extends Controller
             }
 
                 $dataDevis = [
-                    'numero' => Help::getCommandeNo(),
                     'client_id' => $client->id,
                     'montant' => $total,
-                    'tva' => session('0')['tva'],
+                    'tva' => $livraison['tva'] ?? null,
                     'cout_livraison' => $cout_livraison,
                     'mode_paiement' => session('mode'),
                     'mode_paiement_id' => session('mode'),
@@ -4687,7 +5393,10 @@ class ClientController extends Controller
                     'date_livraison' => session('date_livraison'),
                 ];
 
-                $devis = Devis::create($dataDevis);
+                $devis = Help::creerAvecNumeroUnique(function ($numero) use ($dataDevis) {
+                    $dataDevis['numero'] = $numero;
+                    return Devis::create($dataDevis);
+                });
 
                 $devisId = $devis->id;
 
@@ -4720,6 +5429,13 @@ class ClientController extends Controller
 
         $ville = Ville::where('id',session('ville'))->first();
         $client = Client::where('user_id',$id)->first();
+
+        // Session d'adresse expirée / incomplète (retour arrière, reconnexion) :
+        // $ville->pays->id fatalisait ici, et AdresseLivraison exige pays_id/ville_id
+        // NOT NULL. Ce code est atteint depuis la CONNEXION -> erreur 500 au login.
+        if (!$ville || !$client) {
+            return null;
+        }
 
 
 
@@ -4774,13 +5490,15 @@ class ClientController extends Controller
 
 
                 $dataDevis = [
-                    'numero' => Help::getCommandeNo(),
                     'client_id' => $client->id,
                     'adresse_livraison_id' => $adresseId,
                     'montant' => $totalPlusTva,
                 ];
 
-                $devis = Devis::create($dataDevis);
+                $devis = Help::creerAvecNumeroUnique(function ($numero) use ($dataDevis) {
+                    $dataDevis['numero'] = $numero;
+                    return Devis::create($dataDevis);
+                });
 
                 $devisId = $devis->id;
 
@@ -4815,6 +5533,12 @@ class ClientController extends Controller
                 // session()->forget('');
 
                 // dd($devis->montant);
+
+                // Plafond de crédit : même contrôle qu'en flux panier. Cette méthode
+                // crée aussi une commande, elle doit donc l'appliquer.
+                if ($refus = $this->refusPlafondCredit($client, $this->montantNetDevis($devis))) {
+                    return $this->retourApresRefusCommande($devis)->with('error', $refus);
+                }
 
                 $commande = Commande::create([
                     'numero' => $devis->numero,
@@ -4915,7 +5639,9 @@ class ClientController extends Controller
                 $paiement->devis_id = $devis->id;
                 $paiement->code = $commande->numero;
                 $paiement->libelle = "Paiement commande de produit IMLOD";
-                $paiement->montant_total = $commande->montant_total;
+                // montant_total stocke le HT côté web : la dette doit être le NET dû
+                // (HT + TVA + livraison - remise), sinon le client est sous-facturé.
+                $paiement->montant_total = $commande->montantAPayer();
                 $paiement->montant_restant = 0;
                 $paiement->statut = Help::$STATUT_INACTIF;
                 $paiement->save();
@@ -4949,7 +5675,9 @@ class ClientController extends Controller
                             'email' => $client->user->email,
                             'libelle_article' => "Paiement IMLOD",
                             'quantite' => 1,
-                            'montant' => ceil($commande->montant_total),
+                            // Montant NET à débiter (TVA + livraison - remise incluses) :
+                            // montant_total ne contient que le HT côté web.
+                            'montant' => intVal($commande->montantAPayer()),
                             'lib_order' => "Paiement commande de produit IMLOD",
                             'Url_Retour' => route('client.monPanier'), //route("ouvreApp", ['codePaiement' => $codePaiement]),
                             'Url_Callback' => route('callBackPaiement'),
@@ -4957,7 +5685,8 @@ class ClientController extends Controller
                         $codePaiement,
                         $client,
                         $paiement->id,
-                        $commande->montant_total,
+                        // Montant NET (cf. ci-dessus) et non le HT.
+                        $commande->montantAPayer(),
                         session('mode'),
                         $commande->id,
                         Help::$COMMANDE
@@ -4978,12 +5707,22 @@ class ClientController extends Controller
                         $retour->message = $ret['message'];
                     }
 
-                    Mail::send(new emailCommande($client->user->email,
-                                        $nomPrenom,
-                                        $commande,
-                                        $commande->montant_total,
-                                        $montantPoint,
-                                        $pourcentPromo));
+                    // Signature à 7 arguments (cf. app/Mail/emailCommande.php) : l'ancien
+                    // appel à 6 arguments fatalisait ici, et ce code est atteint depuis la
+                    // CONNEXION du client -> erreur 500 au login. Envoi non bloquant.
+                    try {
+                        Mail::send(new emailCommande(
+                            $commande,
+                            $commande->TvaCommande?->montant ?? 0,
+                            $commande->montantAPayer(),
+                            $commande->cout_livraison_client,
+                            $commande->remise,
+                            $commande->modePaiement->libelle ?: ($commande->modePaiement->description ?? ''),
+                            $commande->montantHT()
+                        ));
+                    } catch (\Throwable $e) {
+                        \Log::warning('Email commande (panier) non envoyé: '.$e->getMessage());
+                    }
                 }
 
                 // *************************************
@@ -5059,6 +5798,16 @@ class ClientController extends Controller
         }
 
         $total = $total + $total*($config->tva/100);
+
+                // Plafond de crédit : une location l'engage comme une commande. Ici
+                // $total porte déjà la TVA et aucune remise n'est enregistrée : le
+                // montant engagé est donc le total plus la livraison.
+                $engageLocation = (float) $total
+                    + (float) (session('0') ? session('0')['cout_livraison_client'] : 0);
+
+                if ($refus = $this->refusPlafondCredit($client, $engageLocation)) {
+                    return redirect()->route('client.monPanier')->with('error', $refus);
+                }
 
                 $location = [
                     'numero' => uniqid(),
