@@ -195,10 +195,12 @@ class ControllersStructureTest extends TestCase
     public function test_paiement_en_ligne_controllers_exist(): void
     {
         $this->assertTrue(class_exists(\App\Http\Controllers\PaiementEnLigne::class));
-        // Le fichier PaiementEnLigne_new.php existe sur disque mais déclare en
-        // fait une classe `PaiementController` (doublon historique). On vérifie
-        // donc seulement la présence du fichier source, pas de la classe.
-        $this->assertFileExists(
+        // PaiementEnLigne_new.php était un doublon historique : un second fichier
+        // qui déclarait une classe déjà définie ailleurs. Il a été supprimé lors
+        // de l'audit. On vérifie qu'il ne revient pas : deux versions d'un même
+        // contrôleur de paiement, c'est la garantie qu'on corrigera un jour la
+        // mauvaise.
+        $this->assertFileDoesNotExist(
             __DIR__ . '/../../app/Http/Controllers/PaiementEnLigne_new.php'
         );
     }

@@ -216,14 +216,14 @@ class HelpTest extends TestCase
 
     public function test_get_commande_no_contains_timestamp_and_digits(): void
     {
-        $before = time();
         $result = \Help::getCommandeNo();
-        $after = time();
 
-        // The result starts with a unix timestamp and ends with 10 random digits
-        $this->assertMatchesRegularExpression('/^\d+$/', $result);
-        // Total length: timestamp digits (~10) + 10 random digits
-        $this->assertGreaterThanOrEqual(20, strlen($result));
+        // Format unifié depuis l'audit : AAMMJJ + 6 chiffres aléatoires, soit
+        // 12 chiffres. Auparavant le numéro reposait sur un timestamp unix et
+        // atteignait 20 chiffres — illisible pour le client comme pour l'agent,
+        // et surtout différent selon le chemin emprunté (site, mobile, devis).
+        $this->assertMatchesRegularExpression('/^\d{12}$/', $result);
+        $this->assertStringStartsWith(date('ymd'), $result);
     }
 
     // ---------------------------------------------------------------
@@ -503,8 +503,12 @@ class HelpTest extends TestCase
     public function test_liste_statut_livraison(): void
     {
         $result = \Help::listeStatutLivraison();
-        $this->assertCount(3, $result);
+        // Quatre statuts depuis l'audit : « EN COURS » a été ajouté pour
+        // distinguer le livreur PARTI du livreur ARRIVÉ. Sans lui, une
+        // livraison était enregistrée comme faite dès le départ du camion.
+        $this->assertCount(4, $result);
         $this->assertContains('LIVREE', $result);
+        $this->assertContains(\Help::$LIVRAISON_EN_COURS, $result);
     }
 
     public function test_liste_statut_location(): void

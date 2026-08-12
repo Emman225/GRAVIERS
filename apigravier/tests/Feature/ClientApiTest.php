@@ -57,8 +57,23 @@ class ClientApiTest extends TestCase
 
         $response = $this->getJson('/mon_gravier/get-config');
 
+        // Cette route ne renvoie pas une enveloppe code/message : elle livre
+        // directement le jeu de données dont l'application a besoin pour
+        // s'afficher au démarrage. Une clé manquante ici, et l'application
+        // s'ouvre sur des listes vides.
         $response->assertStatus(200);
-        $response->assertJsonStructure(['code', 'message']);
+        $response->assertJsonStructure([
+            'categories',
+            'bannieres',
+            'produits',
+            'mode_paiements',
+            'type_livraisons',
+            'unites',
+            'pays',
+            'villes',
+            'type_users',
+            'regions',
+        ]);
     }
 
     // -------------------------------------------------------

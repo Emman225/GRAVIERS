@@ -253,7 +253,13 @@ class RouteAccessTest extends TestCase
     {
         $user = $this->createClientUser();
 
-        $response = $this->actingAs($user)->get('/cart');
+        // L'adresse historique /cart a été retirée pendant l'audit : elle
+        // ouvrait un second panier, distinct de celui du parcours d'achat, où
+        // le client pouvait déposer des articles qu'il ne retrouvait jamais.
+        // Le panier vit désormais à une seule adresse.
+        $this->assertSame(404, $this->actingAs($user)->get('/cart')->getStatusCode());
+
+        $response = $this->actingAs($user)->get('/client/mon-panier');
 
         $response->assertOk();
     }

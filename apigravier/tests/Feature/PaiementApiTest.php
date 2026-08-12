@@ -51,6 +51,12 @@ class PaiementApiTest extends TestCase
     // POST /mon_gravier/callBackPaiement
     // -------------------------------------------------------
 
+    // Le contrat de cette route est particulier et volontaire : la passerelle
+    // de paiement l'appelle de serveur à serveur et ne lit pas le corps de la
+    // réponse. Ce qui compte, c'est qu'elle réponde TOUJOURS 200, quoi qu'elle
+    // reçoive — une erreur ferait recommencer l'appel par la passerelle, en
+    // boucle, sur un paiement déjà traité. Le corps peut donc être vide.
+
     public function test_callback_paiement_with_missing_data(): void
     {
         $this->seedTypeUsers();
@@ -58,7 +64,6 @@ class PaiementApiTest extends TestCase
         $response = $this->postJson('/mon_gravier/callBackPaiement', []);
 
         $response->assertStatus(200);
-        $response->assertJsonStructure(['code', 'message']);
     }
 
     public function test_callback_paiement_with_invalid_code_paiement(): void
@@ -69,8 +74,9 @@ class PaiementApiTest extends TestCase
             'codePaiement' => 'INVALID_CODE_12345',
         ]);
 
+        // Un code inconnu ne doit rien solder et ne doit pas faire tomber la
+        // route : il est seulement journalisé.
         $response->assertStatus(200);
-        $response->assertJsonStructure(['code', 'message']);
     }
 
     public function test_callback_paiement_with_valid_structure(): void
@@ -82,8 +88,9 @@ class PaiementApiTest extends TestCase
             'statut' => 'SUCCESS',
         ]);
 
+        // « statut: SUCCESS » annoncé par l'appelant ne suffit pas : le serveur
+        // reconfirme le paiement auprès de la passerelle avant d'agir.
         $response->assertStatus(200);
-        $response->assertJsonStructure(['code', 'message']);
     }
 
     // -------------------------------------------------------

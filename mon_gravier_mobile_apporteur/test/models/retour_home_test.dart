@@ -24,8 +24,12 @@ void main() {
 
       final stats = Stats.fromJson(json);
 
-      expect(stats.ceMois, isNull);
-      expect(stats.cetteAnnee, isNull);
+      // Un apporteur sans commission ce mois-ci doit lire « 0 », pas une case
+      // vide : l'écran d'accueil restait muet quand le serveur ne renvoyait
+      // rien, et l'apporteur ne savait pas s'il n'avait rien gagné ou si
+      // l'application n'avait pas réussi à charger ses chiffres.
+      expect(stats.ceMois, 0);
+      expect(stats.cetteAnnee, 0);
     });
 
     test('fromJson() with double values', () {

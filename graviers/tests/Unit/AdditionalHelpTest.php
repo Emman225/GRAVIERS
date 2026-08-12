@@ -18,19 +18,9 @@ class AdditionalHelpTest extends TestCase
     // urlPaiement()
     // ---------------------------------------------------------------
 
-    public function test_url_paiement_replaces_http_with_https(): void
-    {
-        // Sans variable d'env PAIEMENT_BASE_URL, seul le scheme est remplacé
-        $result = \Help::urlPaiement('http://example.com/callback');
-        $this->assertStringStartsWith('https://', $result);
-        $this->assertStringContainsString('example.com/callback', $result);
-    }
-
-    public function test_url_paiement_keeps_https(): void
-    {
-        $result = \Help::urlPaiement('https://example.com/cb');
-        $this->assertSame('https://example.com/cb', $result);
-    }
+    // urlPaiement() lit désormais config('app.url') en repli : elle a besoin du
+    // conteneur Laravel et ne peut plus être testée ici, en test pur.
+    // Ses deux cas sont couverts par tests/Feature/HelpUrlPaiementTest.php.
 
     // ---------------------------------------------------------------
     // formatNumeroFacture()
