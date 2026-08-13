@@ -94,18 +94,21 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
           if (kDebugMode) {
             print(_listAdresse);
           }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
         user.code = 500;
         if (kDebugMode) {
           print(e.toString());
         }
-        EasyLoading.showError(
-            "Une erreur s'est produite veuillez reesayer plus tard");
+        afficherErreur(messageErreurTechnique(e));
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -220,7 +223,21 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
     // « Paiement en agence » (id 3) = paiement HORS LIGNE : la commande est
     // enregistrée et payée ensuite en agence (le backend ne déclenche la
     // passerelle que pour le mode « En ligne » id 1).
-    if (_montantTotal > _montantMaxLigne) {
+    if (user.clientATerme == true) {
+      // Le client à terme ne règle pas à la commande : le bloc de paiement lui
+      // est entièrement masqué plus bas. Son mode doit donc être fixé ici, et
+      // ne peut être que « en agence » — le seul qui n'exige aucune saisie.
+      //
+      // Il restait à « En ligne », qui réclame un moyen de paiement, ou à
+      // « Virement » au-delà du plafond, qui réclame des coordonnées bancaires.
+      // Dans les deux cas, le champ demandé n'était affiché nulle part : le
+      // client remplissait tout l'écran et se heurtait à « Veuillez sélectionner
+      // le moyen de paiement », sans rien pouvoir y faire.
+      _listModePaiement = [
+        {"id": 3, "libelle": "Paiement en agence"},
+      ];
+      _modePaiement = 3;
+    } else if (_montantTotal > _montantMaxLigne) {
       _listModePaiement = [
         {"id": 2, "libelle": "Virement bancaire"},
         {"id": 3, "libelle": "Paiement en agence"},
@@ -582,8 +599,12 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
                   onPressed: () async {
                     var add = await Get.toNamed(EditionAdresseScreen.routeName,
                         arguments: UneAdresse());
+                    // Même précaution que sur la liste des devis : cette
+                    // attente se termine aussi quand toute la pile d'écrans
+                    // est retirée.
+                    if (!mounted) return;
                     await chargerAdresse();
-                    if (add != null) {
+                    if (add != null && mounted) {
                       setState(() {
                         _adresse = add;
                         adresseController.text = _adresse.affichage ?? '';
