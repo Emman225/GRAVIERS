@@ -37,14 +37,27 @@ class Devis extends Model
         else return new Devis();
     }
 
-    public static function liste($client_id = null)
+    /**
+     * Devis d'un client, par statut.
+     *
+     * Le statut par défaut reste ACTIF — les devis encore ouverts — pour que
+     * les applications DÉJÀ INSTALLÉES, qui n'envoient pas ce paramètre,
+     * continuent de recevoir exactement la même liste qu'auparavant. Les
+     * versions récentes demandent le statut 2 pour l'historique des devis
+     * transformés en commande.
+     */
+    public static function liste($client_id = null, $statut = null)
     {
+        $statut = $statut !== null && $statut !== '' ? (int) $statut : Help::$STATUT_ACTIF;
+
         return Devis::selectRaw('devis.*, adresse_livraison.complement_adresse as adresse_livraison')
         ->when($client_id, function ($query) use ($client_id) {
             $query->where('devis.client_id', $client_id);
         })
             ->leftJoin('adresse_livraison', 'adresse_livraison.id', '=', 'devis.adresse_livraison_id')
-            ->where('devis.statut', Help::$STATUT_ACTIF)
+            ->where('devis.statut', $statut)
+            // Les plus récents en tête : un historique se lit à l'envers.
+            ->orderByDesc('devis.created_at')
             ->get();
     }
 

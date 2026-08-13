@@ -16,7 +16,11 @@ use App\Models\DetailDevis;
 use App\Models\TvaCommande;
 use Illuminate\Http\Request;
 use App\Models\Configuration;
+use App\Services\CalculMontant;
+use App\Models\AdresseLivraison;
 use App\Models\CoutLivraison;
+// Casse EXACTE du fichier app/Models/PrixPersonnalise.php (obligatoire sous Linux).
+use App\Models\PrixPersonnalise;
 use App\Models\Produit;
 use App\Models\RetourProduit;
 use App\Models\DetailCommande;
@@ -80,7 +84,11 @@ class CommandeController extends Controller
             $user = User::lire($idUsr);
             if ($user->id > 0) {
                 $client = Client::lireSurUser($user->id);
-                $devs = Devis::liste($client->id);
+                // « statut » facultatif : absent, on renvoie les devis encore
+                // ouverts, comme l'ont toujours fait les applications installées.
+                // L'application récente demande le statut 2 pour l'historique des
+                // devis transformés en commande.
+                $devs = Devis::liste($client->id, $request->statut);
                 foreach ($devs as $d) {
                     $d->date_devis = $d->created_at->format("d/m/Y H:i:s");
                 }
@@ -127,6 +135,18 @@ class CommandeController extends Controller
             $idUsr = Crypt::decryptString($request->access);
             $user = User::lire($idUsr);
             if ($user->id > 0) {
+
+                // Même garde qu'à l'enregistrement d'une commande : tous les produits
+                // doivent exister. Elle manquait ici, si bien qu'un identifiant erroné
+                // faisait remonter la violation de clé étrangère TELLE QUELLE jusqu'à
+                // l'écran du client — nom de la base, de la table et de la contrainte
+                // compris. Illisible pour lui, et inutilement bavard.
+                if ($refus = $this->refusProduitsInconnus($request->lignes)) {
+                    DB::rollBack();
+                    $retour->code = 400;
+                    $retour->message = $refus;
+                    return response()->json($retour);
+                }
 
                 $client = Client::lireSurUser($user->id);
                 $ville = Ville::lire($user->ville_id);
@@ -183,6 +203,65 @@ class CommandeController extends Controller
             $retour->message = collect($e->errors())->flatten()->implode(" \n ");
         } catch (\Throwable $th) {
             DB::rollBack();
+            $retour->code = 500;
+            $retour->message = 'Une erreur s\'est produite code: 500 ' . $th->getMessage();
+        }
+
+        return response()->json($retour);
+    }
+
+    /**
+     * Montant DÉFINITIF calculé par le serveur, sans rien enregistrer.
+     *
+     * L'application interroge ce point d'entrée depuis l'écran de résumé, avec
+     * exactement les données qu'elle s'apprête à envoyer. Elle affiche ensuite le
+     * montant renvoyé : le client ne peut donc plus être prélevé d'une somme
+     * différente de celle qu'il a vue. Le calcul est celui de CalculMontant, le
+     * même que celui appliqué à l'enregistrement — aucune divergence possible.
+     */
+    public function verifierMontant(Request $request)
+    {
+        Request()->validate([
+            'access' => "required",
+            'type'   => "required",
+            'lignes' => "required",
+        ]);
+        $retour = new Retour();
+
+        try {
+            $idUsr = Crypt::decryptString($request->access);
+            $user  = User::lire($idUsr);
+
+            if ($user->id > 0) {
+                $client = Client::lireSurUser($user->id);
+
+                $calcul = CalculMontant::pour($user, $client, [
+                    'lignes'       => $request->lignes,
+                    'adresse'      => $request->adresse,
+                    'meFaireLivre' => $request->meFaireLivre,
+                    'long'         => $request->long,
+                    'lat'          => $request->lat,
+                    'reduction'    => $request->reduction,
+                    'pointUtilise' => $request->pointUtilise,
+                ], $request->service == Help::$LOCATION || $request->estLocation == true);
+
+                $retour->code = 200;
+                $retour->data = [
+                    'montant_ht'   => round($calcul['ht']),
+                    'montant_tva'  => round($calcul['tva']),
+                    'livraison'    => round($calcul['livraison']),
+                    'remise'       => round($calcul['remise']),
+                    'total'        => $calcul['total'],
+                ];
+                $retour->message = 'ok';
+            } else {
+                $retour->code = 404;
+                $retour->message = 'Impossible de récupérer l\'utilisateur';
+            }
+        } catch (ValidationException $e) {
+            $retour->code = 501;
+            $retour->message = collect($e->errors())->flatten()->implode(" \n ");
+        } catch (\Throwable $th) {
             $retour->code = 500;
             $retour->message = 'Une erreur s\'est produite code: 500 ' . $th->getMessage();
         }
@@ -258,6 +337,99 @@ class CommandeController extends Controller
         return response()->json($retour);
     }
 
+    /**
+     * Message de refus si une ligne désigne un produit qui n'existe pas.
+     *
+     * La contrainte de clé étrangère de detail_devis / detail_commande rejette
+     * l'insertion, mais son message est du SQL brut — il nomme la base, la table
+     * et la contrainte. Affiché tel quel dans l'application, il n'apprend rien au
+     * client et en dit trop à tout le monde.
+     *
+     * @return string|null  null si toutes les lignes désignent un produit connu
+     */
+    private function refusProduitsInconnus($lignes): ?string
+    {
+        $ids = collect($lignes)->pluck('produit_id')->filter()->unique()->values();
+
+        if ($ids->isEmpty()) {
+            return null;
+        }
+
+        if (Produit::whereIn('id', $ids)->count() >= $ids->count()) {
+            return null;
+        }
+
+        return "Un ou plusieurs produits de votre panier ne sont plus disponibles. "
+            . "Veuillez actualiser votre catalogue (fermez et rouvrez l'application) "
+            . "puis réessayer.";
+    }
+
+    /**
+     * Message de refus si la commande dépasse le crédit disponible du client.
+     *
+     * Porté du site (ClientController::refusPlafondCredit) : mêmes conditions,
+     * mêmes chiffres, même formulation. Un client doit lire la même explication
+     * qu'il commande depuis le site ou depuis l'application.
+     *
+     * @return string|null  null si la commande passe
+     */
+    private function refusPlafondCredit(?Client $client, float $montantCommande): ?string
+    {
+        if (!$client || !$client->client_a_terme) {
+            return null;
+        }
+
+        $disponible = $client->plafondDisponible();
+
+        if ($disponible === null || $montantCommande <= $disponible) {
+            return null;
+        }
+
+        $format = fn ($m) => number_format($m, 0, ',', ' ') . ' FCFA';
+
+        return sprintf(
+            "Cette commande de %s dépasse votre crédit disponible. "
+            . "Plafond accordé : %s. Déjà engagé : %s. Reste disponible : %s. "
+            . "Réglez une facture en cours ou réduisez votre commande pour continuer.",
+            $format($montantCommande),
+            $format((float) $client->plafond_credit),
+            $format($client->encoursCredit()),
+            $format($disponible)
+        );
+    }
+
+    /**
+     * La même commande vient-elle d'être enregistrée ?
+     *
+     * L'application poste sa commande : un double appui, un retour réseau tardif
+     * ou une reprise automatique rejouent la requête. Deux commandes réelles
+     * naissaient alors d'un seul achat.
+     *
+     * On rapproche sur le client, le montant et le nombre de lignes, dans une
+     * fenêtre de deux minutes. Assez court pour qu'une commande volontairement
+     * identique passée plus tard reste possible — un client peut légitimement
+     * recommander la même chose — et assez large pour couvrir une reprise réseau.
+     */
+    private function commandeIdentiqueRecente(Client $client, float $total, int $nbLignes): ?Commande
+    {
+        $recentes = Commande::where('client_id', $client->id)
+            ->where('etat_commande', '!=', 'ANNULEE')
+            ->where('created_at', '>=', now()->subMinutes(2))
+            ->orderByDesc('id')
+            ->get();
+
+        foreach ($recentes as $commande) {
+            $memeMontant = abs((float) $commande->montant_total - $total) < 1;
+            $memNombreDeLignes = $commande->detailCommande->count() === $nbLignes;
+
+            if ($memeMontant && $memNombreDeLignes) {
+                return $commande;
+            }
+        }
+
+        return null;
+    }
+
     public function enregistrerCommande(Request $request)
     {
         //   'adresse': addr.id,
@@ -304,50 +476,119 @@ class CommandeController extends Controller
                 // avoir un catalogue en cache périmé -> id de produit disparu). Sinon la
                 // contrainte de clé étrangère fait planter avec un message SQL brut (500).
                 // On renvoie plutôt un message clair et on annule proprement.
-                $idsProduits = collect($request->lignes)->pluck('produit_id')->filter()->unique()->values();
-                $existants   = Produit::whereIn('id', $idsProduits)->pluck('id');
-                if ($idsProduits->count() > 0 && $existants->count() < $idsProduits->count()) {
+                if ($refus = $this->refusProduitsInconnus($request->lignes)) {
                     DB::rollBack();
                     $retour->code = 400;
-                    $retour->message = "Un ou plusieurs produits de votre panier ne sont plus disponibles. Veuillez actualiser votre catalogue (fermez et rouvrez l'application) puis réessayer.";
+                    $retour->message = $refus;
                     return response()->json($retour);
                 }
 
-                // MÊME calcul que le web : UN SEUL coût de livraison (km × prixKm)
-                // réparti proportionnellement à la quantité sur chaque ligne.
-                $montantLivraison = 0;
-                $lignes = $request->lignes;
-                if ($request->meFaireLivre == 1 || $request->meFaireLivre == true) {
-                    $ville = Ville::lire($user->ville_id);
-                    $qteTotale = 0;
-                    foreach ($lignes as $l) { $qteTotale += (float) $l[('qte')]; }
-                    if ($qteTotale > 0) {
-                        $montantLivraison = CoutLivraison::calculer($request->long, $request->lat, $ville->region_id, $qteTotale);
-                        foreach ($lignes as $key => $l) {
-                            $lignes[$key]['livraison'] = ((float) $l[('qte')] / $qteTotale) * $montantLivraison;
-                        }
-                    }
+                $client = Client::lireSurUser($user->id);
+
+                // =====================================================================
+                // MONTANTS CALCULÉS PAR LE SERVEUR
+                // ---------------------------------------------------------------------
+                // Prix unitaires, TVA, remise et coût de livraison sont recalculés à
+                // partir du catalogue, des prix personnalisés du client, de la
+                // configuration et de l'ADRESSE DE LIVRAISON — jamais repris de
+                // l'application. Le calcul vit dans App\Services\CalculMontant, utilisé
+                // aussi par « verifier-montant » : le client voit donc AVANT de valider
+                // exactement le montant qui lui sera prélevé.
+                // Le serveur corrige, il ne refuse pas : tout écart est journalisé.
+                // =====================================================================
+                $calcul = CalculMontant::pour($user, $client, [
+                    'lignes'       => $request->lignes,
+                    'adresse'      => $request->adresse,
+                    'meFaireLivre' => $request->meFaireLivre,
+                    'long'         => $request->long,
+                    'lat'          => $request->lat,
+                    'reduction'    => $request->reduction,
+                    'pointUtilise' => $request->pointUtilise,
+                ], false);
+
+                $lignes           = $calcul['lignes'];
+                $montantLivraison = $calcul['livraison'];
+                $tvaServeur       = $calcul['tva'];
+                $remiseServeur    = $calcul['remise'];
+                $totalServeur     = $calcul['total'];
+                $pointsUtilises   = $calcul['points_utilises'];
+                $reductionValide  = $calcul['reduction_valide'];
+
+                if (abs($totalServeur - (float) $request->total) > 1 || !empty($calcul['ecarts'])) {
+                    \Log::warning('Commande mobile — montants recalculés par le serveur', [
+                        'client_id'        => $client->id,
+                        'total_envoye'     => (float) $request->total,
+                        'total_applique'   => $totalServeur,
+                        'tva_envoyee'      => (float) ($request->montantTva ?? 0),
+                        'tva_appliquee'    => $tvaServeur,
+                        'remise_envoyee'   => (float) ($request->remise ?? 0),
+                        'remise_appliquee' => $remiseServeur,
+                        'ecarts'           => $calcul['ecarts'],
+                    ]);
+                }
+                // PLAFOND DE CRÉDIT — même règle que sur le site.
+                //
+                // Un client à terme n'est JAMAIS envoyé à la passerelle depuis
+                // l'application (voir plus bas : « if ($client->client_a_terme ==
+                // false) ») : toutes ses commandes mobiles sont donc prises à crédit,
+                // sans exception. La limite s'applique à chacune.
+                //
+                // Elle n'existait que côté web : un client à terme atteignant son
+                // plafond n'avait qu'à ouvrir l'application pour continuer à commander.
+                // Une limite contournable en changeant de canal n'est pas une limite.
+                if ($refus = $this->refusPlafondCredit($client, $totalServeur)) {
+                    DB::rollBack();
+                    $retour->code = 403;
+                    $retour->message = $refus;
+                    return response()->json($retour);
                 }
 
+                // GARDE ANTI-DOUBLON : une commande identique vient-elle d'être
+                // enregistrée ? Un double appui, ou un réseau qui fait rejouer la
+                // requête, créait deux commandes réelles pour un seul achat — le
+                // client était engagé deux fois, et le gestionnaire préparait deux
+                // livraisons.
+                if ($existante = $this->commandeIdentiqueRecente($client, $totalServeur, count($lignes))) {
+                    DB::commit();
+                    $retour->code = 200;
+                    $retour->data = ['commande' => $existante->id, 'numero' => $existante->numero];
+                    $retour->message = 'Votre commande a déjà été enregistrée.';
+                    return response()->json($retour);
+                }
 
-                $client = Client::lireSurUser($user->id);
+                // Devis d'origine, quand la commande vient d'un devis repris dans le
+                // panier. On le relit en base plutôt que de faire confiance à l'appel :
+                // il doit exister, appartenir à CE client, et ne pas être déjà clos.
+                $devisOrigine = $request->devis_id
+                    ? Devis::where('id', $request->devis_id)
+                        ->where('client_id', $client->id)
+                        ->where('statut', Help::$STATUT_ACTIF)
+                        ->first()
+                    : null;
+
                 $commande = new Commande();
-                $commande->numero = Help::genererNumeroUnique('commande');
-                $commande->devis_id = null;
+                // Numéro vérifié dans devis ET commande : voir Help::genererNumeroCommande.
+                $commande->numero = Help::genererNumeroCommande();
+                // Le lien vers le devis était forcé à null : rien ne reliait la commande
+                // à son devis, et celui-ci restait « en attente » indéfiniment dans
+                // l'application. Le site, lui, fait ce rattachement depuis toujours.
+                $commande->devis_id = $devisOrigine?->id;
                 $commande->client_id = $client->id;
                 $commande->adresse_livraison_id = $request->adresse;
                 // NULL si aucun moyen en ligne choisi (ex. paiement en agence : le mobile
                 // envoie 0) : la FK vers mode_paiement refuse 0 -> 500 à la création.
                 $commande->mode_paiement_id = $request->moyen_paiement > 0 ? $request->moyen_paiement : null;
                 $commande->date_commande = date("Y-m-d H:i:s");
-                $commande->montant_total = $request->total;
+                // Montant recalculé par le serveur (voir le bloc « CONTRÔLE SERVEUR
+                // DES MONTANTS » ci-dessus), jamais celui envoyé par l'application.
+                $commande->montant_total = $totalServeur;
                 // Commande à payer EN LIGNE (mobile « En ligne » = mode 1, montant sous
                 // le plafond passerelle) : créée « EN ATTENTE DE PAIEMENT » pour NE PAS
                 // apparaître dans la file de traitement du gestionnaire tant que le
                 // paiement n'est pas confirmé. Le callback la passe à « EN ATTENTE ».
                 // (Parité avec le web ; mêmes conditions que le déclenchement du paiement
                 //  en ligne plus bas : mode_paiement == 1 && total <= 2 000 000.)
-                $commandePaieEnLigne = ($request->mode_paiement == 1 && $request->total <= 2000000);
+                $commandePaieEnLigne = ($request->mode_paiement == 1 && $totalServeur <= 2000000);
                 $commande->etat_commande = $commandePaieEnLigne ? Help::$COMMANDE_EN_ATTENTE_PAIEMENT : Help::$COMMANDE_EN_ATTENTE;
                 $commande->statut = Help::$STATUT_ACTIF;
                 $commande->note = $request->note;
@@ -355,22 +596,38 @@ class CommandeController extends Controller
                 $commande->type_livraison_id = $request->type_livraison;
                 $commande->cout_livraison_client = $montantLivraison;
                 $commande->est_livrable = $request->meFaireLivre;
-                $commande->remise = $request->remise;
+                // Remise recalculée par le serveur (code promo revérifié + points
+                // plafonnés au solde réel), pas celle annoncée par l'application.
+                $commande->remise = $remiseServeur;
 
-                if ($request->reduction > 0) {
-                    $reduction = Reduction::lire($request->reduction);
-                    $reduction->est_utilise = true;
-                    $reduction->statut = Help::$STATUT_INACTIF;
-                    $reduction->save();
+                // Le code promo n'est consommé QUE s'il a passé les contrôles serveur :
+                // un code expiré ou déjà utilisé n'est plus « brûlé » au passage.
+                if ($reductionValide) {
+                    $reductionValide->est_utilise = true;
+                    $reductionValide->statut = Help::$STATUT_INACTIF;
+                    $reductionValide->save();
                 }
 
                 //On vas retirer les points utilisé du client
-                if ($request->pointUtilise > 0) {
-                    $client->point -= $request->pointUtilise;
+                if ($pointsUtilises > 0) {
+                    // Solde plafonné plus haut : un client ne peut plus dépenser plus de
+                    // points qu'il n'en possède (le solde devenait négatif).
+                    $client->point -= $pointsUtilises;
                     $client->save();
                 }
 
                 if ($commande->save()) {
+
+                    // Le devis est clos une fois la commande enregistrée. statut = 2 est
+                    // la valeur que le site emploie déjà (ClientController), et la liste
+                    // renvoyée à l'application ne retient que les devis en statut ACTIF :
+                    // le devis transformé disparaît donc de « Mes devis enregistrés »,
+                    // comme il disparaît de l'espace client du site.
+                    if ($devisOrigine) {
+                        $devisOrigine->statut = Help::$STATUT_INACTIF;
+                        $devisOrigine->save();
+                    }
+
                     // 'numero_bc'
                     // 'bc_file'
                     if ($request->numero_bc != '' && $request->bc_file != '') {
@@ -389,15 +646,20 @@ class CommandeController extends Controller
                         $bc->save();
                     }
 
-                    if ($request->montantTva > 0) {
-                        $mtva = new TvaCommande();
-                        $mtva->client_id = $client->id;
-                        $mtva->commande_id = $commande->id;
-                        $mtva->montant = $request->montantTva;
-                        $mtva->type_affaire = Help::$VENTE;
-                        $mtva->statut = Help::$STATUT_ACTIF;
-                        $mtva->save();
-                    }
+                    // La ligne de TVA est créée SYSTÉMATIQUEMENT, à 0 si le client n'est
+                    // pas assujetti. L'ancien « if (montantTva > 0) » laissait les
+                    // commandes mobiles sans ligne tva_commande, contrairement aux
+                    // commandes du site : c'est ce qui faisait tomber la page « Mon
+                    // compte » en erreur 500 côté web.
+                    $mtva = new TvaCommande();
+                    $mtva->client_id = $client->id;
+                    $mtva->commande_id = $commande->id;
+                    // TVA recalculée par le serveur (taux de la configuration appliqué au
+                    // HT réel) et non celle annoncée par l'application.
+                    $mtva->montant = max(0, round($tvaServeur));
+                    $mtva->type_affaire = Help::$VENTE;
+                    $mtva->statut = Help::$STATUT_ACTIF;
+                    $mtva->save();
 
                     foreach ($lignes as $l) {
                         $ligne = new DetailCommande();
@@ -445,7 +707,11 @@ class CommandeController extends Controller
                                     'email' => $user->email,
                                     'libelle_article' => "Paiement IMLOD",
                                     'quantite' => 1,
-                                    'montant' => ceil($request->total),
+                                    // Montant réellement prélevé : celui calculé par le
+                                    // serveur. C'est le point central de la faille :
+                                    // l'application pouvait sinon faire payer 100 F une
+                                    // commande de 1 000 000 F.
+                                    'montant' => ceil($totalServeur),
                                     'lib_order' => "Paiement commande de produit IMLOD",
                                     'Url_Retour' => Help::urlPaiement(route("ouvreApp", ['codePaiement' => $codePaiement])),
                                     'Url_Callback' => Help::urlPaiement(route('callBackPaiement')),
@@ -453,7 +719,8 @@ class CommandeController extends Controller
                                 $commande->numero,
                                 $codePaiement,
                                 $client,
-                                $request->total,
+                                // Montant enregistré dans le paiement : celui du serveur.
+                                $totalServeur,
                                 $request->mode_paiement,
                                 $commande->id,
                                 Help::$COMMANDE
@@ -608,7 +875,18 @@ class CommandeController extends Controller
             $user = User::lire($idUsr);
             if ($user->id > 0) {
 
+                $client = Client::lireSurUser($user->id);
                 $devis = Devis::lire($id);
+
+                // IDOR : sans ce contrôle, un client pouvait supprimer le devis d'un
+                // autre client en passant un id arbitraire — le devis disparaissait de
+                // l'application de la victime sans explication.
+                if (!$devis || $devis->id <= 0 || $devis->client_id != $client->id) {
+                    $retour->code = 404;
+                    $retour->message = 'Devis introuvable';
+                    return response()->json($retour);
+                }
+
                 $devis->statut = Help::$STATUT_INACTIF;
                 $devis->save();
 
