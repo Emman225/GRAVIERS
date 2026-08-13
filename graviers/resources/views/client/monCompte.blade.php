@@ -70,6 +70,19 @@
 
 @section('cssPart')
     <link rel="stylesheet" href="{{ asset('frontend/assets/css/premium-tableau-bord.css?v=1.0') }}">
+    {{-- La page chargeait le script DataTables sans sa feuille de styles : les
+         tableaux étaient bien paginés, mais la recherche, le sélecteur du nombre
+         de lignes et les boutons de pagination s'affichaient sans aucune mise
+         en forme, empilés sous le tableau. --}}
+    <link rel="stylesheet" href="{{ asset('backend/plugins/DataTables/datatables.min.css') }}">
+    <style>
+        /* DataTables 2.1 : les classes ont changé de nom (dt-search, dt-length,
+           dt-info) — celles en dataTables_* des versions 1.x ne correspondent
+           plus à rien. Simple respiration entre les commandes et le tableau. */
+        .dt-container .dt-search,
+        .dt-container .dt-length { margin-bottom: 10px; }
+        .dt-container .dt-info { font-size: 13px; color: #6b7c8c; }
+    </style>
 @endsection
 
 @section('content')
@@ -1414,11 +1427,26 @@
 
     <script type="text/javascript">
         $(function() {
-            var $table = $('#listeDevis').DataTable({
-                language: {
-                    url: '{{ asset('backend/plugins/DataTables/i18n/fr-FR.json') }}',
-                },
-                order: [],
+            // Les deux tableaux de devis : les devis en attente et l'historique
+            // de ceux passés en commande. Cinq lignes par page — les tableaux
+            // sont dans un onglet, une page longue y noierait le reste.
+            //
+            // Chacun n'est rendu que s'il contient des lignes : initialiser
+            // DataTables sur un tableau vide provoque « Requested unknown
+            // parameter ». D'où le test de présence avant chaque appel.
+            ['#listeDevis', '#historiqueDevis'].forEach(function (selecteur) {
+                var $t = $(selecteur);
+                if (!$t.length || $t.find('tbody tr').length === 0) return;
+
+                $t.DataTable({
+                    language: {
+                        url: '{{ asset('backend/plugins/DataTables/i18n/fr-FR.json') }}',
+                    },
+                    pageLength: 5,
+                    lengthMenu: [[5, 10, 25, -1], [5, 10, 25, 'Tout']],
+                    order: [],
+                    columnDefs: [{ targets: '_all', defaultContent: '-' }],
+                });
             });
         });
     </script>
