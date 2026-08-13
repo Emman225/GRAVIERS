@@ -3505,7 +3505,12 @@ class ClientController extends Controller
 
                 if (($ret['code'] ?? null) == 200) {
                     session()->put('message', $ret['message']);
-                    Cart::destroy();
+                    // Panier conservé jusqu'à confirmation, comme pour une commande.
+                    // Le cas est ici plus net encore : la location n'existe même pas
+                    // tant que le paiement n'est pas confirmé. Le client qui fermait
+                    // la page de paiement perdait donc son panier ET n'avait aucune
+                    // location en contrepartie.
+                    session()->put('panier_lie_au_paiement', $codePaiement);
                     return Redirect::away($ret['message']);   // location créée à la confirmation
                 }
                 // Échec d'initiation du paiement : on retombe sur la création directe (rien perdu).
@@ -4079,13 +4084,20 @@ class ClientController extends Controller
                     ]);
 
                     if ($ret['code'] == 200) {
-                        // La commande est créée : on vide le panier avant de partir vers la passerelle
-                        // (sinon le produit reste dans le panier après un paiement en ligne réussi).
-                        Cart::destroy();
+                        // Le panier n'est PAS vidé ici. Il l'était avant le départ vers
+                        // la passerelle : un client qui fermait la page de paiement
+                        // retrouvait son panier vide, comme si la commande avait été
+                        // réglée, alors qu'aucun franc n'avait été encaissé.
+                        //
+                        // On note seulement QUEL paiement a été lancé depuis ce panier.
+                        // verifiePaiement() ne le videra que si ce paiement-là est
+                        // confirmé — et pas si le client règle entre-temps tout autre
+                        // chose, une facture ou une location, depuis son espace.
+                        session()->put('panier_lie_au_paiement', $codePaiement);
                         return Redirect::away($ret['message']);
                     } else {
-                        // Le paiement en ligne a échoué — rediriger avec message d'avertissement
-                        Cart::destroy();
+                        // Même raison : rien n'a été payé, le panier reste intact pour
+                        // que le client puisse reprendre sa commande.
                         return redirect()->route('client.commandeValidee', $commande->numero)
                             ->with('warning', 'Votre commande a été enregistrée mais le paiement en ligne a échoué (' . ($ret['message'] ?? 'Erreur inconnue') . '). Rendez-vous dans Mon Compte pour réessayer le paiement.');
                     }
@@ -4176,6 +4188,19 @@ class ClientController extends Controller
 
             $paiement->montant_restant = 0;
             $paiement->update();
+
+            // C'EST ICI que le panier est vidé, et nulle part ailleurs : le paiement
+            // vient d'être confirmé. Il l'était auparavant AVANT même le départ vers
+            // la passerelle, si bien qu'un client qui fermait la page de paiement
+            // retrouvait un panier vide sans avoir rien réglé.
+            //
+            // Et seulement si c'est bien CE paiement qui a été lancé depuis le panier :
+            // régler une facture ou une location déjà existante ne doit pas emporter
+            // les articles que le client vient d'y déposer.
+            if (session('panier_lie_au_paiement') === $codePaiement) {
+                Cart::destroy();
+                session()->forget('panier_lie_au_paiement');
+            }
 
             switch ($paiement->service) {
                 case Help::$COMMANDE:
