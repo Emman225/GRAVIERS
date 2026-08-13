@@ -69,6 +69,73 @@ class UserController extends Controller
         return back()->with('success','Action effectuée avec succès');
     }
 
+    /**
+     * Révise le plafond de crédit et le délai de paiement d'un client à terme.
+     *
+     * Ces deux valeurs n'étaient inscrites qu'une seule fois, à l'approbation de
+     * la demande, et plus rien ne permettait d'y revenir : ni relever le plafond
+     * d'un client dont l'activité a grandi, ni le baisser pour un mauvais payeur,
+     * ni corriger une simple erreur de saisie. Le plafond étant opposable — il
+     * bloque les commandes au-delà du montant accordé — cette impossibilité
+     * enfermait la gestion.
+     *
+     * Chaque révision est journalisée avec l'ancienne et la nouvelle valeur, son
+     * auteur et sa date : ce montant engage l'entreprise.
+     */
+    public function modifierPlafondCredit(Request $request, Client $client)
+    {
+        // Bornes identiques à celles de l'approbation (validationDemande) : une
+        // révision ne doit pas pouvoir enregistrer ce qu'un accord initial refuse.
+        $request->validate([
+            'plafond_credit' => 'required|numeric|min:0',
+            'delai_paiement' => 'required|integer|min:1|max:365',
+            'motif'          => 'nullable|string|max:255',
+        ], [
+            'plafond_credit.required' => 'Le plafond de crédit est obligatoire.',
+            'plafond_credit.numeric'  => 'Le plafond de crédit doit être un montant.',
+            'delai_paiement.required' => 'Le délai de paiement (en jours) est obligatoire.',
+            'delai_paiement.max'      => 'Le délai de paiement ne peut excéder 365 jours.',
+        ]);
+
+        // Un client ordinaire n'a pas de plafond : lui en fixer un laisserait
+        // croire à un encadrement qui ne s'applique nulle part.
+        if (!$client->client_a_terme) {
+            return back()->with('error', 'Ce client n\'est pas un client à terme : son plafond ne peut pas être révisé.');
+        }
+
+        $ancienPlafond = (float) ($client->plafond_credit ?? 0);
+        $ancienDelai   = (int) ($client->delai_paiement ?? 0);
+        $nouveauPlafond = (float) $request->plafond_credit;
+        $nouveauDelai   = (int) $request->delai_paiement;
+
+        if ($ancienPlafond == $nouveauPlafond && $ancienDelai == $nouveauDelai) {
+            return back()->with('info', 'Aucun changement : le plafond et le délai sont inchangés.');
+        }
+
+        $client->update([
+            'plafond_credit' => $nouveauPlafond,
+            'delai_paiement' => $nouveauDelai,
+        ]);
+
+        \Help::ecrireLog(
+            'modifierPlafondCredit',
+            'Révision du plafond de crédit — ' . trim($client->nom . ' ' . $client->prenom),
+            sprintf(
+                'Client #%d : plafond %s -> %s FCFA ; délai %d -> %d jours.%s',
+                $client->id,
+                number_format($ancienPlafond, 0, ',', ' '),
+                number_format($nouveauPlafond, 0, ',', ' '),
+                $ancienDelai,
+                $nouveauDelai,
+                $request->filled('motif') ? ' Motif : ' . $request->motif : ''
+            ),
+            Auth::id()
+        );
+
+        return back()->with('success', 'Plafond de crédit mis à jour : '
+            . number_format($nouveauPlafond, 0, ',', ' ') . ' FCFA sur ' . $nouveauDelai . ' jours.');
+    }
+
     public function welcome(Request $request){
         $data = $request->validate([
             'lat' => 'required|numeric',

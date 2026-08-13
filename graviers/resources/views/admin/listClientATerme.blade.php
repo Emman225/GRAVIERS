@@ -12,6 +12,28 @@
 
     </div>
 
+    {{-- Retours des actions de cette page. Ni la vue ni le gabarit n'en
+         affichaient : une révision de plafond enregistrée, ou refusée par la
+         validation, restait sans le moindre message à l'écran. --}}
+    @if (session('success'))
+        <div class="alert alert-success">{{ session('success') }}</div>
+    @endif
+    @if (session('error'))
+        <div class="alert alert-danger">{{ session('error') }}</div>
+    @endif
+    @if (session('info'))
+        <div class="alert alert-info">{{ session('info') }}</div>
+    @endif
+    @if ($errors->any())
+        <div class="alert alert-danger">
+            <ul class="mb-0">
+                @foreach ($errors->all() as $erreur)
+                    <li>{{ $erreur }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
 
     <div class="card mb-4">
         <header class="card-header">
@@ -74,15 +96,15 @@
                                 @if ($c->contact1)<div>{{ $c->contact1 }}</div>@endif
                                 @if ($c->contact2)<div class="text-muted small">{{ $c->contact2 }}</div>@endif
                             </td>
-                            <td class="text-center">{{ $c->user->email ?? $c->email }}</td>
-                            <td>{{ $c->user->adresse ?? '-' }}</td>
+                            <td class="text-center">{{ $c->user?->email ?? $c->email }}</td>
+                            <td>{{ $c->user?->adresse ?? '-' }}</td>
                             <td class="text-end">
                                 {{ $c->plafond_credit ? Help::formatNombre($c->plafond_credit, true) : '-' }}
                             </td>
                             <td class="text-center">{{ $c->delai_paiement ?? '-' }}</td>
                             <td>{{ $c->notes ?? '-' }}</td>
                             <td class="text-center">
-                                @if ($c->user && $c->user->statut == 1)
+                                @if ($c->user && $c->user?->statut == 1)
                                     <span class="badge bg-success">Actif</span>
                                 @else
                                     <span class="badge bg-danger">Bloqué</span>
@@ -93,12 +115,24 @@
                                     <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm"> <i class="material-icons md-more_horiz"></i> Actions</a>
                                     <div class="dropdown-menu">
 
-                                        <a class="dropdown-item" href="{{route('show.clientDetailCommande',$c->user)}}">Commandes</a>
-                                        <a class="dropdown-item" href="{{route('paye.effectuerPaiement',$c)}}">Faire un paiement </a>
+                                        {{-- Même protection que la liste des clients ordinaires : sans
+                                             compte utilisateur, route() faisait tomber toute la page. --}}
+                                        @if($c->user)
+                                            <a class="dropdown-item" href="{{route('show.clientDetailCommande',$c->user)}}">Commandes</a>
+                                        @endif
+                                        {{-- Clients à terme : leur encaissement se fait sur « Créance Paiements »
+                                             (l'écran Encaissements Agence ne liste que les clients ordinaires). --}}
+                                        <a class="dropdown-item" href="{{route('show.creancesTerme.paiements')}}">Faire un paiement </a>
+                                        {{-- Le plafond n'était inscrit qu'une fois, à l'approbation de la
+                                             demande : ni relèvement, ni baisse, ni correction d'une erreur
+                                             de saisie n'étaient possibles ensuite. --}}
+                                        <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#plafondModal-{{ $c->id }}">
+                                            Modifier le plafond
+                                        </button>
                                         <button class="dropdown-item" data-id="{{ $c->id }}" data-nom="{{ $c->nom }}" data-bs-toggle="modal" data-bs-target="#tvaModal-{{ $c->id }}">
                                             {{ $c->applique_tva == 1 ? 'Retirer la TVA' : 'Appliquer la TVA' }}
                                         </button>
-                                        @switch($c->user->statut)
+                                        @switch($c->user?->statut)
                                             @case(1)
                                                 <button data-id="{{ $c->id }}" data-nom="{{ $c->nom }}" data-bs-toggle="modal" data-bs-target="#blockModal-{{ $c->id }}"
                                                     class="dropdown-item">Bloquer</button>
@@ -259,6 +293,61 @@
         </div>
 
          <!-- Modal applique tva -->
+        {{-- Révision du plafond de crédit. En POST, avec jeton : ce montant est
+             opposable — il bloque les commandes au-delà — et ne doit pas pouvoir
+             changer sur un simple lien visité. --}}
+        <div class="modal fade" id="plafondModal-{{ $c->id }}" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered">
+                <form method="POST" action="{{ route('show.modifierPlafondCredit', $c) }}">
+                    @csrf
+                    <div class="modal-content">
+
+                        <div class="modal-header" style="background-color:#1c57a3;">
+                            <h5 class="modal-title text-white">Plafond de crédit</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+
+                        <div class="modal-body">
+                            <p class="mb-3">
+                                Client : <span class="fw-bold">{{ trim($c->nom . ' ' . $c->prenom) }}</span>
+                            </p>
+
+                            <div class="mb-3">
+                                <label class="form-label">Plafond de crédit (FCFA)</label>
+                                <input type="number" name="plafond_credit" class="form-control" min="0" step="1"
+                                       value="{{ old('plafond_credit', (int) ($c->plafond_credit ?? 0)) }}" required>
+                                <small class="text-muted">
+                                    Actuel : {{ $c->plafond_credit ? Help::formatNombre($c->plafond_credit, true) : '0' }}
+                                </small>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Délai de paiement (jours)</label>
+                                <input type="number" name="delai_paiement" class="form-control" min="1" max="365" step="1"
+                                       value="{{ old('delai_paiement', (int) ($c->delai_paiement ?? 30)) }}" required>
+                                <small class="text-muted">Actuel : {{ (int) ($c->delai_paiement ?? 0) }} jour(s)</small>
+                            </div>
+
+                            <div class="mb-1">
+                                <label class="form-label">Motif de la révision <span class="text-muted">(facultatif)</span></label>
+                                <input type="text" name="motif" class="form-control" maxlength="255"
+                                       placeholder="Ex. : activité en hausse, retards de paiement…">
+                                <small class="text-muted">
+                                    La révision est enregistrée avec l'ancienne et la nouvelle valeur, votre nom et la date.
+                                </small>
+                            </div>
+                        </div>
+
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-sm btn-secondary rounded font-sm" data-bs-dismiss="modal">Annuler</button>
+                            <button type="submit" class="btn btn-sm btn-primary rounded font-sm">Enregistrer</button>
+                        </div>
+
+                    </div>
+                </form>
+            </div>
+        </div>
+
         <div class="modal fade" id="tvaModal-{{ $c->id }}" tabindex="-1">
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">

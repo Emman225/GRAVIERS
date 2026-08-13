@@ -175,6 +175,10 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::get('/list-client', 'listClient')->name('listClient');
     Route::get('/list-client-en-attente', 'listClientEnAttente')->name('listClientEnAttente');
     Route::get('/list-client-a-terme', 'listClientATerme')->name('listClientATerme');
+    // Révision du plafond de crédit et du délai de paiement. En POST : cette
+    // valeur engage l'entreprise et bloque les commandes au-delà, elle ne doit
+    // pas pouvoir changer sur un simple lien visité.
+    Route::post('/client-a-terme-{client}/plafond', 'modifierPlafondCredit')->name('modifierPlafondCredit');
     Route::get('/client/{client}/document/{type}/{mode?}', 'clientDocument')
         ->whereIn('type', ['dfe', 'rc'])
         ->whereIn('mode', ['inline', 'download'])
