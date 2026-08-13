@@ -77,11 +77,15 @@ class _CheckoutCardState extends State<CheckoutCard> {
             Expanded(
               child: Text.rich(
                 TextSpan(
-                  text: "Tot.: ${formaterMontant(total - coutReduction)}",
+                  // getTotalAmount() déduit DÉJÀ la remise : l'ancien
+                  // « total - coutReduction » la retirait une seconde fois et
+                  // affichait un total inférieur à celui réellement facturé.
+                  // Le prix barré doit lui montrer le montant AVANT remise.
+                  text: "Tot.: ${formaterMontant(total)}",
                   children: [
                     if (coutReduction > 0) ...[
                       TextSpan(
-                        text: "\n${formaterMontant(total)}",
+                        text: "\n${formaterMontant(total + coutReduction)}",
                         style: const TextStyle(
                           fontSize: 16,
                           color: Colors.red,
@@ -101,7 +105,7 @@ class _CheckoutCardState extends State<CheckoutCard> {
                       if (paniers.isNotEmpty) {
                         Get.toNamed(ChoixAdresseScreen.routeName);
                       } else {
-                        EasyLoading.showError("Votre panier est vide");
+                        afficherErreur("Votre panier est vide");
                       }
                       break;
                     case 2:
@@ -110,7 +114,7 @@ class _CheckoutCardState extends State<CheckoutCard> {
                       bool validOk = false;
 
                       if (mode <= 0) {
-                        EasyLoading.showError("Veuillez choisir le mode de paiement");
+                        afficherErreur("Veuillez choisir le mode de paiement");
                         return;
                       }else{
                         if(mode == 1){
@@ -178,14 +182,18 @@ class _CheckoutCardState extends State<CheckoutCard> {
                                   lignesLivraisons = datas['data']['lignes'];
                                   livraisonCalculee = true;
                                 } else {
-                                  EasyLoading.showError(datas['message']);
+                                  afficherErreur(datas['message']);
                                 }
+                              } else {
+                                // Sans cette branche, une réponse serveur en erreur ne produisait
+                                // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+                                afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
                               }
                             }
                           } catch (e) {
                             user.code = 500;
                             user.message =
-                            "Une erreur s'est produite veuillez reesayer plus tard";
+                            messageErreurTechnique(e);
                             if (kDebugMode) {
                               print(e.toString());
                             }
@@ -193,7 +201,7 @@ class _CheckoutCardState extends State<CheckoutCard> {
 
                           fermerChargement();
                         } else {
-                          EasyLoading.showInfo(
+                          afficherInfo(
                               "Veuillez vérifier votre connexion internet");
                         }
                         // On ne va au résumé que si le coût de livraison a bien été
@@ -207,11 +215,11 @@ class _CheckoutCardState extends State<CheckoutCard> {
                             lignesLivraisons,
                           ]);
                         } else {
-                          EasyLoading.showError(
+                          afficherErreur(
                               "Impossible de calculer les frais de livraison. Veuillez réessayer.");
                         }
                       }else{
-                        EasyLoading.showError(msgErr);
+                        afficherErreur(msgErr);
                       }
                       break;
                     default:
@@ -245,6 +253,30 @@ class _CheckoutCardState extends State<CheckoutCard> {
   // _dateOp,
   // _vir,
 
+  /// Bon de commande : exigé d'une ENTREPRISE, et seulement pour une VENTE.
+  ///
+  /// Il était réclamé aussi pour une LOCATION, alors que ses deux champs ne
+  /// sont affichés que sur une vente (choix_adresse_screen). L'entreprise
+  /// louant du matériel se heurtait donc à « Veuillez charger le BC » sans
+  /// qu'aucun champ de ce nom n'existe à l'écran : sa location ne pouvait pas
+  /// aboutir. Le serveur, lui, ne lit aucun bon de commande pour une location.
+  bool _validationBonDeCommande() {
+    final bool venteEntreprise = paniers.isNotEmpty &&
+        paniers.first.product.type_affaire == VENTE &&
+        user.code_parrain == ENTREPRISE;
+    if (!venteEntreprise) return true;
+
+    if (widget.data[5] == null) {
+      msgErr = "Veuillez sélectionner le N° du BC";
+      return false;
+    }
+    if (widget.data[6] == null) {
+      msgErr = "Veuillez charger le BC";
+      return false;
+    }
+    return true;
+  }
+
   _validationPaiementEnLigne(){
     UneAdresse _adresse = widget.data[0];
     ModePaiements _moyenPaiement = widget.data[1];
@@ -267,14 +299,8 @@ class _CheckoutCardState extends State<CheckoutCard> {
       msgErr = "Veuillez sélectionner le type de livraison";
       return false;
     }
-    if(user.code_parrain == ENTREPRISE){
-      if(widget.data[5] == null){
-        msgErr = "Veuillez sélectionner le N° du BC";
-        return false;
-      }if(widget.data[6] == null){
-        msgErr = "Veuillez charger le BC";
-        return false;
-      }
+    if(!_validationBonDeCommande()){
+      return false;
     }
     return true;
   }
@@ -313,14 +339,8 @@ class _CheckoutCardState extends State<CheckoutCard> {
       msgErr = "Veuillez sélectionner la preuve/reçu de l'opération";
       return false;
     }
-    if(user.code_parrain == ENTREPRISE){
-      if(widget.data[5] == null){
-        msgErr = "Veuillez sélectionner le N° du BC";
-        return false;
-      }if(widget.data[6] == null){
-        msgErr = "Veuillez charger le BC";
-        return false;
-      }
+    if(!_validationBonDeCommande()){
+      return false;
     }
     return true;
   }
@@ -347,14 +367,8 @@ class _CheckoutCardState extends State<CheckoutCard> {
       msgErr = "Veuillez sélectionner le type de livraison";
       return false;
     }
-    if(user.code_parrain == ENTREPRISE){
-      if(widget.data[5] == null){
-        msgErr = "Veuillez sélectionner le N° du BC";
-        return false;
-      }if(widget.data[6] == null){
-        msgErr = "Veuillez charger le BC";
-        return false;
-      }
+    if(!_validationBonDeCommande()){
+      return false;
     }
     return true;
   }
