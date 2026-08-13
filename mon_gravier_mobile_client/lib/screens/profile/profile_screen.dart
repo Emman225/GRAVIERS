@@ -63,7 +63,19 @@ class ProfileScreen extends StatelessWidget {
                       Text(user.nom.toString().toUpperCase(),
                           textAlign: TextAlign.center),
                       const SizedBox(height: 20),
-                      if(user.clientATerme == false) ...[
+                      // Le compte à terme est réservé aux ENTREPRISES, comme sur le
+                      // site (ClientController : « reserveEntreprise »). L'application
+                      // proposait la démarche à tout le monde : un particulier
+                      // remplissait le formulaire pour se voir refuser ensuite.
+                      //
+                      // La condition retient l'entreprise plutôt que d'écarter le
+                      // particulier : toute autre valeur, ou une valeur absente,
+                      // masque le bouton au lieu de l'afficher par défaut.
+                      //
+                      // Le type de client arrive dans « code_parrain » : le champ
+                      // porte mal son nom côté API, mais c'est bien lui que le reste
+                      // de l'application interroge déjà (panier, choix d'adresse).
+                      if(user.clientATerme == false && user.code_parrain == ENTREPRISE) ...[
                         ProfileMenu(
                           text: "Devenir client à terme",
                           icon: "assets/icons/home.svg",
@@ -117,6 +129,18 @@ class ProfileScreen extends StatelessWidget {
                         icon: "assets/icons/Log out.svg",
                         press: () => _deconnexion(),
                       ),
+                      // Version affichée : quatre APK se sont succédé en une journée
+                      // sans qu'on puisse savoir lequel tournait sur le téléphone, et
+                      // chaque doute a coûté un aller-retour. Elle se lit maintenant
+                      // à l'écran, sans passer par les réglages d'Android.
+                      const Padding(
+                        padding: EdgeInsets.only(top: 24, bottom: 12),
+                        child: Text(
+                          "Version $versionApplication",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey, fontSize: 12),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -159,19 +183,22 @@ class ProfileScreen extends StatelessWidget {
             _deconnexion();
             Get.offAllNamed(SignInScreen.routeName);
           } else {
-            EasyLoading.showError(datas['message'] ?? '');
+            afficherErreur(datas['message'] ?? '');
           }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
-        EasyLoading.showError(
-            "Une erreur s'est produite veuillez reesayer plus tard");
+        afficherErreur(messageErreurTechnique(e));
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 }

@@ -91,6 +91,60 @@ class UtilisateurController extends Controller
         ]);
     }
 
+    /**
+     * Le code tel qu'il doit être LU par le client : quatre chiffres, zéros compris.
+     *
+     * La colonne `code` est un entier : un OTP « 0123 » y est stocké « 123 », et
+     * l'e-mail annonçait donc un code à trois chiffres. Or l'écran de saisie de
+     * l'application comporte quatre cases : le client ne pouvait pas le saisir,
+     * faute de savoir qu'il lui manquait un zéro devant. Un code sur dix est
+     * concerné.
+     *
+     * La vérification, elle, complète déjà les deux valeurs avant de les comparer :
+     * c'était l'affichage qui mentait, pas le contrôle.
+     */
+    private function codeAffichable($code): string
+    {
+        return str_pad((string) $code, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Un code d'inscription utilisable : celui en cours s'il vaut encore, sinon un neuf.
+     *
+     * CodeReset::lireSurUser() ne rend que les codes créés le JOUR MÊME, et un code
+     * expire au bout de 30 minutes. Se contenter de lire laissait donc partir un
+     * e-mail au code vide — « Votre code de confirmation est: . » — dès que la
+     * demande arrivait le lendemain, ou simplement une heure trop tard.
+     *
+     * L'expiration est vérifiée en plus de l'existence : un code trouvé mais périmé
+     * aurait été envoyé pour être refusé à la saisie, ce qui est pire qu'un code
+     * absent — le client aurait cru s'être trompé.
+     */
+    private function codeInscriptionValide(int $userId, string $email): CodeReset
+    {
+        $code = CodeReset::lireSurUser($userId, Help::$CODE_INSCRIPTION, false);
+
+        $encoreValable = $code->id > 0
+            && $code->expiration_date
+            && strtotime($code->expiration_date) > time();
+
+        if ($encoreValable) {
+            return $code;
+        }
+
+        $code = new CodeReset();
+        $code->code = Help::ChaineAleatoireNombre(4);
+        $code->email = $email;
+        $code->user_id = $userId;
+        $code->type_code = Help::$CODE_INSCRIPTION;
+        // OTP courte durée (anti brute-force)
+        $code->expiration_date = date("Y-m-d H:i:s", strtotime("+30 minutes"));
+        $code->utilise = false;
+        $code->save();
+
+        return $code;
+    }
+
     public function inscription(Request $request)
     {
         $valid = Validator::make($request->input(), [
@@ -108,6 +162,11 @@ class UtilisateurController extends Controller
         if ($valid->fails()) {
             $retour->code = 501;
             $retour->message = collect($valid->errors())->flatten()->implode(" \n ");
+            // Le « return » manquait : l'exécution continuait jusqu'à la création du
+            // compte. L'utilisateur recevait une erreur de validation alors qu'un compte
+            // partiel avait pu être créé — et il ne pouvait plus se réinscrire avec cet
+            // e-mail (déjà pris).
+            return response()->json($retour);
         }
 
         DB::beginTransaction();
@@ -190,16 +249,7 @@ class UtilisateurController extends Controller
                     $client->statut = Help::$STATUT_INACTIF;
                     $client->save();
 
-                    $code = CodeReset::lireSurUser($user->id, Help::$CODE_INSCRIPTION, false);
-                    if ($code->id <= 0) {
-                        $code->code = Help::ChaineAleatoireNombre(4);
-                        $code->email = $email;
-                        $code->user_id = $user->id;
-                        $code->type_code = Help::$CODE_INSCRIPTION;
-                        $code->expiration_date = date("Y-m-d H:i:s", strtotime("+30 minutes")); // OTP courte durée (anti brute-force)
-                        $code->utilise = false;
-                        $code->save();
-                    }
+                    $code = $this->codeInscriptionValide($user->id, $email);
 
                     $prods = Produit::liste(null, 10);
                     foreach ($prods as $key => $p) {
@@ -209,12 +259,18 @@ class UtilisateurController extends Controller
                     $retour->token = Crypt::encryptString($user->id);
                     $retour->type = $user->type_user_id;
                     $retour->nom = $user->nom_prenoms;
+                    // Type de client et statut « à terme », comme à la connexion.
+                    // Ils manquaient ici : l'application ne les recevait qu'au
+                    // login suivant, et une entreprise tout juste inscrite était
+                    // traitée entre-temps comme un particulier.
+                    $retour->code_parrain = $client->type_client;
+                    $retour->cat = $client->client_a_terme;
                     $retour->message = "SignUp successful";
                     $retour->configs = [
                         'categories' => Categorie::liste(5),
                         'bannieres' => Banniere::liste(),
                         'produits' => $prods,
-                        'mode_paiements' => ModePaiement::liste(),
+                        'mode_paiements' => ModePaiement::listePourClient(),
                         'type_livraisons' => TypeLivraison::liste(),
                         'unites' => UniteProduit::liste(),
                         'pays' => Pays::liste(),
@@ -226,8 +282,8 @@ class UtilisateurController extends Controller
                     DB::commit();
                     try {
                     // The email sending is done using the to method on the Mail facade
-                    $message = "Bonjour $nom_prenoms, Votre code de confirmation pour vous inscrire sur mon gravier est: $code->code. Veuillez le saisir pour finaliser votre inscription.";
-                    Mail::to($email)->send(new CodeInscriptionMail($nom_prenoms, $code->code, $message));
+                    $message = "Bonjour $nom_prenoms, Votre code de confirmation pour vous inscrire sur mon gravier est: {$this->codeAffichable($code->code)}. Veuillez le saisir pour finaliser votre inscription.";
+                    Mail::to($email)->send(new CodeInscriptionMail($nom_prenoms, $this->codeAffichable($code->code), $message));
                     } catch (\Throwable $mailEx) {
                         // L'inscription réussit même si le mail échoue, mais on trace
                         // désormais l'erreur pour pouvoir diagnostiquer les non-réceptions.
@@ -238,7 +294,16 @@ class UtilisateurController extends Controller
                         $client = Client::lireSurUser($user->id);
                         if ($client->id > 0 && $client->statut == Help::$STATUT_INACTIF) {
 
-                            $code = CodeReset::lireSurUser($user->id, Help::$CODE_INSCRIPTION, false);
+                            // Réinscription d'un compte jamais confirmé : il faut un code
+                            // VALIDE, pas seulement en chercher un.
+                            //
+                            // lireSurUser() ne retient que les codes créés AUJOURD'HUI, et
+                            // un code expire au bout de 30 minutes. Une réinscription le
+                            // lendemain — ou une heure plus tard — n'en trouvait donc aucun,
+                            // et l'e-mail partait avec un code VIDE : « Votre code de
+                            // confirmation est: . ». Le client ne pouvait rien saisir, et
+                            // recommencer ne changeait rien.
+                            $code = $this->codeInscriptionValide($user->id, $email);
 
                             $prods = Produit::liste(null, 10);
                             foreach ($prods as $key => $p) {
@@ -248,12 +313,17 @@ class UtilisateurController extends Controller
                             $retour->token = Crypt::encryptString($user->id);
                             $retour->type = $user->type_user_id;
                             $retour->nom = $user->nom_prenoms;
+                            // Même complément qu'à l'inscription initiale : sans ces
+                            // deux valeurs, l'application traite une entreprise comme
+                            // un particulier jusqu'à sa prochaine connexion.
+                            $retour->code_parrain = $client->type_client;
+                            $retour->cat = $client->client_a_terme;
                             $retour->message = "SignUp successful";
                             $retour->configs = [
                                 'categories' => Categorie::liste(5),
                                 'bannieres' => Banniere::liste(),
                                 'produits' => $prods,
-                                'mode_paiements' => ModePaiement::liste(),
+                                'mode_paiements' => ModePaiement::listePourClient(),
                                 'type_livraisons' => TypeLivraison::liste(),
                                 'unites' => UniteProduit::liste(),
                                 'pays' => Pays::liste(),
@@ -265,8 +335,8 @@ class UtilisateurController extends Controller
                             DB::commit();
                         try {
                             // The email sending is done using the to method on the Mail facade
-                            $message = "Bonjour $nom_prenoms, Votre code de confirmation pour vous inscrire sur mon gravier est: $code->code. Veuillez le saisir pour finaliser votre inscription.";
-                            Mail::to($email)->send(new CodeInscriptionMail($nom_prenoms, $code->code, $message));
+                            $message = "Bonjour $nom_prenoms, Votre code de confirmation pour vous inscrire sur mon gravier est: {$this->codeAffichable($code->code)}. Veuillez le saisir pour finaliser votre inscription.";
+                            Mail::to($email)->send(new CodeInscriptionMail($nom_prenoms, $this->codeAffichable($code->code), $message));
                         } catch (\Throwable $mailEx) {
                             // Email failed silently - registration succeeded
                         }
@@ -332,7 +402,7 @@ class UtilisateurController extends Controller
                             'categories' => Categorie::liste(5),
                             'bannieres' => Banniere::liste(),
                             'produits' => $prods,
-                            'mode_paiements' => ModePaiement::liste(),
+                            'mode_paiements' => ModePaiement::listePourClient(),
                             'type_livraisons' => TypeLivraison::liste(),
                             'unites' => UniteProduit::liste(),
                             'pays' => Pays::liste(),
@@ -400,8 +470,32 @@ class UtilisateurController extends Controller
                         $retour->message = "Votre mot de passe actuel est incorrecte";
                     }
                 } else {
+                    // Réinitialisation après « mot de passe oublié » : exiger la PREUVE
+                    // qu'un code OTP a bien été validé pour ce compte (verifierOtp passe
+                    // le CodeReset à utilise = true). Sans ce contrôle, le jeton renvoyé
+                    // par demandeReinititPass — obtenu avec le seul e-mail de la victime —
+                    // suffisait à changer son mot de passe et à prendre son compte.
+                    // Cette méthode sert les 3 applications (client, livreur, apporteur).
+                    $otpValide = CodeReset::where('user_id', $user->id)
+                        ->where('type_code', Help::$CODE_PASS_OUBLIE)
+                        ->where('utilise', true)
+                        ->orderByDesc('id')
+                        ->first();
+
+                    // Le code validé n'ouvre le droit au changement que pendant 30 minutes
+                    // (même durée de vie que l'OTP lui-même).
+                    if (!$otpValide || !$otpValide->updated_at || $otpValide->updated_at->lt(now()->subMinutes(30))) {
+                        $retour->code = 403;
+                        $retour->message = "Veuillez d'abord valider le code reçu par e-mail.";
+                        return response()->json($retour);
+                    }
+
                     $user->password = Help::HashPassword($request->new);
                     $user->save();
+
+                    // Le code est consommé : il ne peut plus servir à un second changement.
+                    $otpValide->delete();
+
                     $retour->code = 200;
                     $retour->message = 'Votre mot de passe a été mis à jour avec succès';
                 }
@@ -442,12 +536,12 @@ class UtilisateurController extends Controller
 
                     $message = "";
                     if ($niveau == 1) {
-                        $message = "Bonjour $user->nom_prenoms, Votre code de confirmation pour vous inscrire sur mon gravier est: $codeReset->code. Veuillez le saisir pour finaliser votre inscription.";
+                        $message = "Bonjour $user->nom_prenoms, Votre code de confirmation pour vous inscrire sur mon gravier est: {$this->codeAffichable($codeReset->code)}. Veuillez le saisir pour finaliser votre inscription.";
                     } else {
-                        $message = "Bonjour $user->nom_prenoms, Votre code de confirmation pour reinitialiser votre mot de passe sur mon gravier est: $codeReset->code. Veuillez le saisir pour finaliser l'opération.";
+                        $message = "Bonjour $user->nom_prenoms, Votre code de confirmation pour reinitialiser votre mot de passe sur mon gravier est: {$this->codeAffichable($codeReset->code)}. Veuillez le saisir pour finaliser l'opération.";
                     }
                     // The email sending is done using the to method on the Mail facade
-                    Mail::to($user->email)->send(new CodeInscriptionMail($user->nom_prenoms, $codeReset->code, $message));
+                    Mail::to($user->email)->send(new CodeInscriptionMail($user->nom_prenoms, $this->codeAffichable($codeReset->code), $message));
                     $retour->code = 200;
                     $retour->message = 'Le code a bien été renvoyé sur votre mail';
                 } else {
@@ -532,7 +626,16 @@ class UtilisateurController extends Controller
                             $client->statut = Help::$STATUT_ACTIF;
                             $client->save();
 
-                            Mail::to($user->email)->send(new InscriptionEffectueeMail($user->nom_prenoms));
+                            // Envoi NON bloquant : le compte vient d'être activé. Si le
+                            // SMTP tarde, l'exception faisait échouer la validation du
+                            // code — l'utilisateur restait bloqué sur « erreur 500 »
+                            // après avoir pourtant saisi le BON code, et chaque nouvelle
+                            // tentative rejouait le même envoi.
+                            try {
+                                Mail::to($user->email)->send(new InscriptionEffectueeMail($user->nom_prenoms));
+                            } catch (\Throwable $e) {
+                                \Log::warning('Email inscription effectuée non envoyé: '.$e->getMessage());
+                            }
 
                         }
 
@@ -807,8 +910,8 @@ class UtilisateurController extends Controller
                     }
 
                     // The email sending is done using the to method on the Mail facade
-                    $message = "Bonjour $user->nom_prenoms, Votre code de confirmation pour reinitialiser votre mot de passe sur mon gravier est: $code->code. Veuillez le saisir sur l'application pour finaliser le processus.";
-                    Mail::to($user->email)->send(new CodeInscriptionMail($user->nom_prenoms, $code->code, $message));
+                    $message = "Bonjour $user->nom_prenoms, Votre code de confirmation pour reinitialiser votre mot de passe sur mon gravier est: {$this->codeAffichable($code->code)}. Veuillez le saisir sur l'application pour finaliser le processus.";
+                    Mail::to($user->email)->send(new CodeInscriptionMail($user->nom_prenoms, $this->codeAffichable($code->code), $message));
 
                     $prods = Produit::liste(null, 10);
                     foreach ($prods as $key => $p) {
@@ -825,7 +928,7 @@ class UtilisateurController extends Controller
                         'categories' => Categorie::liste(5),
                         'bannieres' => Banniere::liste(),
                         'produits' => $prods,
-                        'mode_paiements' => ModePaiement::liste(),
+                        'mode_paiements' => ModePaiement::listePourClient(),
                         'type_livraisons' => TypeLivraison::liste(),
                         'unites' => UniteProduit::liste(),
                         'pays' => Pays::liste(),
@@ -848,8 +951,11 @@ class UtilisateurController extends Controller
             $retour->code = 501;
             $retour->message = collect($e->errors())->flatten()->implode(" \n ");
         } catch (\Throwable $th) {
+            // Ne pas sérialiser l'exception dans la réponse : elle expose les chemins
+            // du serveur et parfois la requête SQL, malgré APP_DEBUG=false.
+            \Log::error('demandeReinititPass: '.$th->getMessage());
             $retour->code = 500;
-            $retour->message = $th->getMessage()."\n".json_encode($th);
+            $retour->message = "Une erreur s'est produite, veuillez réessayer plus tard";
         }
 
         return response()->json($retour);
