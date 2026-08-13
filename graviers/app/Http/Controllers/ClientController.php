@@ -852,7 +852,12 @@ class ClientController extends Controller
                 // Hors ligne / en ligne selon le flag en_ligne du mode (et non id=1) :
                 // « Paiement en agence » (en_ligne=0) reste un paiement hors ligne.
                 $modeLivObj = session('paiement') ? ModePaiement::find(session('paiement')) : null;
-                if ($client->client_a_terme == false && $modeLivObj && $modeLivObj->en_ligne == 1 && $c->montantTotal + session('montantTva') < 2000000) {
+                // Le paiement en ligne repose sur le MODE CHOISI, plus sur le statut
+                // du client. Il était sauté pour tout client à terme : celui qui
+                // désignait Orange Money ou Wave voyait sa demande enregistrée sans
+                // qu'aucun règlement ne parte. Même correction que pour les commandes
+                // et les locations, où le verrou a déjà été retiré.
+                if ($modeLivObj && $modeLivObj->en_ligne == 1 && $c->montantTotal + session('montantTva') < 2000000) {
                     $codePaiement = Help::getCommandeNo();
                     $nomPrenoms = $client->nom;
                     $arrNoms = explode(" ", $nomPrenoms);

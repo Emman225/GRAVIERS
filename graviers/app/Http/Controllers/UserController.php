@@ -824,13 +824,17 @@ class UserController extends Controller
             // dd($livraison, $l);
         }
 
+        // États écrits en toutes lettres, jamais par leur rang. Ces deux colonnes
+        // sont des ENUM : MySQL interprète un entier comme la POSITION de la valeur.
+        // « 2 » tombait juste par chance, et l'énumération etat_livraison vient
+        // justement d'être étendue — une valeur insérée ailleurs qu'à la fin aurait
+        // changé le sens de ces deux lignes sans la moindre erreur.
         $demandeLivraison->update([
-            // 'statut' => 2,
-            'etat_commande' => 2
+            'etat_commande' => Help::$COMMANDE_EN_TRAITEMENT,
         ]);
 
         $detail->update([
-            'etat_livraison' => 2
+            'etat_livraison' => Help::$LIVRAISON_EN_TRAITEMENT,
         ]);
 
         $camion->update([
@@ -844,7 +848,9 @@ class UserController extends Controller
     }
 
     public function demandeLivraisonTraitee(){
-        $demande = DemandeLivraison::where('etat_commande',3)->orderByDesc('updated_at')->get();
+        // « TERMINEE » en toutes lettres : etat_commande est un ENUM, et « 3 »
+        // n'y désignait la bonne valeur que par sa position.
+        $demande = DemandeLivraison::where('etat_commande', Help::$COMMANDE_TERMINE)->orderByDesc('updated_at')->get();
 
         return view('gestionnaire.demandeDeLivraisonTraitee',[
             'livraisons' => $demande

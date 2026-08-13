@@ -317,7 +317,16 @@ class LivraisonController extends Controller
                     // $paiement->save();
 
                     $ret = array();
-                    if ($client->client_a_terme == false) {
+                    // Le paiement en ligne suit le MODE CHOISI. Deux défauts se
+                    // superposaient ici : le client à terme en était exclu quoi qu'il
+                    // choisisse — sa demande s'enregistrait sans qu'aucun règlement ne
+                    // parte — et, à l'inverse, le mode n'était jamais consulté pour les
+                    // autres : la passerelle s'ouvrait même sur « Paiement en agence ».
+                    //
+                    // Même règle que le site et que les commandes : instrument en ligne
+                    // (en_ligne = 1) et montant sous le plafond de la passerelle.
+                    $modeLiv = ModePaiement::lire($request->demande['modePaiement'] ?? 0);
+                    if ($modeLiv->en_ligne == 1 && $demande->montantTotal < 2000000) {
                         $codePaiement = Help::getCommandeNo();
                         $nomPrenoms = $client->nom;
                         $arrNoms = explode(" ", $nomPrenoms);
