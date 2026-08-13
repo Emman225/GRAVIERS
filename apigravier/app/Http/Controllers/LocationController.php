@@ -10,9 +10,14 @@ use App\Models\Client;
 use App\Models\Location;
 use App\Models\Paiement;
 use App\Models\Reduction;
+// Casse EXACTE des fichiers de modeles (obligatoire sous Linux).
+use App\Models\PrixPersonnalise;
+use App\Models\Produit;
 use App\Models\TvaCommande;
 use Illuminate\Http\Request;
 use App\Models\Configuration;
+use App\Services\CalculMontant;
+use App\Models\AdresseLivraison;
 use App\Models\CoutLivraison;
 use App\Models\IntervalPoint;
 use App\Models\DetailLocation;
@@ -63,6 +68,40 @@ class LocationController extends Controller
         return response()->json($retour);
     }
 
+    /**
+     * Message de refus si la location dépasse le crédit disponible du client.
+     *
+     * Même règle, mêmes chiffres et même formulation que pour une commande
+     * (CommandeController::refusPlafondCredit) : le client doit lire la même
+     * explication quel que soit ce qu'il réserve.
+     *
+     * @return string|null  null si la location passe
+     */
+    private function refusPlafondCredit(?Client $client, float $montant): ?string
+    {
+        if (!$client || !$client->client_a_terme) {
+            return null;
+        }
+
+        $disponible = $client->plafondDisponible();
+
+        if ($disponible === null || $montant <= $disponible) {
+            return null;
+        }
+
+        $format = fn ($m) => number_format($m, 0, ',', ' ') . ' FCFA';
+
+        return sprintf(
+            "Cette location de %s dépasse votre crédit disponible. "
+            . "Plafond accordé : %s. Déjà engagé : %s. Reste disponible : %s. "
+            . "Réglez une facture en cours ou réduisez votre location pour continuer.",
+            $format($montant),
+            $format((float) $client->plafond_credit),
+            $format($client->encoursCredit()),
+            $format($disponible)
+        );
+    }
+
     public function enregistrerLocation(Request $request)
     {
         //   'adresse': addr.id,
@@ -105,23 +144,62 @@ class LocationController extends Controller
             $config = Configuration::find(1);
             if ($user->id > 0) {
 
-                // MÊME calcul que le web : UN SEUL coût de livraison (km × prixKm)
-                // réparti proportionnellement à la quantité sur chaque ligne.
-                $montantLivraison = 0;
-                $lignes = $request->lignes;
-                if ($request->meFaireLivre == 1 || $request->meFaireLivre == true) {
-                    $ville = Ville::lire($user->ville_id);
-                    $qteTotale = 0;
-                    foreach ($lignes as $l) { $qteTotale += (float) $l[('qte')]; }
-                    if ($qteTotale > 0) {
-                        $montantLivraison = CoutLivraison::calculer($request->long, $request->lat, $ville->region_id, $qteTotale);
-                        foreach ($lignes as $key => $l) {
-                            $lignes[$key]['livraison'] = ((float) $l[('qte')] / $qteTotale) * $montantLivraison;
-                        }
-                    }
+                $client = Client::lireSurUser($user->id);
+
+                // =====================================================================
+                // MONTANTS CALCULÉS PAR LE SERVEUR
+                // ---------------------------------------------------------------------
+                // Prix unitaires, TVA, remise et coût de livraison sont recalculés à
+                // partir du catalogue, des prix personnalisés du client, de la
+                // configuration et de l'ADRESSE DE LIVRAISON — jamais repris de
+                // l'application. Le calcul vit dans App\Services\CalculMontant, utilisé
+                // aussi par « verifier-montant » : le client voit donc AVANT de valider
+                // exactement le montant qui lui sera prélevé.
+                // Le serveur corrige, il ne refuse pas : tout écart est journalisé.
+                // =====================================================================
+                $calcul = CalculMontant::pour($user, $client, [
+                    'lignes'       => $request->lignes,
+                    'adresse'      => $request->adresse,
+                    'meFaireLivre' => $request->meFaireLivre,
+                    'long'         => $request->long,
+                    'lat'          => $request->lat,
+                    'reduction'    => $request->reduction,
+                    'pointUtilise' => $request->pointUtilise,
+                ], true);
+
+                $lignes           = $calcul['lignes'];
+                $montantLivraison = $calcul['livraison'];
+                $tvaServeur       = $calcul['tva'];
+                $remiseServeur    = $calcul['remise'];
+                $totalServeur     = $calcul['total'];
+                $pointsUtilises   = $calcul['points_utilises'];
+                $reductionValide  = $calcul['reduction_valide'];
+
+                if (abs($totalServeur - (float) $request->total) > 1 || !empty($calcul['ecarts'])) {
+                    \Log::warning('Location mobile — montants recalculés par le serveur', [
+                        'client_id'        => $client->id,
+                        'total_envoye'     => (float) $request->total,
+                        'total_applique'   => $totalServeur,
+                        'tva_envoyee'      => (float) ($request->montantTva ?? 0),
+                        'tva_appliquee'    => $tvaServeur,
+                        'remise_envoyee'   => (float) ($request->remise ?? 0),
+                        'remise_appliquee' => $remiseServeur,
+                        'ecarts'           => $calcul['ecarts'],
+                    ]);
+                }
+                // PLAFOND DE CRÉDIT — une location l'engage comme une commande : le
+                // client repart avec le matériel et paiera plus tard. La règle ne
+                // portait que sur les commandes, si bien qu'une location de 260 000
+                // FCFA passait sur un plafond de 5 000, puis restait invisible dans
+                // l'encours — le client pouvait ensuite commander comme si rien
+                // n'était dû.
+                if ($refus = $this->refusPlafondCredit($client, $totalServeur)) {
+                    DB::rollBack();
+                    $retour->code = 403;
+                    $retour->message = $refus;
+                    return response()->json($retour);
                 }
 
-                $client = Client::lireSurUser($user->id);
                 $location = new Location();
                 $location->numero = Help::genererNumeroUnique('location');
                 $location->client_id = $client->id;
@@ -130,7 +208,9 @@ class LocationController extends Controller
                 // envoie 0) : la FK vers mode_paiement refuse 0 -> 500 à la création.
                 $location->mode_paiement_id = $request->moyen_paiement > 0 ? $request->moyen_paiement : null;
                 $location->date_location = date("Y-m-d H:i:s");
-                $location->montant_total = $request->total;
+                // Montant recalcule par le serveur (bloc « CONTROLE SERVEUR DES
+                // MONTANTS » ci-dessus), jamais celui envoye par l'application.
+                $location->montant_total = $totalServeur;
                 $location->etat_location = Help::$LOCATION_EN_ATTENTE;
                 $location->statut = Help::$STATUT_ACTIF;
                 $location->note = $request->note;
@@ -140,9 +220,11 @@ class LocationController extends Controller
                 // INVALIDABLE côté gestionnaire, qui exige un livreur. Même normalisation
                 // que la commande (l'app envoie un booléen JSON).
                 $location->est_livrable = ($request->meFaireLivre == 1 || $request->meFaireLivre == true) ? 1 : 0;
-                $location->remise = $request->remise;
-                if ($request->reduction > 0) {
-                    $reduction = Reduction::lire($request->reduction);
+                // Remise recalculee par le serveur (code promo reverifie, points
+                // plafonnes au solde reel).
+                $location->remise = $remiseServeur;
+                if ($reductionValide) {
+                    $reduction = $reductionValide;
                     // est_utilise est CE QUI rend le code invalide (badge « Code invalide »
                     // de creation-de-code-promo, et refus dans la vérification du code).
                     // Sans lui, un code promo consommé par une location restait réutilisable
@@ -153,18 +235,21 @@ class LocationController extends Controller
                 }
 
                 //On vas retirer les points utilisé du client
-                if ($request->pointUtilise > 0) {
-                    $client->point -= $request->pointUtilise;
+                if ($pointsUtilises > 0) {
+                    $client->point -= $pointsUtilises;
                     $client->save();
                 }
 
                 if ($location->save()) {
 
-                    if ($request->montantTva > 0) {
+                    // Ligne de TVA créée systématiquement (0 si non assujetti), pour que
+                    // toutes les locations aient la même structure que celles du site.
+                    {
                         $mtva = new TvaCommande();
                         $mtva->client_id = $client->id;
                         $mtva->commande_id = $location->id;
-                        $mtva->montant = $request->montantTva;
+                        // TVA recalculee par le serveur.
+                        $mtva->montant = max(0, round($tvaServeur));
                         $mtva->type_affaire = Help::$LOCATION;
                         $mtva->statut = Help::$STATUT_ACTIF;
                         $mtva->save();
@@ -193,70 +278,74 @@ class LocationController extends Controller
                     $retour->message = 'Commande effectuée avec succès nous vous contacterons dans quelque instant';
 
                     $ret = array();
-                    if ($client->client_a_terme == false) {
-                        if ($location->montant_total <= 2000000 && $request->mode_paiement == 1) {
-                            //Paiement en ligne
-                            $codePaiement = Help::getCommandeNo();
-                            $nomPrenoms = $client->nom;
-                            $arrNoms = explode(" ", $nomPrenoms);
-                            $leNom = "";
-                            $lePrenom = "";
-                            if (count($arrNoms) >= 2) {
-                                $leNom = $arrNoms[0];
-                                $lePrenom = $arrNoms[1];
-                            } else {
-                                $leNom = $arrNoms[0];
-                                $lePrenom = $arrNoms[0];
-                            }
-                            $ret = PaiementController::initierPaiement(
-                                [
-                                    'code_paiement' => $codePaiement,
-                                    // 'credential_id' => "",
-                                    'nom_usager' => $leNom,
-                                    'prenom_usager' => $lePrenom,
-                                    'telephone' => $client->contact1,
-                                    'email' => $user->email,
-                                    'libelle_article' => "Paiement IMLOD",
-                                    'quantite' => 1,
-                                    'montant' => ceil($request->total),
-                                    'lib_order' => "Paiement location de produit IMLOD",
-                                    'Url_Retour' => Help::urlPaiement(route("ouvreApp", ['codePaiement' => $codePaiement])),
-                                    'Url_Callback' => Help::urlPaiement(route('callBackPaiement')),
-                                ],
-                                $location->numero,
-                                $codePaiement,
-                                $client,
-                                $request->total,
-                                $request->mode_paiement,
-                                $location->id,
-                                Help::$LOCATION
-                            );
-                            if ($ret['code'] == 200) {
-                                $retour->code = 201;
-                                $retour->message = $ret['message'];
-                            } else {
-                                $retour->code = $ret['code'];
-                                $retour->message = $ret['message'];
-                            }
-                        } else if ($request->mode_paiement == 2) {
-                            //Paiement par virement
-                            $preuve = new PreuveOperationBanque();
-                            $preuve->client_id = $client->id;
-                            $preuve->commande_id = $location->id;
-                            $preuve->reference = $request->refOperation;
-                            $preuve->num_compte = $request->numCompte;
-                            $preuve->banque = $request->banque;
-                            $preuve->date_operation = $request->dateOperation;
-                            $preuve->service = Help::$LOCATION;
-
-                            $storedFilePath = "preuveVirement/LOC-$location->id-1.png";
-                            Storage::disk("principal")->put($storedFilePath, base64_decode($request->fichierVir));
-                            $preuve->fichier = $storedFilePath;
-
-                            $preuve->note_supp = $request->note;
-                            $preuve->statut = Help::$STATUT_INACTIF;
-                            $preuve->save();
+                    // Même correction que pour les commandes : le paiement en ligne
+                    // repose sur le MODE CHOISI, plus sur le statut du client. Les deux
+                    // passent par le MÊME écran de l'application ; le client à terme qui
+                    // choisissait « En ligne » pour une location voyait celle-ci
+                    // enregistrée sans qu'aucune passerelle ne s'ouvre.
+                    if ($location->montant_total <= 2000000 && $request->mode_paiement == 1) {
+                        //Paiement en ligne
+                        $codePaiement = Help::getCommandeNo();
+                        $nomPrenoms = $client->nom;
+                        $arrNoms = explode(" ", $nomPrenoms);
+                        $leNom = "";
+                        $lePrenom = "";
+                        if (count($arrNoms) >= 2) {
+                            $leNom = $arrNoms[0];
+                            $lePrenom = $arrNoms[1];
+                        } else {
+                            $leNom = $arrNoms[0];
+                            $lePrenom = $arrNoms[0];
                         }
+                        $ret = PaiementController::initierPaiement(
+                            [
+                                'code_paiement' => $codePaiement,
+                                // 'credential_id' => "",
+                                'nom_usager' => $leNom,
+                                'prenom_usager' => $lePrenom,
+                                'telephone' => $client->contact1,
+                                'email' => $user->email,
+                                'libelle_article' => "Paiement IMLOD",
+                                'quantite' => 1,
+                                // Montant reellement preleve : celui du serveur.
+                                'montant' => ceil($totalServeur),
+                                'lib_order' => "Paiement location de produit IMLOD",
+                                'Url_Retour' => Help::urlPaiement(route("ouvreApp", ['codePaiement' => $codePaiement])),
+                                'Url_Callback' => Help::urlPaiement(route('callBackPaiement')),
+                            ],
+                            $location->numero,
+                            $codePaiement,
+                            $client,
+                            $totalServeur,
+                            $request->mode_paiement,
+                            $location->id,
+                            Help::$LOCATION
+                        );
+                        if ($ret['code'] == 200) {
+                            $retour->code = 201;
+                            $retour->message = $ret['message'];
+                        } else {
+                            $retour->code = $ret['code'];
+                            $retour->message = $ret['message'];
+                        }
+                    } else if ($request->mode_paiement == 2) {
+                        //Paiement par virement
+                        $preuve = new PreuveOperationBanque();
+                        $preuve->client_id = $client->id;
+                        $preuve->commande_id = $location->id;
+                        $preuve->reference = $request->refOperation;
+                        $preuve->num_compte = $request->numCompte;
+                        $preuve->banque = $request->banque;
+                        $preuve->date_operation = $request->dateOperation;
+                        $preuve->service = Help::$LOCATION;
+
+                        $storedFilePath = "preuveVirement/LOC-$location->id-1.png";
+                        Storage::disk("principal")->put($storedFilePath, base64_decode($request->fichierVir));
+                        $preuve->fichier = $storedFilePath;
+
+                        $preuve->note_supp = $request->note;
+                        $preuve->statut = Help::$STATUT_INACTIF;
+                        $preuve->save();
                     }
                 }
 
@@ -304,9 +393,21 @@ class LocationController extends Controller
             $user = User::lire($idUsr);
             if ($user->id > 0) {
                 $client = Client::lireSurUser($user->id);
+                $location = Location::lire($id);
+
+                // IDOR : ne renvoyer la location que si elle appartient au client
+                // authentifié (même garde que detailsCommande). Seules les LIGNES
+                // étaient filtrées : montant, adresse de livraison, note et mode de
+                // paiement d'un autre client restaient lisibles avec un id arbitraire.
+                if (!$location || $location->id <= 0 || $location->client_id != $client->id) {
+                    $retour->code = 404;
+                    $retour->message = 'Location introuvable';
+                    return response()->json($retour);
+                }
+
                 $retour->data = [
                     'client_a_terme' => $client->client_a_terme == true ? true : false,
-                    'location' => Location::lire($id),
+                    'location' => $location,
                     'lignes' => DetailLocation::liste(null, $id, $client->id),
                 ];
                 $retour->code = 200;

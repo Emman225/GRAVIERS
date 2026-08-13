@@ -681,76 +681,85 @@ class CommandeController extends Controller
                     $retour->message = 'Commande effectuée avec succès nous vous contacterons dans quelque instant';
 
                     $ret = array();
-                    if ($client->client_a_terme == false) {
-                        if ($commande->montant_total <= 2000000 && $request->mode_paiement == 1) {
-                            //Paiement en ligne
-                            $codePaiement = Help::getCommandeNo();
-                            $nomPrenoms = $client->nom;
-                            $arrNoms = explode(" ", $nomPrenoms);
-                            $leNom = "";
-                            $lePrenom = "";
-                            if (count($arrNoms) >= 2) {
-                                $leNom = $arrNoms[0];
-                                $lePrenom = $arrNoms[1];
-                            } else {
-                                $leNom = $arrNoms[0];
-                                $lePrenom = $arrNoms[0];
-                            }
-
-                            $ret = PaiementController::initierPaiement(
-                                [
-                                    'code_paiement' => $codePaiement,
-                                    // 'credential_id' => "",
-                                    'nom_usager' => $leNom,
-                                    'prenom_usager' => $lePrenom,
-                                    'telephone' => $client->contact1,
-                                    'email' => $user->email,
-                                    'libelle_article' => "Paiement IMLOD",
-                                    'quantite' => 1,
-                                    // Montant réellement prélevé : celui calculé par le
-                                    // serveur. C'est le point central de la faille :
-                                    // l'application pouvait sinon faire payer 100 F une
-                                    // commande de 1 000 000 F.
-                                    'montant' => ceil($totalServeur),
-                                    'lib_order' => "Paiement commande de produit IMLOD",
-                                    'Url_Retour' => Help::urlPaiement(route("ouvreApp", ['codePaiement' => $codePaiement])),
-                                    'Url_Callback' => Help::urlPaiement(route('callBackPaiement')),
-                                ],
-                                $commande->numero,
-                                $codePaiement,
-                                $client,
-                                // Montant enregistré dans le paiement : celui du serveur.
-                                $totalServeur,
-                                $request->mode_paiement,
-                                $commande->id,
-                                Help::$COMMANDE
-                            );
-                            if ($ret['code'] == 200) {
-                                $retour->code = 201;
-                                $retour->message = $ret['message'];
-                            } else {
-                                $retour->code = $ret['code'];
-                                $retour->message = $ret['message'];
-                            }
-                        } else if ($request->mode_paiement == 2) {
-                            //Paiement par virement
-                            $preuve = new PreuveOperationBanque();
-                            $preuve->client_id = $client->id;
-                            $preuve->commande_id = $commande->id;
-                            $preuve->reference = $request->refOperation;
-                            $preuve->num_compte = $request->numCompte;
-                            $preuve->banque = $request->banque;
-                            $preuve->date_operation = $request->dateOperation;
-                            $preuve->service = Help::$COMMANDE;
-
-                            $storedFilePath = "preuveVirement/COM-$commande->id-1.png";
-                            Storage::disk("principal")->put($storedFilePath, base64_decode($request->fichierVir));
-                            $preuve->fichier = $storedFilePath;
-
-                            $preuve->note_supp = $request->note;
-                            $preuve->statut = Help::$STATUT_INACTIF;
-                            $preuve->save();
+                    // Le paiement en ligne repose sur le MODE CHOISI, plus sur le statut
+                    // du client. Il était ici sauté pour tout client à terme : celui qui
+                    // choisissait « En ligne » voyait sa commande enregistrée sans qu'aucune
+                    // passerelle ne s'ouvre, alors que la commande, elle, était bien marquée
+                    // « EN ATTENTE DE PAIEMENT » quelques lignes plus haut — donc en attente
+                    // d'un règlement que rien n'avait initié.
+                    //
+                    // $commandePaieEnLigne est la MÊME variable qui a fixé cet état : les deux
+                    // décisions ne peuvent plus diverger. Elle s'appuie sur le total calculé
+                    // par le serveur, quand la condition remplacée testait montant_total, dont
+                    // le sens diffère entre le web (HT) et le mobile (net).
+                    if ($commandePaieEnLigne) {
+                        //Paiement en ligne
+                        $codePaiement = Help::getCommandeNo();
+                        $nomPrenoms = $client->nom;
+                        $arrNoms = explode(" ", $nomPrenoms);
+                        $leNom = "";
+                        $lePrenom = "";
+                        if (count($arrNoms) >= 2) {
+                            $leNom = $arrNoms[0];
+                            $lePrenom = $arrNoms[1];
+                        } else {
+                            $leNom = $arrNoms[0];
+                            $lePrenom = $arrNoms[0];
                         }
+
+                        $ret = PaiementController::initierPaiement(
+                            [
+                                'code_paiement' => $codePaiement,
+                                // 'credential_id' => "",
+                                'nom_usager' => $leNom,
+                                'prenom_usager' => $lePrenom,
+                                'telephone' => $client->contact1,
+                                'email' => $user->email,
+                                'libelle_article' => "Paiement IMLOD",
+                                'quantite' => 1,
+                                // Montant réellement prélevé : celui calculé par le
+                                // serveur. C'est le point central de la faille :
+                                // l'application pouvait sinon faire payer 100 F une
+                                // commande de 1 000 000 F.
+                                'montant' => ceil($totalServeur),
+                                'lib_order' => "Paiement commande de produit IMLOD",
+                                'Url_Retour' => Help::urlPaiement(route("ouvreApp", ['codePaiement' => $codePaiement])),
+                                'Url_Callback' => Help::urlPaiement(route('callBackPaiement')),
+                            ],
+                            $commande->numero,
+                            $codePaiement,
+                            $client,
+                            // Montant enregistré dans le paiement : celui du serveur.
+                            $totalServeur,
+                            $request->mode_paiement,
+                            $commande->id,
+                            Help::$COMMANDE
+                        );
+                        if ($ret['code'] == 200) {
+                            $retour->code = 201;
+                            $retour->message = $ret['message'];
+                        } else {
+                            $retour->code = $ret['code'];
+                            $retour->message = $ret['message'];
+                        }
+                    } else if ($request->mode_paiement == 2) {
+                        //Paiement par virement
+                        $preuve = new PreuveOperationBanque();
+                        $preuve->client_id = $client->id;
+                        $preuve->commande_id = $commande->id;
+                        $preuve->reference = $request->refOperation;
+                        $preuve->num_compte = $request->numCompte;
+                        $preuve->banque = $request->banque;
+                        $preuve->date_operation = $request->dateOperation;
+                        $preuve->service = Help::$COMMANDE;
+
+                        $storedFilePath = "preuveVirement/COM-$commande->id-1.png";
+                        Storage::disk("principal")->put($storedFilePath, base64_decode($request->fichierVir));
+                        $preuve->fichier = $storedFilePath;
+
+                        $preuve->note_supp = $request->note;
+                        $preuve->statut = Help::$STATUT_INACTIF;
+                        $preuve->save();
                     }
 
                     DB::commit();

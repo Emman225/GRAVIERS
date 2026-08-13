@@ -19,10 +19,6 @@ import '../commande_success/commande_success_screen.dart';
 import 'components/fne_preview_widget.dart';
 import '../../impression/fne_template.dart';
 import 'package:intl/intl.dart';
-import '../../models/ConfigModel.dart';
-import '../../models/code_promo.dart';
-import '../cart/components/cart_card.dart';
-import '../commande_success/commande_success_screen.dart';
 
 class ResumeCommandeScreen extends StatefulWidget {
   static String routeName = "/resumeCommandeScreen";
@@ -37,6 +33,12 @@ class _ResumeCommandeScreenState extends State<ResumeCommandeScreen> {
 
   var data, lignesLivraisons;
   double total = 0, coutLivraison = 0, montantHt = 0;
+
+  /// Montant DÉFINITIF calculé par le serveur (prix du catalogue, TVA, remise,
+  /// livraison depuis l'adresse choisie). Tant qu'il n'est pas reçu, on affiche
+  /// le calcul local. Dès qu'il arrive, c'est LUI qui s'affiche : le client voit
+  /// donc, avant de valider, exactement le montant qui lui sera prélevé.
+  double? totalServeur;
   TypeLivraisons tl = TypeLivraisons();
   UneAdresse addr = UneAdresse();
   ModePaiements mp = ModePaiements();
@@ -88,6 +90,70 @@ class _ResumeCommandeScreenState extends State<ResumeCommandeScreen> {
     }
 
     super.initState();
+
+    // Demander au serveur le montant définitif, sans rien enregistrer.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _verifierMontantServeur());
+  }
+
+  /// Interroge « verifier-montant » avec exactement les données qui seront
+  /// envoyées à la validation. En cas d'échec (réseau, serveur), on ne bloque
+  /// rien : l'écran continue d'afficher le calcul local.
+  Future<void> _verifierMontantServeur() async {
+    try {
+      if (!await verifierConnexion()) return;
+
+      List<Map<String, dynamic>> lignes = [];
+      for (var p in paniers) {
+        lignes.add({
+          'produit_id': p.product.id,
+          'qte': p.numOfItem,
+          'prix': p.product.prixEffectif,
+          'nbreJours': p.nbreJours,
+        });
+      }
+
+      final param = {
+        'access': user.token.toString(),
+        'type': user.type.toString(),
+        'lignes': lignes,
+        'adresse': addr.id,
+        // Exactement la même source que l'envoi réel (variable globale), pour que
+        // la vérification porte sur les mêmes données que la validation.
+        'meFaireLivre': meFaireLivre ? 1 : 0,
+        'long': position?.longitude ?? 0,
+        'lat': position?.latitude ?? 0,
+        'reduction': reduction.id ?? 0,
+        'pointUtilise': utiliserPoint == true ? nombrePoint : 0,
+        'estLocation': paniers.isNotEmpty &&
+            paniers.first.product.type_affaire == LOCATION,
+      };
+
+      final reponse = await http
+          .post(Uri.parse('${lienAPI()}verifier-montant'),
+              headers: {"Content-Type": "application/json"},
+              body: jsonEncode(param))
+          .timeout(const Duration(seconds: 30));
+
+      if (reponse.statusCode != 200) return;
+
+      final datas = jsonDecode(reponse.body);
+      if (datas['code'] == 200 && datas['data'] != null) {
+        final valeur = double.tryParse(datas['data']['total'].toString());
+        if (valeur != null && mounted) {
+          setState(() {
+            totalServeur = valeur;
+            coutLivraison =
+                double.tryParse(datas['data']['livraison'].toString()) ??
+                    coutLivraison;
+          });
+        }
+      }
+    } catch (e) {
+      // Volontairement silencieux : l'affichage local reste valable.
+      if (kDebugMode) {
+        print('verifier-montant: $e');
+      }
+    }
   }
 
   @override
@@ -205,15 +271,29 @@ class _ResumeCommandeScreenState extends State<ResumeCommandeScreen> {
                           ));
                         }
                         
+                        // Remise réellement appliquée (code promo ET points de
+                        // fidélité) : total = HT + TVA - remise, cf. getTotalAmount().
+                        // Calculée depuis les montants plutôt que depuis la globale
+                        // coutReduction, remise à zéro dans certains parcours.
+                        double remiseAffichee = montantHt + montantTva - total;
+                        if (remiseAffichee < 0.5) remiseAffichee = 0;
+
+                        // Le coût de livraison figure comme LIGNE d'article : il doit
+                        // donc entrer dans le TOTAL HT, sinon l'addition des lignes ne
+                        // retombe pas sur le total imprimé. Le montant à payer, lui,
+                        // est inchangé (il incluait déjà la livraison).
                         return FnePreviewWidget(
                           config: snapshot.data!,
                           client: clientFne,
                           articles: articles,
-                          totalHt: montantHt,
+                          totalHt: montantHt + coutLivraison,
                           totalTva: montantTva,
-                          totalTtc: montantHt + montantTva,
+                          totalTtc: montantHt + coutLivraison + montantTva,
                           autresTaxes: 0,
-                          totalAPayer: total + coutLivraison,
+                          // Montant du serveur dès qu'il est connu : c'est celui
+                          // qui sera réellement prélevé.
+                          totalAPayer: totalServeur ?? (total + coutLivraison),
+                          remise: remiseAffichee,
                           resumeFiscal: resumeFiscal,
                           date: DateFormat('dd/MM/yyyy HH:mm:ss').format(DateTime.now()),
                           modePaiement: libMode,
@@ -233,10 +313,11 @@ class _ResumeCommandeScreenState extends State<ResumeCommandeScreen> {
                               backgroundColor:
                               MaterialStatePropertyAll(greenColor)),
                           onPressed: () => _validerCommande(),
-                          child: Text(
-                              (user.clientATerme == true || mode == 2 || mode == 3)
-                                  ? "Valider ma commande "
-                                  : "Payer en ligne"),
+                          // Le libellé suit le MODE choisi, plus le statut du client :
+                          // un client à terme qui a choisi « En ligne » lisait
+                          // « Valider ma commande » avant d'être envoyé vers la
+                          // passerelle. Seul le mode 1 déclenche un paiement immédiat.
+                          child: Text(mode == 1 ? "Payer en ligne" : "Valider ma commande "),
                         ),
                       ),
                       Padding(
@@ -370,29 +451,38 @@ class _ResumeCommandeScreenState extends State<ResumeCommandeScreen> {
           }
           if (retourHttp.statusCode == 200) {
             if (datas['code'] == 200) {
-              EasyLoading.showSuccess(datas['message']);
+              afficherSucces(datas['message']);
               paniers.clear();
+              devisRepris = null;
+              // Le panier vidé, il ne provient plus d aucun devis : sans cette
+              // remise à zéro, une commande passée PLUS TARD depuis un panier neuf
+              // aurait clos un devis sans rapport avec elle.
+              devisRepris = null;
               // Attendre quelques secondes (durée du message)
               await Future.delayed(const Duration(seconds: 3));
               Get.offAllNamed(InitScreen.routeName);
             } else {
-              EasyLoading.showError(datas['message']);
+              afficherErreur(datas['message']);
             }
+          } else {
+            // Sans cette branche, une réponse serveur en erreur ne produisait
+            // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+            afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
           }
         } catch (e) {
           user.code = 500;
           user.message =
-          "Une erreur s'est produite veuillez reesayer plus tard";
+          messageErreurTechnique(e);
           if (kDebugMode) {
             print(e.toString());
           }
         }
         fermerChargement();
       } else {
-        EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+        afficherInfo("Veuillez vérifier votre connexion internet");
       }
     } else {
-      EasyLoading.showError(msgErr);
+      afficherErreur(msgErr);
     }
   }
 
@@ -471,6 +561,13 @@ class _ResumeCommandeScreenState extends State<ResumeCommandeScreen> {
           'refOperation': data[10],
           'dateOperation': data[11],
           'fichierVir': virByte == null ? null : base64Encode(virByte),
+          // Devis d'origine, s'il y en a un : le serveur le clôturera.
+          //
+          // C'est CET écran — « Votre Resumé », avec la proforma — qui valide la
+          // commande. Je n'avais ajouté le champ que dans details_commande, un
+          // autre chemin : le devis restait donc ouvert, et rien ne le montrait
+          // puisque la commande, elle, s'enregistrait normalement.
+          'devis_id': devisRepris,
         };
 
         if (kDebugMode) {
@@ -500,18 +597,27 @@ class _ResumeCommandeScreenState extends State<ResumeCommandeScreen> {
         if (retourHttp.statusCode == 200) {
           if (datas['code'] == 200) {
             paniers.clear();
+            devisRepris = null;
+            // Le panier vidé, il ne provient plus d aucun devis : sans cette
+            // remise à zéro, une commande passée PLUS TARD depuis un panier neuf
+            // aurait clos un devis sans rapport avec elle.
+            devisRepris = null;
             reduction = Reduction();
             Get.toNamed(CommandeSuccessScreen.routeName,
                 arguments: datas['message']);
           } else if (datas['code'] == 201) {
             lancerUrl(datas['message']);
           } else {
-            EasyLoading.showError(datas['message']);
+            afficherErreur(datas['message']);
           }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
         user.code = 500;
-        user.message = "Une erreur s'est produite veuillez reesayer plus tard";
+        user.message = messageErreurTechnique(e);
         if (kDebugMode) {
           print(e.toString());
         }
@@ -519,7 +625,7 @@ class _ResumeCommandeScreenState extends State<ResumeCommandeScreen> {
 
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
