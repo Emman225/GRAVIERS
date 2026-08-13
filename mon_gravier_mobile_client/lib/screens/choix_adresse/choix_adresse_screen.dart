@@ -224,17 +224,18 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
     // enregistrée et payée ensuite en agence (le backend ne déclenche la
     // passerelle que pour le mode « En ligne » id 1).
     if (user.clientATerme == true) {
-      // Le client à terme ne règle pas à la commande : le bloc de paiement lui
-      // est entièrement masqué plus bas. Son mode doit donc être fixé ici, et
-      // ne peut être que « en agence » — le seul qui n'exige aucune saisie.
+      // Le client à terme choisit, comme sur le site : régler tout de suite par
+      // mobile money, ou différer et payer en agence. Le bloc de paiement lui
+      // était entièrement masqué, alors que le mode restait sur « En ligne » :
+      // il se heurtait à « Veuillez sélectionner le moyen de paiement » sans
+      // qu'aucun champ de ce nom n'existe à l'écran, et sa commande ne pouvait
+      // pas aboutir.
       //
-      // Il restait à « En ligne », qui réclame un moyen de paiement, ou à
-      // « Virement » au-delà du plafond, qui réclame des coordonnées bancaires.
-      // Dans les deux cas, le champ demandé n'était affiché nulle part : le
-      // client remplissait tout l'écran et se heurtait à « Veuillez sélectionner
-      // le moyen de paiement », sans rien pouvoir y faire.
+      // « Paiement en agence » est proposé par défaut, son cas le plus courant,
+      // mais il peut basculer sur « En ligne » et désigner son opérateur.
       _listModePaiement = [
         {"id": 3, "libelle": "Paiement en agence"},
+        {"id": 1, "libelle": "En ligne"},
       ];
       _modePaiement = 3;
     } else if (_montantTotal > _montantMaxLigne) {
@@ -426,7 +427,11 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
                       ),
                     ),
                   ],
-                  if (user.clientATerme == false || user.token == null) ...[
+                  // Bloc affiché à TOUS, client à terme compris : il était masqué
+                  // pour lui, ce qui le privait du choix offert par le site — régler
+                  // par mobile money ou différer — et le laissait sans le champ que
+                  // la validation lui réclamait.
+                  ...[
                     Padding(
                       padding: const EdgeInsets.all(8.0),
                       child: DropDownTextField(

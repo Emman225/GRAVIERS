@@ -54,7 +54,7 @@ DateTime? currentBackPressTime;
 /// pubspec.yaml. Sans repère visible, plusieurs APK successifs sont
 /// indiscernables une fois installés : on ne sait plus lequel s'exécute, et
 /// tout diagnostic devient une conjecture.
-const String versionApplication = '1.0.16 (17)';
+const String versionApplication = '1.0.17 (18)';
 
 /// Traduit une exception technique en une phrase qui dit ce qui s'est passé.
 ///
