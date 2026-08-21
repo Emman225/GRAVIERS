@@ -43,29 +43,48 @@ class _VehiculeScreenState extends State<VehiculeScreen> {
       }
 
       try {
-        retourHttp = await http
+        final http.Response retourHttp = await http
             .post(Uri.parse('${lienAPI()}liste-vehicule'),
             headers: {"Content-Type": "application/json"},
             body: jsonEncode(param))
             .timeout(const Duration(minutes: 1));
         var datas = jsonDecode(retourHttp.body);
         if (retourHttp.statusCode == 200) {
-          setState(() {
-            retVehicule = RetourVehicule.fromJson(datas);
-            vehicules = retVehicule.data?.vehicules ?? [];
-            typeVehicules = retVehicule.data?.types ?? [];
-          });
+          retVehicule = RetourVehicule.fromJson(datas);
+          // Le code metier renvoye par l'API n'etait PAS controle : une session
+          // expiree ou un refus serveur (reponse HTTP 200 mais code != 200)
+          // laissait un ecran vide, sans aucune explication.
+          if (retVehicule.code == 200) {
+            setState(() {
+              vehicules = retVehicule.data?.vehicules ?? [];
+              typeVehicules = retVehicule.data?.types ?? [];
+            });
+          } else {
+            setState(() {
+              vehicules = [];
+              typeVehicules = [];
+            });
+            afficherErreur(retVehicule.message ??
+                "Impossible de charger vos vehicules.");
+          }
+        } else {
+          // Sans cette branche, une reponse serveur en erreur ne produisait
+          // AUCUNE reaction a l'ecran.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez reessayer.");
         }
       } catch (e) {
         user.code = 500;
         user.message = "Une erreur s'est produite veuillez reesayer plus tard";
+        // Ce bloc de secours n.affichait RIEN : l.ecran restait muet en cas de
+        // coupure reseau ou de reponse illisible.
+        afficherErreur("Impossible de contacter le serveur. Verifiez votre connexion et reessayez.");
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 

@@ -23,6 +23,8 @@
         </header> --}}
         <!-- card-header end// -->
         <div class="card-body">
+            <x-export-buttons table-id="liste" filename="fournisseurs-bons-enlevement"
+                title="Fournisseurs — bons d'enlèvement" />
             <div class="table-responsive">
                 <table class="table table-striped" id="liste">
                     {{-- @dd($founisseurs) --}}

@@ -1,125 +1,162 @@
-
 @php
-    use Illuminate\Support\carbon;
+    use Illuminate\Support\Carbon;
 
-    // dd($blog->clients);
+    // Les commentaires à la corbeille sont chargés eux aussi (pour pouvoir les
+    // restaurer) mais ne comptent dans aucun compteur.
+    $actifs       = $commentaires->reject(fn ($c) => $c->trashed());
+    $nbEnAttente  = $actifs->where('statut', \App\Models\blog_commentaire::EN_ATTENTE)->count();
+    $nbPublies    = $actifs->where('statut', \App\Models\blog_commentaire::PUBLIE)->count();
+    $nbRefuses    = $actifs->where('statut', \App\Models\blog_commentaire::REFUSE)->count();
+    $nbCorbeille  = $commentaires->count() - $actifs->count();
 @endphp
+
 @extends('layout.main')
-@section('title','Liste des gestionnaires')
+@section('title', 'Commentaires de l\'article')
 
 @section('contenu')
+    <x-notify::notify />
 
-<div class="content-header">
-    <div>
-        <h2 class="content-title card-title">Comment sur les produits</h2>
-        {{-- <p>Vous </p> --}}
-    </div>
-    <div>
-        @if (session('ok'))
-            <div class="alert alert-success" id="notify">
-                {{session('ok')}}
+    {{-- ===== HEADER ===== --}}
+    <div class="dash-welcome mb-4">
+        <div class="dash-welcome-content">
+            <div>
+                <h2 class="dash-welcome-title">
+                    Commentaires de <span class="dash-welcome-name">{{ $blog->titre }}</span> 💬
+                </h2>
+                <p class="dash-welcome-subtitle">
+                    Un commentaire n'apparaît sur le site public qu'une fois publié ici.
+                </p>
             </div>
-        @endif
-        @if (session('no'))
-            <div class="alert alert-danger" id="notify">
-                {{session('no')}}
-            </div>
-        @endif
-
-    </div>
-</div>
-<div class="card mb-4">
-    <header class="card-header">
-        <div class="row gx-3">
-            <div class="col-lg-4 col-md-6 me-auto">
-
-            </div>
-            <div class="col-lg-2 col-md-3 col-6">
-
-            </div>
-            <div class="col-lg-2 col-md-3 col-6">
-
+            <div class="dash-welcome-actions">
+                <a href="{{ route('show.listeDesBlogs') }}" class="btn btn-light">
+                    <i class="material-icons md-arrow_back"></i> Liste des blogs
+                </a>
+                <a href="{{ route('show.moderationCommentairesBlog') }}" class="btn btn-primary">
+                    <i class="material-icons md-comment"></i> Tous les commentaires
+                </a>
             </div>
         </div>
-    </header>
-    <!-- card-header end// -->
-    <div class="card-body">
-        <div class="table-responsive">
-            <table class="table table-striped">
-                <thead>
-                    <tr>
+        <div class="dash-welcome-decoration"></div>
+    </div>
 
-                        <th>#ID</th>
-                        <th>Client</th>
-                        <th>commentaire</th>
-                        <th>Note</th>
-                        <th>Date</th>
-                        <th>Statut</th>
-                        <th class="text-end">Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach ($blog->clients as $client )
+    @if (session('fail'))
+        <div class="alert alert-warning">{{ session('fail') }}</div>
+    @endif
+    @if (session('success'))
+        <div class="alert alert-success">{{ session('success') }}</div>
+    @endif
+
+    {{-- ===== COMPTEURS ===== --}}
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="kpi-card kpi-card-warning">
+                <div class="kpi-card-icon"><i class="material-icons md-hourglass_empty"></i></div>
+                <div class="kpi-card-body">
+                    <div class="kpi-card-label">En attente</div>
+                    <div class="kpi-card-value">{{ $nbEnAttente }}</div>
+                </div>
+                <div class="kpi-card-shape"></div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="kpi-card kpi-card-success">
+                <div class="kpi-card-icon"><i class="material-icons md-public"></i></div>
+                <div class="kpi-card-body">
+                    <div class="kpi-card-label">Publiés</div>
+                    <div class="kpi-card-value">{{ $nbPublies }}</div>
+                </div>
+                <div class="kpi-card-shape"></div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="kpi-card kpi-card-primary">
+                <div class="kpi-card-icon"><i class="material-icons md-block"></i></div>
+                <div class="kpi-card-body">
+                    <div class="kpi-card-label">Refusés</div>
+                    <div class="kpi-card-value">{{ $nbRefuses }}</div>
+                </div>
+                <div class="kpi-card-shape"></div>
+            </div>
+        </div>
+    </div>
+
+    @if ($nbCorbeille > 0)
+        <div class="alert alert-secondary py-2">
+            <i class="material-icons md-delete align-middle"></i>
+            {{ $nbCorbeille }} commentaire{{ $nbCorbeille > 1 ? 's' : '' }} à la corbeille.
+        </div>
+    @endif
+
+    {{-- ===== TABLEAU ===== --}}
+    <div class="card dash-card mb-4">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table dash-table align-middle mb-0" id="listeCommentairesBlog">
+                    <thead>
                         <tr>
-                            <td>
-                                identifiant
-                            </td>
-
-                            <td> {{$client->nom}} </td>
-
-                            <td><b> {{$client->pivot->commentaire}} </b></td>
-
-                            {{-- <td> {{$client->pivot->note}} </td> --}}
-                            <td>
-                                <ul class="rating-stars">
-                                    <li style="width: {{$client->pivot->note*20}}%" class="stars-active">
-                                        <img src="{{asset('backend/assets/imgs/icons/stars-active.svg')}}" alt="stars" />
-                                    </li>
-                                    <li>
-                                        <img src="{{asset('backend/assets/imgs/icons/starts-disable.svg')}}" alt="stars" />
-                                    </li>
-                                </ul>
-                            </td>
-
-                            <td> {{$client->pivot->created_at->isoFormat('LL')}} </td>
-
-                            <td>
-                                @switch($client->pivot->statut)
-                                    @case(1)
-                                        <span class="badge bg-secondary">En attente</span>
-                                        @break
-                                    @case(2)
-                                        <span class="badge bg-success">Publié</span>
-                                        @break
-                                    @case(3)
-                                        <span class="badge bg-danger">Annulé</span>
-                                        @break
-                                    @default
-
-                                @endswitch
-                            </td>
-
-                            <td class="text-end">
-                                {{-- <a href="#" class="btn btn-md rounded font-sm">Detail</a> --}}
-                                <div class="dropdown">
-                                    <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm"> <i class="material-icons md-more_horiz"></i> </a>
-                                    <div class="dropdown-menu">
-                                        {{-- <a class="dropdown-item" href="#">View detail</a> --}}
-                                        <a class="dropdown-item" href="{{route('show.publierCommentaireBlog',$client->pivot->id)}}">Publier</a>
-                                        <a class="dropdown-item text-danger" href="{{route('show.annulerCommentaireBlog',$client->pivot->id)}}">Annuler</a>
-                                    </div>
-                                </div>
-                                <!-- dropdown //end -->
-                            </td>
+                            <th>#</th>
+                            <th>Client</th>
+                            <th>Commentaire</th>
+                            <th class="text-center">Note</th>
+                            <th class="text-center">Date</th>
+                            <th class="text-center">Statut</th>
+                            <th class="text-center">Action</th>
                         </tr>
-                    @endforeach
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        @forelse ($commentaires as $commentaire)
+                            <tr>
+                                {{-- L'ancienne version affichait le mot « identifiant » en
+                                     dur dans cette colonne. --}}
+                                <td>{{ $commentaire->id }}</td>
+                                <td>{{ $commentaire->client->display_name }}</td>
+                                <td><b>{{ $commentaire->commentaire }}</b></td>
+                                <td class="text-center">
+                                    {{ $commentaire->note ? $commentaire->note.'/5' : '—' }}
+                                </td>
+                                <td class="text-center">{{ $commentaire->created_at?->isoFormat('LL') }}</td>
+                                <td class="text-center">
+                                    @if ($commentaire->trashed())
+                                        <span class="badge bg-dark">Corbeille</span>
+                                    @else
+                                        <span class="badge bg-{{ $commentaire->couleurStatut() }}">{{ $commentaire->libelleStatut() }}</span>
+                                    @endif
+                                </td>
+                                @include('gestionnaire.partials.actionsCommentaireBlog', ['commentaire' => $commentaire])
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="7" class="text-center text-muted">Aucun commentaire sur cet article.</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
         </div>
-        <!-- table-responsive//end -->
     </div>
-    <!-- card-body end// -->
-</div>
+@endsection
 
+@section('cssParts')
+    <link rel="stylesheet" href="{{ asset('backend/plugins/DataTables/datatables.min.css') }}">
+@endsection
 
+@section('jsParts')
+    <script src="{{ asset('backend/plugins/DataTables/datatables.min.js') }}"></script>
+    <script type="text/javascript">
+        $(function () {
+            var $table = $('#listeCommentairesBlog');
+            if ($table.find('tbody tr').length > 0 &&
+                $table.find('tbody tr td[colspan]').length === 0) {
+                $table.DataTable({
+                    language: { url: '{{ asset('backend/plugins/DataTables/i18n/fr-FR.json') }}' },
+                    order: [[4, 'desc']],
+                    columnDefs: [
+                        { targets: '_all', defaultContent: '-' },
+                        { orderable: false, targets: [2, 6] }
+                    ]
+                });
+            }
+        });
+    </script>
+    @notifyJs
 @endsection

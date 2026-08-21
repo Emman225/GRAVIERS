@@ -1,5 +1,5 @@
 <x-mail::message>
-Bonjour {{ ucfirst($commande->client->prenoms) }},
+Bonjour {{ ucfirst($commande->client?->prenoms) }},
 
 Votre paiement a bien été effectué pour la commande N°{{$commande->numero}}
 

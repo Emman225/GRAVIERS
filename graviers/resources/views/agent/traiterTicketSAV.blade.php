@@ -16,7 +16,7 @@
         <div class="card-body">
             <div class="row mb-3">
                 <div class="col-md-6">
-                    <p class="mb-1"><strong>Client :</strong> {{ $ticket->client?->nom }} {{ $ticket->client?->prenom }}</p>
+                    <p class="mb-1"><strong>Client :</strong> {{ $ticket->client?->display_name }}</p>
                     <p class="mb-1"><strong>Produit concerné :</strong> {{ $ticket->detailCommande?->produit?->nom ?? '-' }}</p>
                     <p class="mb-1"><strong>Ouvert le :</strong> {{ Carbon::parse($ticket->created_at)->format('d/m/Y H:i') }}</p>
                 </div>

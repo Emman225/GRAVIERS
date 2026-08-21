@@ -57,7 +57,7 @@
                                     <tr>
                                             <form action="{{route('show.restaureLivraison',$livraison)}}" method="POST">
                                                 @csrf
-                                            <td class="texte-center"><b> {{$livraison->client?->nom.' '. $livraison->client?->prenom ?? ''}} </b></td>
+                                            <td class="texte-center"><b> {{$livraison->client?->display_name ?? ''}} </b></td>
                                             <td class="texte-center"><b> {{$livraison->enlevement?->fournisseur?->user?->nom_prenoms ?? ''}} </b></td>
                                             <td class="texte-center"><b> {{ $livraison->livre_par == 1 ? $livraison->livreur?->user?->nom_prenoms : $livraison->clientLivreur?->nom }} </b></td>
                                             <td class="texte-center"> {{$livraison->AdresseLivraison?->affichage ?? 'Pas de livraison'}}</td>
@@ -74,9 +74,9 @@
                                                 <td class="texte-center">{{$livraison->detailLivraison?->qte}}</td>
                                             @endif
                                             @if ($livraison->vehicule != null)
-                                                <td class="text-center">{{$livraison->vehicule->marque ?? '' }}</td>
-                                                <td class="text-center">{{$livraison->vehicule->immatriculation ?? '' }}</td>
-                                                <td class="text-center">{{$livraison->vehicule->capacite ?? '' }}t</td>
+                                                <td class="text-center">{{$livraison->vehicule?->marque ?? '' }}</td>
+                                                <td class="text-center">{{$livraison->vehicule?->immatriculation ?? '' }}</td>
+                                                <td class="text-center">{{$livraison->vehicule?->capacite ?? '' }}t</td>
                                             @else
                                                 <td class="texte-center"><b> Pas de livraison </b></td>
                                                 <td class="texte-center"><b> Pas de livraison </b></td>
@@ -123,7 +123,7 @@
                                                     <select class="form-control select-livreur" name="livreur"  data-key="{{ $key }}">
                                                         <option value="">Choisir un nouveau livreur</option>
                                                         @foreach($livreurs as $livreur)
-                                                            <option value="{{$livreur->id}}"> {{ $livreur->user->nom_prenoms }} </option>
+                                                            <option value="{{$livreur->id}}"> {{ $livreur->user?->nom_prenoms }} </option>
                                                         @endforeach
                                                     </select>
                                                 @endif

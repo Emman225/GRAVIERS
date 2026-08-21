@@ -21,7 +21,7 @@
     $fne_date = now()->format('d/m/Y H:i:s');
 
     $fne_client = [
-        'nom' => ucfirst($client->nom ?? '') . ' ' . ucfirst($client->prenom ?? ''),
+        'nom' => ucfirst($client->display_name ?? ''),
         'adresse' => $lieu ?? '',
         'ncc' => $client->ncc_clt ?? '',
         'regime_imposition' => '',
@@ -117,6 +117,12 @@
             <td class="label">TOTAL HT</td>
             <td class="valeur">{{ number_format($totalHT, 0, '', ' ') }}</td>
         </tr>
+        @if($remise > 0)
+        <tr>
+            <td class="label">Remise</td>
+            <td class="valeur">-{{ number_format($remise, 0, '', ' ') }}</td>
+        </tr>
+        @endif
         <tr>
             <td class="label">TVA ({{ $config->tva ?? 0 }}%)</td>
             <td class="valeur">{{ number_format($totalTVA_montant, 0, '', ' ') }}</td>
@@ -125,12 +131,6 @@
         <tr>
             <td class="label">Coût livraison @if(session('0') && isset(session('0')['km']))({{ session('0')['km'] }} km)@endif</td>
             <td class="valeur">{{ number_format($livraison, 0, '', ' ') }}</td>
-        </tr>
-        @endif
-        @if($remise > 0)
-        <tr>
-            <td class="label">Remise</td>
-            <td class="valeur">-{{ number_format($remise, 0, '', ' ') }}</td>
         </tr>
         @endif
         <tr>

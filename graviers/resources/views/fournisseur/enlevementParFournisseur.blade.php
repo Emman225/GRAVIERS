@@ -20,8 +20,12 @@
                 <!-- card-header end// -->
                 <div class="card-body">
 
+                    <x-export-buttons table-id="listeEnlevements"
+                        filename="bons-enlevement-{{ \Illuminate\Support\Str::slug($fournisseur->nom_prenoms ?: 'fournisseur') }}"
+                        title="Bons d'enlèvement — {{ $fournisseur->nom_prenoms }}" />
+
                     <div class="table-responsive">
-                        <table class="table table-striped">
+                        <table class="table table-striped" id="listeEnlevements">
                             <thead>
                                 <tr>
                                     <th class="text-center">N°</th>
@@ -43,12 +47,12 @@
                                     @if ($enlevement->qte_servi != null)
                                         <tr>
                                             <td class="text-center"> <p>{{ $enlevement->code_enleve }}</p> </td>
-                                            @if ($enlevement->livraison->livre_par  == 1)
-                                                <td class="text-center"><b> {{ $enlevement->livraison->livreur->user->nom_prenoms }} </b></td>
+                                            @if ($enlevement->livraison?->livre_par  == 1)
+                                                <td class="text-center"><b> {{ $enlevement->livraison?->livreur?->user?->nom_prenoms }} </b></td>
                                             @else
-                                                <td class="text-center"><b> {{ $enlevement->livraison->clientLivreur->nom.' '.$enlevement->livraison->clientLivreur->prenom }} </b></td>
+                                                <td class="text-center"><b> {{ $enlevement->livraison?->clientLivreur->display_name }} </b></td>
                                             @endif
-                                            <td class="text-center">{{ $enlevement->produit->nom }}</td>
+                                            <td class="text-center">{{ $enlevement->produit?->nom }}</td>
                                             <td class="text-center">{{ $enlevement->qte }}</td>
                                             <td class="text-center">{{ $enlevement->qte_servi }}</td>
                                             <td class="text-center">{{ Carbon::parse($enlevement->created_at)->format('d-m-Y') }}</td>

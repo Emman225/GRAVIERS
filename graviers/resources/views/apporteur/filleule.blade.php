@@ -132,7 +132,7 @@
                                 $stats = $statsMap->get($client->id);
                                 $nbCmd = $stats?->nb_commandes ?? 0;
                                 $totalCom = (float) ($stats?->total_commission ?? 0);
-                                $nomComplet = trim(($client->nom ?? '').' '.($client->prenom ?? '')) ?: 'Filleul(e) #'.$client->id;
+                                $nomComplet = ($client->display_name ?? '') ?: 'Filleul(e) #'.$client->id;
                                 $initials = strtoupper(mb_substr($client->nom ?? 'F', 0, 1).mb_substr($client->prenom ?? '', 0, 1));
                                 $statutActif = (int) $client->statut === 1;
                                 $aTerme = (int) $client->client_a_terme === 1;

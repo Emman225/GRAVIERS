@@ -10,9 +10,15 @@ import 'package:searchable_listview/searchable_listview.dart';
 import '../../../globale.dart';
 
 class LivraisonListeScreen extends StatelessWidget {
-  LivraisonListeScreen({super.key, required this.livraisons});
+  LivraisonListeScreen({super.key, required this.livraisons, this.onRetour});
 
   List<UneLivraison> livraisons;
+
+  /// Appelé au retour de l'écran de détail. Sans ce rechargement, la liste
+  /// conservait l'objet AVANT acceptation : en revenant en arrière et en
+  /// retapant la même carte, le bouton « Accepter livraison » réapparaissait et
+  /// une seconde acceptation partait.
+  final VoidCallback? onRetour;
 
   @override
   Widget build(BuildContext context) {
@@ -43,8 +49,16 @@ class LivraisonListeScreen extends StatelessWidget {
             builder: (livraisons, index, c) {
               final bool estTerminee = c.etatLivraison == LIVRAISON_LIVREE;
               return GestureDetector(
-              onTap: () => Get.toNamed(DetailsLivraisonScreen.routeName,
-                  arguments: [c, (c.detailCommandeId! > 0) ? 1 : 2, c.qte]),
+              onTap: () async {
+                // detailCommandeId est ABSENT pour une livraison issue d'une demande
+                // de livraison (le ternaire prévoit d'ailleurs ce cas, niveau 2) :
+                // le « ! » levait une exception avalée par le framework et la carte
+                // ne réagissait tout simplement pas au toucher.
+                await Get.toNamed(DetailsLivraisonScreen.routeName,
+                    arguments: [c, ((c.detailCommandeId ?? 0) > 0) ? 1 : 2, c.qte]);
+                // Rechargement au retour : l'état de la livraison a pu changer.
+                onRetour?.call();
+              },
               child: Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: Container(

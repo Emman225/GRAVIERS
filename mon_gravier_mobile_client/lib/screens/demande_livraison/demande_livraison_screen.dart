@@ -76,18 +76,21 @@ class _DemandeLivraisonScreenState extends State<DemandeLivraisonScreen> {
           if (kDebugMode) {
             print(_listAdresse);
           }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
         user.code = 500;
         if (kDebugMode) {
           print(e.toString());
         }
-        EasyLoading.showError(
-            "Une erreur s'est produite veuillez reesayer plus tard");
+        afficherErreur(messageErreurTechnique(e));
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -157,7 +160,11 @@ class _DemandeLivraisonScreenState extends State<DemandeLivraisonScreen> {
         onPressed: () async {
           await Get.toNamed(EditionAdresseScreen.routeName,
               arguments: UneAdresse());
-          chargerAdresse();
+          // Même précaution que sur la liste des devis : cette attente se
+          // termine aussi quand toute la pile d'écrans est retirée.
+          if (mounted) {
+            chargerAdresse();
+          }
         },
         icon: const Icon(Icons.add),
         label: const Text('Ajouter Adresse'),
@@ -178,7 +185,7 @@ class _DemandeLivraisonScreenState extends State<DemandeLivraisonScreen> {
               );
               Get.toNamed(DetailsDemandeLivraisonScreen.routeName);
             } else {
-              EasyLoading.showError(msgErr);
+              afficherErreur(msgErr);
             }
           },
           child: const Text("Suivant"),

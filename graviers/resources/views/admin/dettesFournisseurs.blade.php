@@ -76,13 +76,14 @@
                                     </div>
                                 </td>
                                 <td class="text-center">
-                                    <button type="button" class="btn btn-sm btn-success btn-regler-dette"
-                                            data-type="fournisseur"
-                                            data-tier-id="{{ $fournisseur->id }}"
-                                            data-nom="{{ $fournisseur->user?->nom_prenoms }}"
-                                            data-solde="{{ $fournisseur->solde }}">
+                                    {{-- Le règlement se fait au guichet, qui porte la double
+                                         validation, les reçus et l'imputation sur les pièces.
+                                         Le popup local écrivait par un autre chemin. --}}
+                                    <a href="{{ route('show.fournisseurs.paiements', ['regler' => $fournisseur->id]) }}"
+                                       class="btn btn-sm btn-success"
+                                       title="Ouvrir le guichet de paiement avec le fournisseur déjà choisi">
                                         <i class="material-icons md-payment align-middle"></i> Régler
-                                    </button>
+                                    </a>
                                 </td>
                             </tr>
                         @empty
@@ -98,7 +99,6 @@
         </div>
     </div>
 
-    @include('admin._popupReglerDette')
 @endsection
 
 @section('cssParts')

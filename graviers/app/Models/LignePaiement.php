@@ -28,6 +28,52 @@ class LignePaiement extends Model
         'service',
     ];
 
+    /**
+     * Dès qu'un règlement de commande est enregistré, la facture correspondante
+     * est établie s'il en manque une.
+     *
+     * Le déclenchement est posé ICI, sur le modèle, et non dans les
+     * contrôleurs : une ligne de paiement se crée depuis au moins six endroits
+     * différents — caisse, passerelle en ligne, créances à terme, comptant,
+     * back-office. Les recenser un par un, c'est en oublier un, et surtout
+     * n'en couvrir aucun de ceux qui seront ajoutés ensuite.
+     *
+     * Rien n'est facturé si la commande l'est déjà à hauteur de ce qui est
+     * réglé : la méthode appelée ne fait alors rien.
+     */
+    protected static function booted(): void
+    {
+        // La colonne date_paiement porte une valeur par défaut FIGÉE dans le
+        // schéma (un horodatage d'avril 2026). Les points de création qui ne la
+        // renseignent pas — il y en a plusieurs dans PaiementController —
+        // produisaient donc des règlements tous datés du même jour, et la liste
+        // des lignes, qui est triée sur cette date, sortait dans le désordre.
+        //
+        // Le remplissage est posé ICI pour la même raison que la facturation
+        // ci-dessous : recenser les points de création un par un, c'est en
+        // oublier un. La date explicitement transmise (encaissement daté à la
+        // main par le caissier) n'est jamais écrasée.
+        static::creating(function (LignePaiement $ligne) {
+            if (empty($ligne->date_paiement)) {
+                $ligne->date_paiement = now();
+            }
+        });
+
+        static::created(function (LignePaiement $ligne) {
+            if ((int) $ligne->statut !== Help::$STATUT_ACTIF) {
+                return;
+            }
+            if ($ligne->service !== Help::$COMMANDE || !$ligne->service_id) {
+                return;
+            }
+
+            $commande = Commande::find($ligne->service_id);
+            if ($commande) {
+                \App\Services\FacturationCommande::facturerCeQuiEstRegle($commande);
+            }
+        });
+    }
+
     public static function lire($id)
     {
         $obj = LignePaiement::find($id);

@@ -83,7 +83,7 @@
                                                         @foreach ($detail->livraisons as $livraison)
                                                             <span {{ $livraison->etat_livraison == 'LIVREE' ? 'class=barre-livree' : '' }}>
                                                                 <i class="fi-rs-phone-call" style="font-size:11px;color:#10b981;"></i>
-                                                                {{ $livraison->livreur->user->contact }}
+                                                                {{ $livraison->livreur?->user?->contact }}
                                                             </span>
                                                             <br>
                                                             @if ($livraison->etat_livraison == 'LIVREE')

@@ -33,16 +33,16 @@
             @foreach ($devis->detailDevis as $index => $detail)
                 @if($detail->deleted_at == null)
                     @php
-                        $prixUnitaire = $detail->prix ?? $detail->produit->prix_moyen;
+                        $prixUnitaire = $detail->prix ?? $detail->produit?->prix_moyen;
                         $montantLigne = $prixUnitaire * $detail->qte;
                         $totalHT += $montantLigne;
                     @endphp
                     <tr>
                         <td class="col-ref">{{ str_pad($index + 1, 2, '0', STR_PAD_LEFT) }}</td>
-                        <td class="col-designation">{{ $detail->produit->nom }}</td>
+                        <td class="col-designation">{{ $detail->produit?->nom }}</td>
                         <td class="col-pu">{{ number_format($prixUnitaire, 0, '', ' ') }}</td>
                         <td class="col-qte">{{ $detail->qte }}</td>
-                        <td class="col-unite">{{ $detail->produit->uniteProduit->libelle ?? 'U' }}</td>
+                        <td class="col-unite">{{ $detail->produit?->uniteProduit->libelle ?? 'U' }}</td>
                         <td class="col-taxes">TVA ({{ $config->tva ?? 0 }}%)</td>
                         <td class="col-rem">0</td>
                         <td class="col-montant">{{ number_format($montantLigne, 0, '', ' ') }}</td>
@@ -67,6 +67,12 @@
             <td class="label">TOTAL HT</td>
             <td class="valeur">{{ number_format($totalHT, 0, '', ' ') }}</td>
         </tr>
+        @if($coutReduction > 0)
+        <tr>
+            <td class="label">Remise</td>
+            <td class="valeur">-{{ number_format($coutReduction, 0, '', ' ') }}</td>
+        </tr>
+        @endif
         <tr>
             <td class="label">TVA ({{ $config->tva ?? 0 }}%)</td>
             <td class="valeur">{{ number_format($montantTVA, 0, '', ' ') }}</td>
@@ -79,12 +85,6 @@
         <tr>
             <td class="label">Coût de livraison</td>
             <td class="valeur">{{ number_format($coutLivraison, 0, '', ' ') }}</td>
-        </tr>
-        @endif
-        @if($coutReduction > 0)
-        <tr>
-            <td class="label">Remise</td>
-            <td class="valeur">-{{ number_format($coutReduction, 0, '', ' ') }}</td>
         </tr>
         @endif
         <tr>

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Apporteur;
 use App\Models\CommissionApporteur;
 use App\Models\Configuration;
+use App\Models\DemandePaiement;
 use App\Models\Enlevement;
 use App\Models\Fournisseur;
 use App\Models\Livraison;
@@ -23,9 +24,14 @@ class RecapGlobalDettesController extends Controller
     public function tableauBord(Request $request)
     {
         // ====== FOURNISSEURS ======
-        $enlevements = Enlevement::with('fournisseur')->get();
+        // Un bon annule n'engage plus rien : il gonflait la dette fournisseur.
+        // Les paiements sont precharges — statutDetteCalcule() et resteAPayer()
+        // les relisaient bon par bon.
+        $enlevements = Enlevement::with(['fournisseur', 'paiementsFournisseur'])
+            ->where('statut', \Help::$STATUT_ACTIF)
+            ->get();
         $foNbOps    = $enlevements->count();
-        $foEngage   = $enlevements->sum(fn($e) => $e->montantTtc());
+        $foEngage   = $enlevements->sum(fn($e) => $e->montantDu());
         $foPaye     = $enlevements->sum(fn($e) => $e->montantPaye());
         $foReste    = max(0, $foEngage - $foPaye);
         // Dettes immédiates = échues impayées
@@ -41,7 +47,7 @@ class RecapGlobalDettesController extends Controller
             ->sum(fn($e) => $e->resteAPayer());
 
         // ====== LIVREURS ======
-        $livraisons = Livraison::all();
+        $livraisons = Livraison::with('paiementsLivreur')->get();
         $lvNbOps   = $livraisons->count();
         $lvEngage  = $livraisons->sum(fn($l) => $l->totalDuLivreur());
         $lvPaye    = $livraisons->sum(fn($l) => $l->montantPayeLivreur());
@@ -69,6 +75,53 @@ class RecapGlobalDettesController extends Controller
             })
             ->sum(fn($c) => $c->resteAPayerCommission());
 
+        // ====== VERSEMENTS PASSÉS PAR LES DEMANDES DE PAIEMENT ======
+        //
+        // Un partenaire est réglé de DEUX façons : par les écrans « Dette »
+        // Paiements » du back-office, qui écrivent PaiementFournisseur /
+        // PaiementLivreur / PaiementApporteur ; et par une DEMANDE DE PAIEMENT
+        // qu'il initie lui-même depuis son espace, validée puis payée.
+        //
+        // Ce tableau de bord ne comptait que le premier canal. Or pour les
+        // livreurs le second est la source de vérité — l'écran « Dette »
+        // Livraisons » le dit explicitement — si bien que le ratio affichait
+        // « 0,0 % payé » alors que des sommes avaient bel et bien été versées.
+        //
+        // ATTENTION AU DOUBLE COMPTAGE. Depuis que la validation d'une demande
+        // ECRIT sa ligne de reglement (paiement_fournisseur / paiement_livreur /
+        // paiement_apporteur, colonne demande_paiement_id), cette demande est
+        // deja comptee par montantPaye(). L'ajouter de nouveau ferait apparaitre
+        // le versement DEUX FOIS et minorerait d'autant la dette restante.
+        //
+        // On ne retient donc que les demandes qui n'ont PAS de ligne de
+        // reglement — celles reglees avant la mise en place de l'imputation.
+        $payeParDemandes = function (int $typeUser, string $tableReglement): float {
+            return (float) DemandePaiement::join('users', 'users.id', '=', 'demande_paiement.user_id')
+                ->where('users.type_user_id', $typeUser)
+                ->where('demande_paiement.paye', 1)
+                ->whereNull('demande_paiement.deleted_at')
+                ->when(
+                    \Illuminate\Support\Facades\Schema::hasColumn($tableReglement, 'demande_paiement_id'),
+                    fn ($q) => $q->whereNotExists(function ($sous) use ($tableReglement) {
+                        $sous->selectRaw('1')
+                            ->from($tableReglement)
+                            ->whereColumn($tableReglement . '.demande_paiement_id', 'demande_paiement.id')
+                            ->whereNull($tableReglement . '.deleted_at');
+                    })
+                )
+                ->sum('demande_paiement.montant');
+        };
+
+        $foPaye += $payeParDemandes(5, 'paiement_fournisseur'); // fournisseurs
+        $lvPaye += $payeParDemandes(8, 'paiement_livreur');     // livreurs
+        $apPaye += $payeParDemandes(6, 'paiement_apporteur');   // apporteurs d'affaires
+
+        // Les restes se recalculent sur ces totaux corrigés, sans jamais passer
+        // sous zéro : un partenaire peut avoir été payé d'avance.
+        $foReste = max(0, $foEngage - $foPaye);
+        $lvReste = max(0, $lvEngage - $lvPaye);
+        $apReste = max(0, $apEngage - $apPaye);
+
         // ====== TOTAUX ======
         $totalNbOps   = $foNbOps + $lvNbOps + $apNbOps;
         $totalEngage  = $foEngage + $lvEngage + $apEngage;
@@ -83,8 +136,20 @@ class RecapGlobalDettesController extends Controller
         // Indicateurs clés
         $detteImmediate    = $foDetteImmediate + $lvDetteImmediate + $apDetteImmediate;
         $tresorerie30j     = $fo30j + $lv30j + $ap30j;
-        $ratioPayeEngage   = $totalEngage > 0 ? ($totalPaye / $totalEngage) * 100 : 0;
+        // Le ratio mesure la part de la DETTE ÉTEINTE, et se déduit donc du
+        // reste — pas du total versé.
+        //
+        // Les deux ne coïncident pas quand un partenaire a été payé au-delà de
+        // ce qu'il a gagné : cette avance ne réduit la dette de personne
+        // d'autre. Calculer « versé / engagé » donnait alors des pourcentages
+        // qui ne se complétaient plus — 15,6 % payé face à 99,1 % restant.
+        // Le montant réellement versé reste affiché tel quel dans sa propre
+        // vignette ; seul le ratio est ramené à ce qu'il prétend mesurer.
         $ratioResteEngage  = $totalEngage > 0 ? ($totalReste / $totalEngage) * 100 : 0;
+        $ratioPayeEngage   = $totalEngage > 0 ? max(0, 100 - $ratioResteEngage) : 0;
+
+        // Avance éventuelle : ce qui a été versé au-delà de ce qui était dû.
+        $totalAvance = max(0, $totalPaye - ($totalEngage - $totalReste));
         $detteMoyenne      = $totalNbOps > 0 ? $totalReste / $totalNbOps : 0;
 
         return view('admin.recapDettes.tableauBord', compact(
@@ -93,7 +158,7 @@ class RecapGlobalDettesController extends Controller
             'apNbOps', 'apEngage', 'apPaye', 'apReste', 'apPct',
             'totalNbOps', 'totalEngage', 'totalPaye', 'totalReste',
             'detteImmediate', 'tresorerie30j',
-            'ratioPayeEngage', 'ratioResteEngage', 'detteMoyenne'
+            'ratioPayeEngage', 'ratioResteEngage', 'detteMoyenne', 'totalAvance'
         ));
     }
 
@@ -119,7 +184,7 @@ class RecapGlobalDettesController extends Controller
                 'fournisseur_nom'  => $e->fournisseur?->nom_prenoms ?? '-',
                 'numero_commande'  => $cmd?->numero ?? '-',
                 'produit'          => $e->produit?->nom ?? '-',
-                'montant_ttc'      => $e->montantTtc(),
+                'montant_ttc'      => $e->montantDu(),
                 'reste_a_payer'    => $e->resteAPayer(),
                 'statut'           => $e->statutDetteCalcule(),
             ];
@@ -152,7 +217,7 @@ class RecapGlobalDettesController extends Controller
                 'date'            => $l->date_livraison,
                 'livreur_nom'     => $l->livreur?->user?->nom_prenoms ?? '-',
                 'numero_commande' => $cmd?->numero ?? '-',
-                'client_nom'      => $client ? trim($client->nom . ' ' . $client->prenom) : '-',
+                'client_nom'      => $client?->display_name ?? '-',
                 'total_du'        => $l->totalDuLivreur(),
                 'reste_a_payer'   => $l->resteAPayerLivreur(),
                 'statut'          => $l->statutPaiementLivreurCalcule(),
@@ -186,7 +251,7 @@ class RecapGlobalDettesController extends Controller
                 'date'            => $cmd?->date_commande ?? $com->created_at,
                 'apporteur_nom'   => $com->apporteur?->user?->nom_prenoms ?? '-',
                 'numero_commande' => $cmd?->numero ?? '-',
-                'client_nom'      => $client ? trim($client->nom . ' ' . $client->prenom) : '-',
+                'client_nom'      => $client?->display_name ?? '-',
                 'commission_calc' => (float) $com->montant,
                 'reste_a_payer'   => $com->resteAPayerCommission(),
                 'statut'          => $com->statutCommissionCalcule(),

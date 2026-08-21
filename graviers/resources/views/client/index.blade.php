@@ -79,12 +79,12 @@
                 côté, d'où les bandes blanches à gauche et à droite. --}}
         <style>
             /* 993px et non 992 : le bandeau promotionnel du thème s'affiche
-               jusqu'à 992px INCLUS (main.css, max-width: 992px). À cette largeur
-               exacte l'en-tête mesure 97px et non 54 — réserver 54px y ferait
-               passer le slider SOUS l'en-tête fixe. */
+               jusqu'à 992px INCLUS (main.css, max-width: 992px), et la mise en
+               page « slider + colonne Categories » ci-dessous ne vaut que sans
+               lui. La réserve sous l'en-tête fixe, elle, n'est plus traitée ici :
+               elle est mesurée pour toutes les pages et toutes les largeurs
+               (client/head.blade.php). */
             @media (min-width: 993px) {
-                body.client-layout { padding-top: 54px !important; }
-
                 .accueil-haut .primary-sidebar.sticky-sidebar {
                     position: static !important;
                     top: auto !important;
@@ -697,6 +697,21 @@
 
                                         <!--end product card-->
                                         @foreach($categorie->produits as $produit)
+                                            @php
+                                                // Un produit est EN PROMOTION quand un ancien prix barré
+                                                // s'affiche à côté du prix courant — pas autrement. Le
+                                                // ruban « Promo » était écrit en dur : il apparaissait
+                                                // sur TOUS les produits d'une catégorie, y compris ceux
+                                                // vendus à leur prix normal.
+                                                //
+                                                // La condition reprend mot pour mot celle du bloc de
+                                                // prix, quelques lignes plus bas : un prix personnalisé
+                                                // inférieur au prix courant, ou à défaut un ancien prix
+                                                // supérieur au prix affiché.
+                                                $enPromotion = isset($prixPerso[$produit->id])
+                                                    ? $produit->prix_moyen > $prixPerso[$produit->id]
+                                                    : $produit->prix_reduction > $produit->prix_moyen;
+                                            @endphp
                                             <div class="col-lg-3 col-md-4 col-sm-6">
                                                 <div class="product-cart-wrap mb-30">
                                                     <div class="product-img-action-wrap">
@@ -713,12 +728,16 @@
                                                             <a aria-label="Vue rapide" class="action-btn" data-bs-toggle="modal" data-bs-target="#quickView{{$produit->id}}"><i class="fi-rs-eye"></i></a>
                                                         </div>
                                                         <div class="product-badges product-badges-position product-badges-mrg">
-                                                            <span class="sale">Promo</span>
+                                                            @if ($enPromotion)
+                                                                <span class="sale">Promo</span>
+                                                            @endif
                                                         </div>
                                                     </div>
                                                     <div class="product-content-wrap">
                                                         <div class="product-category">
-                                                            <a href="shop-grid-right.html"> {{$categorie->nom}} </a>
+                                                            {{-- Simple libellé : le site public n'a pas de page par
+                                                                 catégorie, le lien du gabarit menait à une 404. --}}
+                                                            <span> {{$categorie->nom}} </span>
                                                         </div>
                                                         <h2><a href="{{route('client.produit.info',$produit)}}"> {{$produit->nom}} </a></h2>
                                                         <div class="product-rate-cover">
@@ -979,10 +998,9 @@
                 <div class="section-title">
                     <div class="title">
                         <h3>Achat par catégorie</h3>
-                        <a class="show-all" href="shop-grid-right.html">
-                            Toutes les catégories
-                            <i class="fi-rs-angle-right"></i>
-                        </a>
+                        {{-- Le lien « Toutes les catégories » menait à une page du
+                             gabarit qui n'existe pas (404). Le carrousel ci-dessous
+                             affiche déjà toutes les catégories. --}}
                     </div>
                     <div class="slider-arrow slider-arrow-2 flex-right carausel-8-columns-arrow" id="carausel-8-columns-arrows"></div>
                 </div>
@@ -1022,12 +1040,12 @@
                                     <article class="row align-items-center hover-up">
                                         <figure class="col-md-4 mb-0">
                                             @foreach ($produit->image as $image )
-                                                <a href="shop-product-right.html"><img src="storage/{{$image->image}}" alt="" loading="lazy" decoding="async" /></a>
+                                                <a href="{{ route('client.produit.info', $produit) }}"><img src="storage/{{$image->image}}" alt="" loading="lazy" decoding="async" /></a>
                                             @endforeach
                                         </figure>
                                         <div class="col-md-8 mb-0">
                                             <h6>
-                                                <a href="shop-product-right.html"> {{$produit->nom}} </a>
+                                                <a href="{{ route('client.produit.info', $produit) }}"> {{$produit->nom}} </a>
                                             </h6>
                                             <div class="product-rate-cover">
                                                 <div class="product-rate d-inline-block">
@@ -1059,12 +1077,12 @@
                                     <article class="row align-items-center hover-up">
                                         <figure class="col-md-4 mb-0">
                                         @foreach ($produit->image as $image )
-                                            <a href="shop-product-right.html"><img src="storage/{{$image->image}}" alt="" loading="lazy" decoding="async" /></a>
+                                            <a href="{{ route('client.produit.info', $produit) }}"><img src="storage/{{$image->image}}" alt="" loading="lazy" decoding="async" /></a>
                                         @endforeach
                                         </figure>
                                         <div class="col-md-8 mb-0">
                                             <h6>
-                                                <a href="shop-product-right.html">{{$produit->nom}}</a>
+                                                <a href="{{ route('client.produit.info', $produit) }}">{{$produit->nom}}</a>
                                             </h6>
                                             <div class="product-rate-cover">
                                                 <div class="product-rate d-inline-block">
@@ -1095,12 +1113,12 @@
                                     <article class="row align-items-center hover-up">
                                         <figure class="col-md-4 mb-0">
                                             @foreach ($produit->image as $image )
-                                                <a href="shop-product-right.html"><img src="storage/{{$image->image}}" alt="" loading="lazy" decoding="async" /></a>
+                                                <a href="{{ route('client.produit.info', $produit) }}"><img src="storage/{{$image->image}}" alt="" loading="lazy" decoding="async" /></a>
                                             @endforeach
                                         </figure>
                                         <div class="col-md-8 mb-0">
                                             <h6>
-                                                <a href="shop-product-right.html"> {{$produit->nom}} </a>
+                                                <a href="{{ route('client.produit.info', $produit) }}"> {{$produit->nom}} </a>
                                             </h6>
                                             <div class="product-rate-cover">
                                                 <div class="product-rate d-inline-block">
@@ -1131,12 +1149,12 @@
                                     <article class="row align-items-center hover-up">
                                         <figure class="col-md-4 mb-0">
                                         @foreach ($produit->image as $image )
-                                            <a href="shop-product-right.html"><img src="storage/{{$image->image}}" alt="" loading="lazy" decoding="async" /></a>
+                                            <a href="{{ route('client.produit.info', $produit) }}"><img src="storage/{{$image->image}}" alt="" loading="lazy" decoding="async" /></a>
                                         @endforeach
                                         </figure>
                                         <div class="col-md-8 mb-0">
                                             <h6>
-                                                <a href="shop-product-right.html">{{$produit->nom}}</a>
+                                                <a href="{{ route('client.produit.info', $produit) }}">{{$produit->nom}}</a>
                                             </h6>
                                             <div class="product-rate-cover">
                                                 <div class="product-rate d-inline-block">

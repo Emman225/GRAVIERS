@@ -45,24 +45,25 @@
                                     {{-- @php dd($enlevements) @endphp --}}
                                     @foreach ($enlevements as $enlevement)
                                         @if($enlevement->qte_servi != null)
-                                            @if($enlevement->livraison->etat_livraison == 'LIVREE')
+                                            {{-- livraison et fournisseur nullables (livraison supprimable, enlèvement orphelin) --}}
+                                            @if($enlevement->livraison?->etat_livraison == 'LIVREE')
                                                 <tr>
-                                                    <td class=" text-center"> <b> {{ $enlevement->livraison->numero }}</b> </td>
-                                                    <td class=" text-center"><b> {{ $enlevement->fournisseur->user->nom_prenoms }} </b></td>
-                                                    <td class=" text-center">{{ $enlevement->produit->nom }}</td>
+                                                    <td class=" text-center"> <b> {{ $enlevement->livraison?->numero }}</b> </td>
+                                                    <td class=" text-center"><b> {{ $enlevement->fournisseur?->user?->nom_prenoms }} </b></td>
+                                                    <td class=" text-center">{{ $enlevement->produit?->nom }}</td>
                                                     <td class=" text-center">{{ $enlevement->qte }}</td>
                                                     @if ($enlevement->vehicule)
-                                                        <td class=" text-center">{{ $enlevement->vehicule->marque }}</td>
-                                                        <td class=" text-center">{{ $enlevement->vehicule->immatriculation }}</td>
-                                                        <td class=" text-center">{{ $enlevement->vehicule->capacite }}t</td>
+                                                        <td class=" text-center">{{ $enlevement->vehicule?->marque }}</td>
+                                                        <td class=" text-center">{{ $enlevement->vehicule?->immatriculation }}</td>
+                                                        <td class=" text-center">{{ $enlevement->vehicule?->capacite }}t</td>
                                                     @else
                                                         <td class=" text-center">Pas de livraison</td>
                                                         <td class=" text-center">Pas de livraison</td>
                                                         <td class=" text-center">Pas de livraison</td>
                                                     @endif
                                                     <td class=" text-center">{{Carbon::parse($enlevement->created_at)->format('d-m-Y à H:i');  }}</td>
-                                                    <td class=" text-center">{{Carbon::parse($enlevement->livraison->date_livraison)->format('d-m-Y');  }}</td>
-                                                    <td class=" text-center">{{Carbon::parse($enlevement->livraison->updated_at)->format('d-m-Y');  }}</td>
+                                                    <td class=" text-center">{{Carbon::parse($enlevement->livraison?->date_livraison)->format('d-m-Y');  }}</td>
+                                                    <td class=" text-center">{{Carbon::parse($enlevement->livraison?->updated_at)->format('d-m-Y');  }}</td>
 
                                                 </tr>
                                             @endif

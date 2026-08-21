@@ -93,7 +93,7 @@ class CommandeComptantController extends Controller
                 'commande'           => $cmd,
                 'numero_commande'    => $cmd->numero,
                 'date_commande'      => $cmd->date_commande,
-                'nom_client'         => $client ? trim($client->nom . ' ' . $client->prenom) : '-',
+                'nom_client'         => $client?->display_name ?? '-',
                 'telephone'          => $client?->contact1,
                 'email'              => $client?->user?->email ?? $client?->email,
                 'agence_code'        => $cmd->agence?->code ?? '-',
@@ -139,7 +139,7 @@ class CommandeComptantController extends Controller
         // initiés via le modal "Encaissement en agence" (storeEncaissement), donc avec
         // agence_id ET caissier_id renseignés. Les paiements issus du flow normal
         // (mobile money, web, etc.) qui ont un mode hors-ligne mais pas d'agence sont exclus.
-        $paiements = Paiement::with(['client', 'client.user', 'agence', 'caissier'])
+        $paiements = Paiement::with(['client', 'client.user', 'agence', 'caissier', 'initiateur', 'validateur'])
             ->whereIn('client_id', $clientsOrdinaires)
             ->whereIn('statut', [1, 2])
             ->whereNotNull('agence_id')
@@ -167,9 +167,12 @@ class CommandeComptantController extends Controller
 
             return (object) [
                 'paiement_id'       => $p->id,
+                // Traçabilité : qui a saisi l'enregistrement, qui l'a contrôlé.
+                'initie_par'       => $p->initie_par,
+                'valide_par'       => $p->valide_par,
                 'date_encaissement' => $p->created_at,
                 'numero_commande'   => $cmd?->numero ?? '-',
-                'client_nom'        => $p->client ? trim($p->client->nom . ' ' . $p->client->prenom) : '-',
+                'client_nom'        => $p->client?->display_name ?? '-',
                 'agence_code'       => $p->agence?->code ?? '-',
                 'agence_nom'        => $p->agence?->nom ?? '-',
                 'montant_encaisse'  => (float) $p->montant_total,
@@ -186,7 +189,10 @@ class CommandeComptantController extends Controller
 
         // Données pour le formulaire d'encaissement (modal)
         $agences      = Agence::where('statut', 1)->orderBy('nom')->get();
-        $modesPaiement = ModePaiement::liste();
+        // Encaissement en agence par un caissier : « en agence » est le LIEU, déjà
+        // porté par le champ Agence. Ce qu'il faut saisir ici, c'est l'instrument
+        // réel (Espèces, Chèque, Virement, mobile money…).
+        $modesPaiement = ModePaiement::listePourAgent();
         $commandesNonSoldees = Commande::with(['client'])
             ->whereIn('client_id', $clientsOrdinaires)
             ->where('statut', '!=', 0)
@@ -198,13 +204,16 @@ class CommandeComptantController extends Controller
             ->limit(200)
             ->get()
             ->map(function (Commande $c) {
-                $paye  = $c->montantPayeComptant();
-                $reste = max(0, (float) $c->montant_total - $paye);
+                // Total NET dû = montantAPayer() (HT depuis les lignes + TVA + livraison
+                // - remise). L'ancien calcul prenait montant_total brut : il ignorait la
+                // TVA et la livraison, donc l'agence encaissait MOINS que le dû (350 au
+                // lieu de 478 fcfa sur la commande 548944), et le reste à payer affiché
+                // divergeait de l'écran « Solder la commande ».
                 return (object) [
                     'numero'        => $c->numero,
-                    'client_nom'    => $c->client ? trim($c->client->nom . ' ' . $c->client->prenom) : '-',
-                    'total_a_payer' => (float) $c->montant_total,
-                    'reste'         => $reste,
+                    'client_nom'    => $c->client?->display_name ?? '-',
+                    'total_a_payer' => $c->montantAPayer(),
+                    'reste'         => $c->montantRestantDu(),
                     'agence_id'     => $c->agence_id,
                 ];
             })
@@ -214,7 +223,9 @@ class CommandeComptantController extends Controller
         return view('admin.comptant.encaissements', [
             'lignes'              => $lignes,
             'totalEncaisse'       => $totalEncaisse,
-            'agences'             => $agences,
+            // Agence de la personne connectée : l'encaissement lui est imputé
+            // d'office, il n'est plus choisi dans une liste.
+            'monAgence'           => Auth::user()?->agence,
             'modesPaiement'       => $modesPaiement,
             'commandesNonSoldees' => $commandesNonSoldees,
         ]);
@@ -233,9 +244,10 @@ class CommandeComptantController extends Controller
             return response()->json(['error' => 'Commande introuvable'], 404);
         }
 
-        $totalAPayer = (float) $cmd->montant_total;
+        // Total NET dû (TVA + livraison - remise incluses), cf. Commande::montantAPayer().
+        $totalAPayer = $cmd->montantAPayer();
         $totalPaye   = $cmd->montantPayeComptant();
-        $reste       = max(0, $totalAPayer - $totalPaye);
+        $reste       = $cmd->montantRestantDu();
 
         // Historique des paiements liés à cette commande
         $paiements = Paiement::with(['agence', 'caissier'])
@@ -263,8 +275,8 @@ class CommandeComptantController extends Controller
                 'agence_code'  => $p->agence?->code ?? '-',
                 'caissier'     => $p->caissier?->nom_prenoms ?? '-',
                 'numero_recu'  => $p->numero_recu ?? $p->code,
-                'recu_url'     => route('show.comptant.recu', $p->id),
-                'recu_pdf_url' => route('show.comptant.recuPdf', $p->id),
+                'recu_url'     => route('show.recu', $p->id),
+                'recu_pdf_url' => route('show.recuPdf', $p->id),
             ];
         });
 
@@ -272,7 +284,7 @@ class CommandeComptantController extends Controller
             'commande' => [
                 'numero'        => $cmd->numero,
                 'date_commande' => optional($cmd->date_commande)->format('d/m/Y') ?? \Carbon\Carbon::parse($cmd->date_commande)->format('d/m/Y'),
-                'client_nom'    => $cmd->client ? trim($cmd->client->nom . ' ' . $cmd->client->prenom) : '-',
+                'client_nom'    => $cmd->client?->display_name ?? '-',
                 'client_id'     => $cmd->client_id,
                 'agence_id'     => $cmd->agence_id,
                 'agence_code'   => $cmd->agence?->code ?? '-',
@@ -295,7 +307,6 @@ class CommandeComptantController extends Controller
     {
         $validated = $request->validate([
             'numero_commande' => 'required|string|exists:commande,numero',
-            'agence_id'       => 'required|integer|exists:agence,id',
             'mode_paiement_id'=> 'required|integer|exists:mode_paiement,id',
             'montant'         => 'required|numeric|min:1',
             'date_encaissement' => 'nullable|date',
@@ -303,10 +314,20 @@ class CommandeComptantController extends Controller
             'notes'           => 'nullable|string|max:500',
         ]);
 
+        // L'agence vient de la personne connectée, jamais du formulaire : voir
+        // le commentaire de la migration users.agence_id.
+        $agenceId = Auth::user()?->agence_id;
+        if (!$agenceId) {
+            return back()->withInput()->with('error',
+                "Vous n'êtes rattaché à aucune agence : un administrateur doit vous affecter à un guichet avant que vous puissiez encaisser.");
+        }
+
         $cmd = Commande::where('numero', $validated['numero_commande'])->firstOrFail();
-        $totalAPayer = (float) $cmd->montant_total;
+        // Contrôle du dépassement sur le NET dû : avec montant_total brut, le plafond
+        // était sous-évalué et un encaissement du montant réel était refusé à tort.
+        $totalAPayer = $cmd->montantAPayer();
         $totalPaye   = $cmd->montantPayeComptant();
-        $reste       = max(0, $totalAPayer - $totalPaye);
+        $reste       = $cmd->montantRestantDu();
 
         if ($validated['montant'] > $reste + 0.01) {
             return back()
@@ -337,7 +358,7 @@ class CommandeComptantController extends Controller
                 'statut'         => 2,
                 'service'        => 'COMMANDE',
                 'service_id'     => $cmd->id,
-                'agence_id'      => $validated['agence_id'],
+                'agence_id'      => $agenceId,
                 'caissier_id'    => $caissier?->id,
                 'numero_recu'    => $numeroRecu,
                 'created_at'     => $validated['date_encaissement'] ?? now(),
@@ -392,7 +413,75 @@ class CommandeComptantController extends Controller
         // Activer le paiement (statut=1)
         $paiement->update(['statut' => 1]);
 
+        $commande = $paiement->service_id ? Commande::find($paiement->service_id) : null;
+
+        if ($commande) {
+            $this->crediterApporteur($commande, (float) $paiement->montant_total);
+
+            // Points de fidélité à la clôture, comme le faisait l'écran de
+            // paiement historique désormais retiré.
+            if ($commande->montantRestantDu() <= 0 && $commande->client) {
+                $commande->client->update([
+                    'point' => (float) $commande->client->point + 200,
+                ]);
+            }
+        }
+
         return back()->with('success', "Encaissement {$paiement->numero_recu} validé. Le reçu est maintenant disponible.");
+    }
+
+    /**
+     * Commission de l'apporteur qui a parrainé le client.
+     *
+     * Elle n'était calculée QUE par l'écran de paiement historique
+     * (/paiement/create/{commande}), retiré au profit de ce guichet : une vente
+     * encaissée ici ne rémunérait donc personne, et c'était l'unique endroit du
+     * projet créant une ligne CommissionApporteur.
+     *
+     * Elle est portée à la VALIDATION, et non à la saisie : un encaissement non
+     * validé n'existe pas comptablement. Elle porte sur la TRANCHE encaissée,
+     * jamais sur le total de la commande — sinon une vente réglée en trois fois
+     * paierait la commission trois fois.
+     */
+    private function crediterApporteur(Commande $commande, float $montantTranche): void
+    {
+        $client = $commande->client;
+
+        if (!$client || !$client->code_parrain) {
+            return;
+        }
+
+        // L'apporteur est lu AVANT d'accéder à son solde : un code_parrain
+        // orphelin provoquerait sinon une page d'erreur alors que le paiement
+        // vient d'être validé.
+        $apporteur = \App\Models\Apporteur::where('code', $client->code_parrain)->first();
+
+        if (!$apporteur) {
+            return;
+        }
+
+        // Taux propre à l'apporteur, à défaut celui de la configuration.
+        $taux = (float) ($apporteur->pourcentage ?? 0);
+        if ($taux <= 0) {
+            $taux = (float) (Configuration::first()?->taux_commission_standard ?? 3);
+        }
+
+        $commission = \App\Models\CommissionApporteur::create([
+            'commande_id'  => $commande->id,
+            'apporteur_id' => $apporteur->id,
+            // Arrondi au franc entier : le FCFA n'a pas de decimales. Sans lui,
+            // le solde de l'apporteur (arrondi) et la commission a payer (avec
+            // ses centimes) ne tombaient jamais d'accord : 104 contre 103,72.
+            'montant'      => round($montantTranche * $taux / 100),
+            'type_affaire' => $commande->detailCommande->first()?->produit?->type_affaire,
+            'montantPaye'  => $montantTranche,
+            'statut'       => 1,
+        ]);
+
+        // On INCRÉMENTE le solde, on ne l'écrase pas : les commissions se cumulent.
+        $apporteur->update([
+            'solde' => (float) $apporteur->solde + (float) $commission->montant,
+        ]);
     }
 
     /**
@@ -465,9 +554,13 @@ class CommandeComptantController extends Controller
         $trancheNum = $trancheNum === false ? 1 : ($trancheNum + 1);
         $trancheTotal = $allPaiements->count();
 
-        $totalAPayer = $cmd ? (float) $cmd->montant_total : (float) $paiement->montant_total;
+        // Total NET dû (HT depuis les lignes + TVA + livraison - remise), cf.
+        // Commande::montantAPayer(). Le reçu affichait montant_total BRUT : il annonçait
+        // donc un « Total commande » différent de celui du formulaire d'encaissement
+        // (350 au lieu de 478 fcfa), et un reste à payer sous-évalué.
+        $totalAPayer = $cmd ? $cmd->montantAPayer() : (float) $paiement->montant_total;
         $totalPaye   = $cmd ? $cmd->montantPayeComptant() : (float) $paiement->montant_total;
-        $reste       = max(0, $totalAPayer - $totalPaye);
+        $reste       = $cmd ? $cmd->montantRestantDu() : max(0, $totalAPayer - $totalPaye);
 
         $ligne = LignePaiement::where('paiement_id', $paiement->id)->first();
         $mode  = null;
@@ -518,7 +611,10 @@ class CommandeComptantController extends Controller
         $countPartielles  = 0;
 
         foreach ($commandes as $cmd) {
-            $totalCommande += (float) $cmd->montant_total;
+            // Total NET dû (TVA + livraison - remise), cf. Commande::montantAPayer() :
+            // sur montant_total brut, la synthèse sous-évaluait le chiffre d'affaires
+            // et le reste à recouvrer.
+            $totalCommande += $cmd->montantAPayer();
             $totalEncaisse += $cmd->montantPayeComptant();
             switch ($cmd->statutComptant()) {
                 case 'En attente paiement': $countEnAttente++; break;
@@ -562,7 +658,10 @@ class CommandeComptantController extends Controller
                 return null;
             }
 
-            $totalCommandeAgence = (float) $cmdsAgence->sum('montant_total');
+            // Total NET des commandes de l'agence, recalculé depuis les lignes :
+            // montant_total contient le HT côté site et le NET côté mobile, la
+            // synthèse par agence mélangeait donc deux conventions.
+            $totalCommandeAgence = (float) $cmdsAgence->sum(fn($c) => $c->montantAPayer());
             $totalEncaisseAgence = (float) $paiementsCommandes
                 ->where('agence_id', $ag->id)
                 ->sum('montant_total');

@@ -8,8 +8,67 @@
 {{-- @dd($vehicules) --}}
 <div class="container mt-60">
     <h1>Demandes de livraison</h1>
+
+    {{-- ============================================================
+         Bon de commande joint par le client à sa demande.
+
+         Il était téléversé sans jamais être présenté ici : le
+         gestionnaire traitait la demande sans pouvoir consulter la
+         pièce que le client avait pourtant fournie — et que son
+         compte à terme lui rendait obligatoire.
+
+         Le fichier est servi par la route orders.fichierBlClient, déjà
+         réservée aux profils Admin et Gestionnaire.
+         ============================================================ --}}
+    @if ($livraisons->blClient && $livraisons->blClient->fichier)
+        @php
+            $bonClient = $livraisons->blClient;
+            $extensionBon = strtolower(pathinfo($bonClient->fichier, PATHINFO_EXTENSION));
+            $bonEstPdf = $extensionBon === 'pdf';
+            $bonEstImage = in_array($extensionBon, ['jpg', 'jpeg', 'png', 'webp', 'gif']);
+            $urlBon = route('orders.fichierBlClient', ['bl' => $bonClient->id, 'mode' => 'inline']);
+            $urlBonTelecharger = route('orders.fichierBlClient', ['bl' => $bonClient->id, 'mode' => 'download']);
+        @endphp
+
+        <div class="card border-info mb-4">
+            <div class="card-header bg-info text-dark d-flex justify-content-between align-items-center flex-wrap">
+                <span>
+                    <i class="material-icons md-attach_file align-middle"></i>
+                    Bon de commande joint par le client
+                    @if ($bonClient->numero)
+                        — N° {{ $bonClient->numero }}
+                    @endif
+                </span>
+                <div>
+                    <a href="{{ $urlBon }}" target="_blank" class="btn btn-sm btn-light">
+                        <i class="material-icons md-visibility align-middle"></i> Consulter
+                    </a>
+                    <a href="{{ $urlBonTelecharger }}" class="btn btn-sm btn-light">
+                        <i class="material-icons md-cloud_download align-middle"></i> Télécharger
+                    </a>
+                </div>
+            </div>
+            <div class="card-body">
+                @if ($bonEstPdf)
+                    <embed src="{{ $urlBon }}" type="application/pdf"
+                           width="100%" height="520px" style="border: 1px solid #ddd;" />
+                @elseif ($bonEstImage)
+                    <div class="text-center">
+                        <img src="{{ $urlBon }}" alt="Bon de commande"
+                             style="max-width: 100%; max-height: 520px; border: 1px solid #ddd;">
+                    </div>
+                @else
+                    <p class="text-muted mb-0">
+                        Format non prévisualisable ({{ $extensionBon ?: 'inconnu' }}).
+                        Utilisez « Consulter » ou « Télécharger ».
+                    </p>
+                @endif
+            </div>
+        </div>
+    @endif
+
     @foreach ($livraisons->detailLivraison as $detail )
-        @if ($detail->livraisons->sum('qte') == $detail->qte)
+        @if ($detail->estEntierementAffectee())
             <span class="text-white col-12 text-center bg-success h4">
                 {{ucfirst($detail->nom_produit).': Déjà traité '}}
             </span><br><br>
@@ -51,9 +110,9 @@
                                                 ' | ' .
                                                 $vehicule->capacite .
                                                 ' | ' .
-                                                $vehicule->livreur->user->nom_prenoms .
+                                                $vehicule->livreur?->user?->nom_prenoms .
                                                 ' | ' .
-                                                $vehicule->livreur->user->contact }}
+                                                $vehicule->livreur?->user?->contact }}
                                         </option>
                                     @endif
                                     @endforeach

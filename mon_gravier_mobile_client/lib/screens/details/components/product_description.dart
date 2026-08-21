@@ -322,21 +322,25 @@ class _ProductDescriptionState extends State<ProductDescription> {
         var datas = jsonDecode(retourHttp.body);
         if (retourHttp.statusCode == 200) {
           if (datas['code'] == 200) {
-            EasyLoading.showSuccess(datas['message']);
+            afficherSucces(datas['message']);
           } else {
-            EasyLoading.showError(datas['message']);
+            afficherErreur(datas['message']);
           }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
         user.code = 500;
-        user.message = "Une erreur s'est produite veuillez reesayer plus tard";
+        user.message = messageErreurTechnique(e);
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 }

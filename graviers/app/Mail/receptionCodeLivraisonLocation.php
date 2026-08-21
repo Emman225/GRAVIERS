@@ -33,7 +33,7 @@ class receptionCodeLivraisonLocation extends Mailable
     {
         return new Envelope(
             subject: 'GRAVIERCI - Code de validation de votre location',
-            to: $this->client->user->email
+            to: $this->client->user?->email ?: ($this->client->email ?: '')
         );
     }
 

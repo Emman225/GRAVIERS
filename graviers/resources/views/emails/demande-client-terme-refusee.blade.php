@@ -6,12 +6,12 @@
 </head>
 <body style="font-family: Arial, sans-serif; color:#333; max-width:600px; margin:0 auto;">
     <div style="background:#dc2626; color:#fff; padding:20px; text-align:center;">
-        <img src="https://graviers.fneconnect.net/backend/assets/imgs/theme/logoAvecFond.jpg" alt="Mon Gravier"
+        <img src="https://graviers.fneconnect.net/frontend/assets/imgs/logo/dalakoun-blanc.png" alt="DALAKOUN"
             style="max-width:180px; width:100%; height:auto; margin-bottom:10px;" />
         <h2 style="margin:0;">Demande refusée</h2>
     </div>
     <div style="padding:20px;">
-        <p>Bonjour {{ $demande->client->nom ?? '' }} {{ $demande->client->prenom ?? '' }},</p>
+        <p>Bonjour {{ $demande->client?->display_name ?? '' }},</p>
 
         <p>Nous avons examiné avec attention votre demande de compte client à terme
             (<strong>{{ $demande->objet }}</strong>) et sommes au regret de vous informer

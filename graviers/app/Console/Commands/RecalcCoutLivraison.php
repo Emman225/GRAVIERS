@@ -34,7 +34,9 @@ use Help;
  */
 class RecalcCoutLivraison extends Command
 {
-    protected $signature = 'livreur:recalc-cout {--apply : Appliquer réellement les corrections (sinon simulation)}';
+    protected $signature = 'livreur:recalc-cout
+        {--apply : Appliquer réellement les corrections (sinon simulation)}
+        {--provenance= : Se limiter à un type : COMMANDE, LOCATION ou LIVRAISON}';
     protected $description = "Recalcule le cout_livraison des livraisons à 0 selon la tarification du livreur et recrédite les soldes (delta).";
 
     public function handle()
@@ -48,7 +50,27 @@ class RecalcCoutLivraison extends Command
         // forfait_base/frais_km sont NOT NULL DEFAULT 0 : on ne peut pas détecter
         // "non renseigné" par NULL. On récupère donc toutes les livraisons avec livreur
         // et on décide dans la boucle (cohérence cout vs décomposition).
-        $livraisons = Livraison::whereNotNull('livreur_id')->get();
+        // Filtre facultatif. Sans lui, la commande balaie TOUTES les livraisons :
+        // ventes, locations et transports confondus. Pour un rattrapage ciblé —
+        // par exemple les seules demandes de livraison, restées à 0 faute de
+        // calcul à l'affectation — ce filtre évite de remuer le reste.
+        $provenance = $this->option('provenance');
+
+        if ($provenance !== null) {
+            $provenance = strtoupper(trim($provenance));
+            $valides = [Help::$COMMANDE, Help::$LOCATION, Help::$LIVRAISON];
+
+            if (!in_array($provenance, $valides, true)) {
+                $this->error('Provenance inconnue : ' . $provenance . '. Valeurs acceptées : ' . implode(', ', $valides) . '.');
+                return self::FAILURE;
+            }
+
+            $this->line('Filtre : provenance = ' . $provenance);
+        }
+
+        $livraisons = Livraison::whereNotNull('livreur_id')
+            ->when($provenance, fn ($q) => $q->where('provenance', $provenance))
+            ->get();
 
         if ($livraisons->isEmpty()) {
             $this->info('Aucune livraison à corriger (avec livreur et coût à 0).');
@@ -67,7 +89,22 @@ class RecalcCoutLivraison extends Command
 
             // Distance (adresse de la livraison -> région). Inutile en mode 'base'.
             $distance = 0;
-            if ($l->adresse_livraison_id) {
+
+            if ($l->provenance === Help::$LIVRAISON) {
+                // DEMANDE DE LIVRAISON : la marchandise ne part pas du dépôt mais
+                // de chez le client. La route parcourue va de la PRISE EN CHARGE à
+                // la DESTINATION — mesurer depuis la région n'aurait aucun rapport
+                // avec elle. Même règle qu'à l'affectation
+                // (UserController::traitelivraison), pour que le rattrapage donne
+                // exactement ce qu'aurait donné le calcul d'origine.
+                $demande = $l->detailLivraison?->demandeLivraison;
+                $pec  = $demande?->priseEnCharge;
+                $dest = $demande?->destination;
+
+                if ($pec && $dest) {
+                    $distance = Help::distance($pec->longitude, $pec->latitude, $dest->longitude, $dest->latitude);
+                }
+            } elseif ($l->adresse_livraison_id) {
                 $adr = AdresseLivraison::find($l->adresse_livraison_id);
                 if ($adr && $adr->ville && $adr->ville->region) {
                     $distance = Help::distance(

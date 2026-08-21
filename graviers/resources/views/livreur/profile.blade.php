@@ -58,8 +58,8 @@
 
                             <!--  col.// -->
                             <div class="col-xl col-lg">
-                                <h3> {{$livreur->user->nom_prenoms}} </h3>
-                                <p>{{$livreur->user->login}}, {{$livreur->user->email}} </p>
+                                <h3> {{$livreur->user?->nom_prenoms}} </h3>
+                                <p>{{$livreur->user?->login}}, {{$livreur->user?->email}} </p>
                             </div>
                             <!--  col.// -->
 
@@ -80,7 +80,7 @@
                             <div class="col-sm-4 col-lg-4 col-xl-3">
                                 <h6>Contacts</h6>
                                 <p>
-                                    {{$livreur->user->contact}} <br />
+                                    {{$livreur->user?->contact}} <br />
                                 </p>
                             </div>
                             <!--  col.// -->
@@ -108,11 +108,20 @@
                                         <select name="mode_tarification" id="mode_tarification" class="form-control w-75" style="border: 1px solid black">
                                             <option value="base" {{ ($livreur->mode_tarification ?? 'base') == 'base' ? 'selected' : '' }}>Tarif de base</option>
                                             <option value="km" {{ ($livreur->mode_tarification ?? 'base') == 'km' ? 'selected' : '' }}>Tarif par KM</option>
+                                            <option value="mixte" {{ ($livreur->mode_tarification ?? 'base') == 'mixte' ? 'selected' : '' }}>Fixe + KM</option>
                                         </select>
 
                                         <div id="bloc_tarif_base" class="mt-2">
                                             <label class="mb-1">Tarif de base (en fcfa) </label>
                                             <input type="number" name="montant" class="form-control w-75" value="{{$livreur->cout_livraison}}" style="border: 1px solid black">
+                                        </div>
+
+                                        {{-- Mode « Fixe + KM » : la part fixe vit dans tarif_forfait_base,
+                                             distincte de cout_livraison pour que basculer d'un mode à
+                                             l'autre ne détruise pas le forfait de l'autre. --}}
+                                        <div id="bloc_tarif_fixe" class="mt-2">
+                                            <label class="mb-1">Part fixe par course (en fcfa) </label>
+                                            <input type="number" name="tarif_forfait_base" class="form-control w-75" value="{{$livreur->tarif_forfait_base}}" style="border: 1px solid black">
                                         </div>
 
                                         <div id="bloc_tarif_km" class="mt-2">
@@ -136,11 +145,15 @@
                                     (function () {
                                         var sel = document.getElementById('mode_tarification');
                                         var blocBase = document.getElementById('bloc_tarif_base');
+                                        var blocFixe = document.getElementById('bloc_tarif_fixe');
                                         var blocKm = document.getElementById('bloc_tarif_km');
                                         function toggle() {
                                             if (!sel) return;
-                                            if (sel.value === 'km') { blocBase.style.display = 'none'; blocKm.style.display = 'block'; }
-                                            else { blocBase.style.display = 'block'; blocKm.style.display = 'none'; }
+                                            // Trois modes : forfait seul, kilomètre seul, ou les deux.
+                                            var m = sel.value;
+                                            blocBase.style.display = (m === 'base') ? 'block' : 'none';
+                                            blocFixe.style.display = (m === 'mixte') ? 'block' : 'none';
+                                            blocKm.style.display   = (m === 'km' || m === 'mixte') ? 'block' : 'none';
                                         }
                                         if (sel) { sel.addEventListener('change', toggle); toggle(); }
                                     })();
@@ -184,9 +197,9 @@
                                     @foreach ($livraisons as $livraison)
                                         <tr>
                                             <td>{{ $livraison->enlevement?->code_enleve}}</td>
-                                            <td>{{ $livraison->enlevement?->produit->nom }}</td>
+                                            <td>{{ $livraison->enlevement?->produit?->nom }}</td>
                                             <td class="text-center"><b> {{ $livraison->enlevement?->qte }}  </b></td>
-                                            <td class="text-center"><b> {{ $livraison->enlevement?->fournisseur->nom_prenoms }}  </b></td>
+                                            <td class="text-center"><b> {{ $livraison->enlevement?->fournisseur?->nom_prenoms }}  </b></td>
                                             <td class="text-center">
                                                 {{ $livraison->date_livraison }}
                                             {{-- <a href="" class="btn btn-success rounded font-sm">Accepter</a>
@@ -373,7 +386,7 @@
             <div class="hp-header">
                 <h5>
                     Historique du Prix de livraison —
-                    {{ $livreur->user->nom_prenoms ?? $livreur->nom_prenoms }}
+                    {{ $livreur->user?->nom_prenoms ?? $livreur->nom_prenoms }}
                 </h5>
                 <button type="button" class="hp-close-x hp-close" aria-label="Fermer">&times;</button>
             </div>
@@ -408,7 +421,7 @@
                                             <span class="hp-muted">0</span>
                                         @endif
                                     </td>
-                                    <td>{{ $h->user->nom_prenoms ?? 'Système' }}</td>
+                                    <td>{{ $h->user?->nom_prenoms ?? 'Système' }}</td>
                                     <td>{{ $h->motif ?: '—' }}</td>
                                 </tr>
                             @endforeach

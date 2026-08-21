@@ -167,6 +167,81 @@ class Location extends Model
         return $location;
     }
 
+    /**
+     * Total net à payer par le client sur cette location.
+     *
+     * Même formule que celle retenue à la facturation
+     * (OrdersController::genererFactureLocation) : HT − remise, puis TVA et
+     * livraison. montant_total porte le HT.
+     */
+    public function montantAPayer(): float
+    {
+        return max(0, (float) $this->montant_total - (float) ($this->remise ?? 0))
+            + (float) ($this->tvaLocation->montant ?? 0)
+            + (float) ($this->cout_livraison_client ?? 0);
+    }
+
+    /** Ce qui a réellement été encaissé sur la location. */
+    public function montantPayeComptant(): float
+    {
+        return (float) LignePaiement::where('service', \Help::$LOCATION)
+            ->where('service_id', $this->id)
+            ->where('statut', \Help::$STATUT_ACTIF)
+            ->sum('montant');
+    }
+
+    /**
+     * Reste réellement dû sur la location.
+     * Le fcfa n'a pas de décimales : un résidu < 1 est considéré comme nul.
+     */
+    public function montantRestantDu(): float
+    {
+        $reste = $this->montantAPayer() - $this->montantPayeComptant();
+        return $reste < 1 ? 0.0 : $reste;
+    }
+
+    /** Encaissements saisis au guichet mais pas encore validés par un second administrateur. */
+    public function montantEnAttenteValidation(): float
+    {
+        return (float) LignePaiement::where('service', \Help::$LOCATION)
+            ->where('service_id', $this->id)
+            ->where('statut', 2)
+            ->sum('montant');
+    }
+
+    /**
+     * Ce qu'il reste à ENCAISSER, par opposition à ce qu'il reste à devoir.
+     *
+     * Les deux notions diffèrent tant qu'un encaissement attend sa seconde
+     * validation : il ne solde pas encore la location, mais il ne doit pas non
+     * plus pouvoir être saisi une deuxième fois. Sans cette distinction, deux
+     * encaissements du montant total pouvaient coexister au guichet et se
+     * valider ensuite tous les deux. Même règle que pour les ventes et les
+     * demandes de livraison.
+     */
+    public function montantEncaissable(): float
+    {
+        $reste = $this->montantAPayer()
+            - $this->montantPayeComptant()
+            - $this->montantEnAttenteValidation();
+
+        return $reste < 1 ? 0.0 : $reste;
+    }
+
+    /**
+     * Le règlement se fait-il en agence (donc hors ligne) ?
+     * Une location réglée en ligne est encaissée par la passerelle, pas au guichet.
+     */
+    public function reglementEnAgence(): bool
+    {
+        return (int) ($this->modeDePaiement?->en_ligne ?? 0) === 0;
+    }
+
+    public function modeDePaiement()
+    {
+        return $this->belongsTo(ModePaiement::class, 'mode_paiement_id');
+    }
+
     public function tvaLocation(){
         // Filtre type_affaire=LOCATION : commande_id d'une location et d'une commande
         // peuvent avoir la même valeur (tables séparées) ; sans ce filtre, on risquait
@@ -204,5 +279,42 @@ class Location extends Model
             return $map[(int) $v];
         }
         return (string) ($v ?: 'EN ATTENTE');
+    }
+
+    /**
+     * LIGNES DONT LA LIVRAISON A ÉTÉ REFUSÉE ET N'A PAS ÉTÉ RECONFIÉE.
+     *
+     * La validation d'une location est verrouillée sur l'état EN ATTENTE, et
+     * l'affectation fait aussitôt passer la location EN COURS. Quand le livreur
+     * refusait, il n'existait donc AUCUN moyen de réaffecter : le matériel
+     * n'était jamais livré, et l'écran répondait « Cette location est déjà
+     * traitée ».
+     *
+     * Une ligne est à refaire dès qu'elle porte un refus et plus aucune course
+     * active — c'est ce que cette méthode retourne, et c'est sur elle que
+     * l'écran rouvre la validation.
+     */
+    public function lignesALivrerDeNouveau()
+    {
+        return $this->detailLocation->filter(function ($detail) {
+            $courses = \App\Models\Livraison::where('provenance', \Help::$LOCATION)
+                ->where('detail_commande_id', $detail->id)
+                ->get();
+
+            if ($courses->isEmpty()) {
+                return false;
+            }
+
+            $refusee = $courses->where('accepte', \App\Models\Livraison::REFUSEE)->isNotEmpty();
+            $active  = $courses->where('accepte', '!=', \App\Models\Livraison::REFUSEE)->isNotEmpty();
+
+            return $refusee && !$active;
+        })->values();
+    }
+
+    /** Une livraison de cette location attend-elle d'être reconfiée ? */
+    public function attendUneReaffectation(): bool
+    {
+        return $this->lignesALivrerDeNouveau()->isNotEmpty();
     }
 }

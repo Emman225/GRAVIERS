@@ -1,7 +1,7 @@
 <x-mail::message>
 
 
-Cher(e) {{$user->client->nom.' '.$user->client->prenom}},<br>
+Cher(e) {{$user->client?->display_name}},<br>
 Votre demande de location a bien été enregistrée<br>
 <b> Location N° {{$location->numero}} </b>
 {{-- {{$commande->detailCommande}} --}}
@@ -18,10 +18,10 @@ Votre demande de location a bien été enregistrée<br>
         @php $i =0 @endphp
         @foreach ($location->detailLocation as $detail)
             <tr>
-                <td class="text-center"> {{$detail->produit->nom}} </td>
+                <td class="text-center"> {{$detail->produit?->nom}} </td>
                 <td class="text-center"> {{$detail->qte}} </td>
-                <td class="text-center"> <b>{{$detail->produit->prix_moyen}}fcfa</b></td>
-                @php $i+= $detail->produit->prix_moyen @endphp
+                <td class="text-center"> <b>{{$detail->produit?->prix_moyen}}fcfa</b></td>
+                @php $i+= $detail->produit?->prix_moyen @endphp
             </tr>
         @endforeach
             <tr class="text-center">
@@ -56,11 +56,11 @@ Votre demande de location a bien été enregistrée<br>
     <tbody>
         @foreach ($location->detailLocation as $detail )
             <tr style="background-color: #f2f2f2;">
-                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$detail->produit->nom}}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$detail->produit?->nom}}</td>
                 <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$detail->qte}}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{number_format($detail->produit->prix_moyen,'0','',' ')}}fcfa</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{number_format($detail->produit?->prix_moyen,'0','',' ')}}fcfa</td>
                 <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$nbreJour[$i]}} jour{{$nbreJour[$i]>1? 's': ''}}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{number_format($detail->qte * $detail->produit->prix_moyen * $nbreJour[$i],'0','',' ')}}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{number_format($detail->qte * $detail->produit?->prix_moyen * $nbreJour[$i],'0','',' ')}}</td>
             </tr>
             @php
                 $i++;

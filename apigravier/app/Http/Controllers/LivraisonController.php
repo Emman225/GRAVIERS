@@ -109,18 +109,50 @@ class LivraisonController extends Controller
                 // un objet -> reçoit une liste -> exception -> écran en erreur/blocage.
                 // On renvoie donc null quand la ligne n'existe pas (ex. livraison sans
                 // detail_livraison_id), ce que le mobile gère déjà (test != null).
-                $ligneCommande = $livraison->provenance == Help::$LOCATION
-                    ? DetailLocation::lire($livraison->detail_commande_id)
-                    : DetailCommande::lire($livraison->detail_commande_id);
-                if (!($ligneCommande->id ?? null)) {
-                    $ligneCommande = null;
-                }
-
                 $ligneLivraison = $livraison->detail_livraison_id
                     ? DetailsLivraison::lire($livraison->detail_livraison_id)
                     : null;
                 if (!($ligneLivraison->id ?? null)) {
                     $ligneLivraison = null;
+                }
+
+                if ($livraison->provenance == Help::$LIVRAISON) {
+                    // DEMANDE DE LIVRAISON : la marchandise appartient au client, elle
+                    // n'existe pas au catalogue. Il n'y a donc ni produit ni ligne de
+                    // commande — la désignation et l'unité sont saisies en texte libre
+                    // sur detail_livraison.
+                    //
+                    // Ce cas n'était pas prévu : on lisait quand même une ligne de
+                    // COMMANDE, sur un detail_commande_id qui ne pointe sur rien.
+                    // L'application livreur recevait donc une ligne vide et affichait
+                    // « Article: null » et « Qte à livrer: 1.0 null ».
+                    //
+                    // On lui rend les mêmes CLÉS que pour une vente (nom, unite, qte...)
+                    // afin que les applications DÉJÀ INSTALLÉES affichent correctement,
+                    // sans nouvelle version à distribuer.
+                    // « qte » ET « prix » sont OBLIGATOIRES : l'application les lit avec
+                    // double.parse(json[...].toString()), sans protection. Une clé
+                    // absente donnerait double.parse('null') -> exception, et l'écran
+                    // tomberait en erreur au lieu de s'afficher. Le prix n'a pas de sens
+                    // pour du transport — la marchandise n'est pas vendue — d'où 0.
+                    $ligneCommande = $ligneLivraison ? (object) [
+                        'id'             => $ligneLivraison->id,
+                        'qte'            => (float) ($ligneLivraison->qte ?? 0),
+                        'prix'           => 0,
+                        'nom'            => $ligneLivraison->nom_produit,
+                        'unite'          => $ligneLivraison->unite,
+                        'reference'      => $ligneLivraison->numero ?? null,
+                        'description'    => $ligneLivraison->nom_produit,
+                        'etat_livraison' => $ligneLivraison->etat_livraison,
+                        'statut'         => $ligneLivraison->statut,
+                    ] : null;
+                } else {
+                    $ligneCommande = $livraison->provenance == Help::$LOCATION
+                        ? DetailLocation::lire($livraison->detail_commande_id)
+                        : DetailCommande::lire($livraison->detail_commande_id);
+                    if (!($ligneCommande->id ?? null)) {
+                        $ligneCommande = null;
+                    }
                 }
 
                 $retour->data = [
@@ -250,6 +282,28 @@ class LivraisonController extends Controller
 
                 $client = Client::lireSurUser($user->id);
 
+                // Les deux adresses étaient recopiées telles quelles depuis la
+                // requête. Absentes, elles s'écrivaient en NULL — la colonne
+                // l'autorise — et la demande partait sans lieu de prise en
+                // charge ni destination : inexploitable par le gestionnaire, et
+                // jusqu'à cette semaine capable de faire tomber sa page entière.
+                //
+                // On vérifie aussi qu'elles APPARTIENNENT au client qui
+                // commande : rien n'empêchait sinon d'envoyer l'identifiant de
+                // l'adresse d'un autre client, dont l'écran de traitement
+                // afficherait alors le domicile.
+                //
+                // L'application, elle, ne propose que les adresses du client et
+                // refuse déjà un champ vide : ce contrôle ne change donc rien au
+                // parcours normal, il ferme la porte à ce qui le contourne.
+                $priseEnCharge = AdresseLivraison::lire($request->demande['adresseDepart'] ?? null);
+                $destination   = AdresseLivraison::lire($request->demande['adresseDestination'] ?? null);
+
+                $adressesValides = $priseEnCharge->id > 0
+                    && $destination->id > 0
+                    && (int) $priseEnCharge->client_id === (int) $client->id
+                    && (int) $destination->client_id === (int) $client->id;
+
                 $montant = 0;
                 $cleLaisse = [];
                 foreach ($request->lignes as $key => $l) {
@@ -264,6 +318,9 @@ class LivraisonController extends Controller
                 if (count($cleLaisse) == count($request->lignes)) {
                     $retour->code = 405;
                     $retour->message = "Contenu vide ou aucun cout de livraison défini";
+                } else if (!$adressesValides) {
+                    $retour->code = 405;
+                    $retour->message = "Le lieu de prise en charge ou la destination est introuvable. Veuillez les sélectionner à nouveau.";
                 } else {
                     $demande = new DemandeLivraison();
                     $demande->numero = Help::genererNumeroUnique('demande_livraison');
@@ -310,7 +367,7 @@ class LivraisonController extends Controller
                     // $paiement->service_id = $demande->id;
                     // $paiement->service = Help::$LIVRAISON;
                     // $paiement->code = $demande->numero;
-                    // $paiement->libelle = "Paiement demande de livraison IMLOD";
+                    // $paiement->libelle = "Paiement demande de livraison DALAKOUN";
                     // $paiement->montant_total = $montant;
                     // $paiement->montant_restant = 0;
                     // $paiement->statut = Help::$STATUT_INACTIF;
@@ -347,10 +404,10 @@ class LivraisonController extends Controller
                                 'prenom_usager' => $lePrenom,
                                 'telephone' => $client->contact1,
                                 'email' => $user->email,
-                                'libelle_article' => "Paiement IMLOD",
+                                'libelle_article' => "Paiement DALAKOUN",
                                 'quantite' => 1,
                                 'montant' => ceil($montant),
-                                'lib_order' => "Paiement demande de livraison IMLOD",
+                                'lib_order' => "Paiement demande de livraison DALAKOUN",
                                 'Url_Retour' => Help::urlPaiement(route("ouvreApp", ['codePaiement' => $codePaiement])),
                                 'Url_Callback' => Help::urlPaiement(route('callBackPaiement')),
                             ],

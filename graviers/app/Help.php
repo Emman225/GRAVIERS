@@ -171,6 +171,71 @@ class Help
             $totalQte += (float) $item->qty;
         }
 
+        // ------------------------------------------------------------------
+        // GRILLE TARIFAIRE (interrupteur configuration.livraison_sur_grille).
+        //
+        // Le transport des ventes et des locations se chiffrait uniquement à la
+        // distance : la quantité n'entrait pas dans le calcul, une tonne et
+        // cent cinquante tonnes coûtaient le même prix. La grille — celle qui
+        // sert déjà aux demandes de livraison — raisonne en forfaits par
+        // (unité, tranche de quantité, tranche de distance), ce qui correspond
+        // au coût réel : un forfait par voyage.
+        //
+        // Une ligne dont l'unité n'est pas tarifée RETOMBE sur la formule
+        // kilométrique plutôt que de bloquer la vente, et son nom est remonté à
+        // l'appelant pour être signalé. C'est un dispositif de transition : une
+        // fois « php artisan grille:auditer » muet, le repli ne se déclenche
+        // plus. Pour refuser la vente au lieu de retomber, il suffit de traiter
+        // « lignes_sans_tarif » comme une erreur dans le contrôleur appelant.
+        // ------------------------------------------------------------------
+        $surGrille = (int) ($conf->livraison_sur_grille ?? 0) === 1;
+        $lignesSansTarif = [];
+
+        if ($surGrille) {
+            $prixGrille = 0.0;
+
+            foreach (Cart::content() as $item) {
+                $abreviation = $item->model->unite ?? null;
+                $uniteId = $abreviation
+                    ? DB::table('unite_produit')->where('abreviation', $abreviation)->value('id')
+                    : null;
+
+                $forfait = null;
+
+                if ($uniteId) {
+                    $tranche = \App\Models\CoutLivraison::lireSurCle($uniteId, (float) $item->qty, $km);
+                    if (($tranche->id ?? 0) > 0) {
+                        $forfait = (float) $tranche->prix_km;
+                    }
+                }
+
+                if ($forfait === null) {
+                    // Repli : la part kilométrique de cette ligne.
+                    $forfait = ($totalQte > 0) ? ((float) $item->qty / $totalQte) * $prix : 0;
+                    $lignesSansTarif[] = $item->model->nom ?? ('produit #' . ($item->model->id ?? '?'));
+                }
+
+                $options = $item->options->toArray();
+                $options['cout_livraison'] = $forfait;
+                Cart::update($item->rowId, ['options' => $options]);
+
+                $prixGrille += $forfait;
+            }
+
+            if (!empty($lignesSansTarif)) {
+                \Log::warning('Livraison : lignes sans tarif de grille, repli kilométrique', [
+                    'produits' => $lignesSansTarif,
+                    'km'       => round($km, 2),
+                ]);
+            }
+
+            return [
+                'km'                => round($km, 2),
+                'cout_livraison'    => round($prixGrille, 2),
+                'lignes_sans_tarif' => $lignesSansTarif,
+            ];
+        }
+
         foreach (Cart::content() as $item) {
             $part = ($totalQte > 0)
                 ? ((float) $item->qty / $totalQte) * $prix
@@ -186,7 +251,8 @@ class Help
 
         return [
             'km' => round($km, 2),
-            'cout_livraison' => round($prix, 2)
+            'cout_livraison' => round($prix, 2),
+            'lignes_sans_tarif' => [],
         ];
         } catch (\Exception $e) {
             \Log::error('Erreur coutLivraison: ' . $e->getMessage());
@@ -370,29 +436,168 @@ class Help
         $log->user_id = $user_id;
         $log->save();
     }
-    public static function soldeClient($client, $admin = true){
-        // dd($client);
-        $paiement = DB::select("SELECT SUM(li.montant) AS montant
+    /**
+     * Solde d'un client, en valeur BRUTE (nombre, non formaté).
+     *
+     * Deux lectures d'une même réalité :
+     *   $admin = true  -> factures - paiements : ce que le client DOIT à l'entreprise
+     *                     (sens attendu en back-office, libellé « Montant à payer »).
+     *   $admin = false -> paiements - factures : positif = le client a versé plus
+     *                     qu'il n'a été facturé (avoir), négatif = il reste à payer.
+     *
+     * Séparée de soldeClient() pour que les vues puissent tester le SIGNE et
+     * choisir un libellé : « -7 fcfa » sous l'étiquette « Votre solde » ne
+     * permettait pas au client de savoir de quel côté penchait le compte.
+     *
+     * COALESCE : sans lui, SUM() renvoie NULL quand le client n'a aucune ligne,
+     * et l'arithmétique sur null déclenche un avertissement en PHP 8.
+     */
+    public static function soldeClientBrut($client, $admin = true): float
+    {
+        // Seuls les règlements CONFIRMÉS comptent.
+        //
+        // La condition était « statut <> 3 », qui laissait passer le statut 2 : un
+        // paiement en ligne créé par la passerelle AVANT que le client ne règle. Un
+        // client qui abandonnait devant Orange Money voyait donc son abandon compté
+        // comme de l'argent versé — « Réglé d'avance : 216 FCFA » pour deux
+        // tentatives sans suite. Côté back-office, l'effet était pire : la somme
+        // MINORAIT d'autant ce que le client reste devoir.
+        // Ces requêtes sont écrites à la main : la suppression logique, que
+        // l'ORM applique d'office, doit donc l'être ici aussi. Sans quoi une
+        // facture supprimée continue de charger le client, et un règlement
+        // supprimé continue de l'alléger — dans les deux sens, le solde est faux.
+        $paiement = (float) (DB::selectOne("SELECT COALESCE(SUM(li.montant), 0) AS montant
                                         FROM ligne_paiement li
                                            JOIN paiement p ON p.id = li.paiement_id
                                            JOIN client cli ON cli.id = p.client_id
-                                           WHERE p.statut <> 3 AND li.statut <> 3 AND cli.id = ? ", [$client->id]);
+                                           WHERE p.statut = ? AND li.statut = ? AND cli.id = ?
+                                             AND p.deleted_at IS NULL
+                                             AND li.deleted_at IS NULL ",
+                                        [self::$STATUT_ACTIF, self::$STATUT_ACTIF, $client->id])->montant);
 
+        $facture = (float) (DB::selectOne("SELECT COALESCE(SUM(fac.montant), 0) AS montant FROM facture fac
+                                WHERE fac.client_id = ? AND fac.deleted_at IS NULL", [$client->id])->montant);
 
-        $facture = DB::select("SELECT SUM(fac.montant) AS montant FROM facture fac
-                                WHERE fac.client_id = ?", [$client->id]);
+        return $admin ? $facture - $paiement : $paiement - $facture;
+    }
 
-        // dd($facture, $paiement, $client->id);
+    /**
+     * Part de l'excédent du client qui attend seulement d'être facturée.
+     *
+     * Un excédent (paiements > factures) recouvre DEUX situations que rien ne
+     * distinguait à l'écran, et le libellé « En attente de facturation »
+     * s'appliquait aux deux :
+     *
+     *   - la marchandise est payée mais pas encore enlevée, donc pas encore
+     *     facturée : la facture viendra, et l'excédent se résorbera seul ;
+     *   - la commande est soldée et facturée, mais le client a versé plus que
+     *     le montant de la facture : c'est un TROP-PERÇU, rien ne viendra le
+     *     résorber. Le cas s'est produit sur la commande 849677, où la TVA
+     *     était réclamée sur la remise — 443 payés pour 437 dus.
+     *
+     * Le calcul se fait COMMANDE PAR COMMANDE. Sur chacune :
+     *
+     *   excédent          = max(0, réglé − facturé)      argent versé au-delà
+     *                                                     de ce qui est facturé
+     *   reste à facturer  = max(0, dû − facturé)         marchandise pas encore
+     *                                                     enlevée, donc à venir
+     *   en attente        = min(excédent, reste à facturer)
+     *
+     * La borne par « reste à facturer » est indispensable : sans elle, une
+     * commande entièrement facturée mais trop payée — 443 versés pour 437 dus —
+     * ressortait comme « en attente de facturation », alors qu'aucune facture
+     * ne viendra plus. C'est précisément le cas qu'il fallait distinguer.
+     *
+     * Le dû se recalcule depuis les lignes, jamais depuis montant_total : cette
+     * colonne contient le HT pour une commande du site et le NET pour une
+     * commande du mobile.
+     *
+     * Sous-requêtes corrélées plutôt que jointures : joindre à la fois les
+     * lignes de paiement et les factures d'une même commande multiplierait les
+     * lignes et fausserait les deux sommes.
+     */
+    public static function montantEnAttenteDeFacturation($client): float
+    {
+        $ligne = DB::selectOne(
+            "SELECT COALESCE(SUM(LEAST(GREATEST(0, t.regle - t.facture),
+                                      GREATEST(0, t.du    - t.facture))), 0) AS montant
+               FROM (
+                    SELECT COALESCE((SELECT SUM(d.prix * d.qte)
+                                       FROM detail_commande d
+                                      WHERE d.commande_id = c.id
+                                        AND d.deleted_at IS NULL), 0)
+                         + COALESCE((SELECT SUM(tc.montant)
+                                       FROM tva_commande tc
+                                      WHERE tc.commande_id = c.id
+                                        AND tc.deleted_at IS NULL), 0)
+                         + COALESCE(c.cout_livraison_client, 0)
+                         - COALESCE(c.remise, 0)                             AS du,
+                           COALESCE((SELECT SUM(li.montant)
+                                       FROM ligne_paiement li
+                                       JOIN paiement p ON p.id = li.paiement_id
+                                      WHERE p.service = ? AND p.service_id = c.id
+                                        AND p.statut = ? AND li.statut = ?
+                                        AND p.deleted_at IS NULL AND li.deleted_at IS NULL), 0) AS regle,
+                           COALESCE((SELECT SUM(f.montant)
+                                       FROM facture f
+                                      WHERE f.service = ? AND f.service_id = c.id
+                                        AND f.deleted_at IS NULL), 0) AS facture
+                      FROM commande c
+                     WHERE c.client_id = ?
+                       AND c.deleted_at IS NULL
+                       AND c.etat_commande <> 'ANNULEE'
 
-        if($admin){
-            // chez le gestionnaire
-            $solde = $facture[0]->montant - $paiement[0]->montant;
-        }else{
-            // chez le client
-            $solde = $paiement[0]->montant - $facture[0]->montant;
-        }
+                    UNION ALL
 
-        return self::formatNombre($solde,true);
+                    /* Les LOCATIONS suivent exactement la même logique.
+                       Elles manquaient : le solde du client compte TOUS ses
+                       règlements, tous services confondus, alors que ce calcul
+                       ne regardait que les commandes. Une location réglée mais
+                       pas encore facturée ressortait donc en « versé en trop,
+                       à votre crédit », alors qu'elle attend simplement sa
+                       facture. Constaté sur un client dont les 50 180 FCFA
+                       annoncés comme trop-perçus étaient en fait une avance de
+                       50 000 sur une location de 90 000 en cours.
+
+                       Le dû reprend Location::montantAPayer() : montant_total
+                       porte le HT, auquel s'ajoutent la TVA et la livraison,
+                       remise déduite. Le filtre type_affaire est indispensable
+                       — une location et une commande peuvent porter le même
+                       identifiant dans tva_commande. */
+                    SELECT COALESCE(l.montant_total, 0)
+                         - COALESCE(l.remise, 0)
+                         + COALESCE((SELECT SUM(tc.montant)
+                                       FROM tva_commande tc
+                                      WHERE tc.commande_id = l.id
+                                        AND tc.type_affaire = ?
+                                        AND tc.deleted_at IS NULL), 0)
+                         + COALESCE(l.cout_livraison_client, 0)             AS du,
+                           COALESCE((SELECT SUM(li.montant)
+                                       FROM ligne_paiement li
+                                       JOIN paiement p ON p.id = li.paiement_id
+                                      WHERE p.service = ? AND p.service_id = l.id
+                                        AND p.statut = ? AND li.statut = ?
+                                        AND p.deleted_at IS NULL AND li.deleted_at IS NULL), 0) AS regle,
+                           COALESCE((SELECT SUM(f.montant)
+                                       FROM facture f
+                                      WHERE f.service = ? AND f.service_id = l.id
+                                        AND f.deleted_at IS NULL), 0) AS facture
+                      FROM location l
+                     WHERE l.client_id = ?
+                       AND l.deleted_at IS NULL
+                       AND l.etat_location <> 'ANNULEE'
+               ) t",
+            [self::$COMMANDE, self::$STATUT_ACTIF, self::$STATUT_ACTIF, self::$COMMANDE, $client->id,
+             self::$LOCATION, self::$LOCATION, self::$STATUT_ACTIF, self::$STATUT_ACTIF,
+             self::$LOCATION, $client->id]
+        );
+
+        return (float) ($ligne->montant ?? 0);
+    }
+
+    public static function soldeClient($client, $admin = true){
+
+        return self::formatNombre(self::soldeClientBrut($client, $admin), true);
 
     }
 
@@ -427,7 +632,11 @@ class Help
 
         }else{
             //var_dump($client->commande);
-            $solde = $client->commande->where('statut',1)->sum('montant_total');
+            // commande.montant_total est ambigu (HT pour une commande créée sur le
+            // site, NET pour une commande créée depuis l'application mobile).
+            // On repasse par montantAPayer(), qui recalcule depuis les lignes.
+            $solde = (float) $client->commande->where('statut',1)
+                ->sum(fn ($commande) => $commande->montantAPayer());
 
             foreach($client->commande->where('statut',1) as $commande){
 
@@ -439,7 +648,10 @@ class Help
                             if($livraison->etat_livraison == 'LIVREE'){
                                 // Utiliser le prix unitaire effectivement facturé sur la ligne (detail_commande.prix)
                                 // — qui contient déjà le prix personnalisé si applicable — et non le prix_moyen brut.
-                                $solde -= ($detail->prix * $livraison->enlevement->qte_servi);
+                                // Livraison marquée LIVREE sans bon d'enlèvement associé :
+                                // la lecture directe provoquait une erreur 500 sur la page
+                                // qui affiche le solde. On ignore la ligne dans ce cas.
+                                $solde -= ($detail->prix * ($livraison->enlevement?->qte_servi ?? 0));
                             }
                         }
                     }
@@ -478,16 +690,17 @@ class Help
 
     }
 
+    /**
+     * Ce qu'il reste a confier a un camion sur une ligne de demande.
+     *
+     * Les courses REFUSEES etaient comptees comme affectees : la ligne
+     * s'annoncait servie alors que rien n'avait ete transporte. Le calcul est
+     * desormais porte par le modele, pour que l'ecran, le controleur et la
+     * liste ne puissent plus en donner trois versions.
+     */
     public static function qteDetaillivraisonRestante(DetailLivraison $detail){
 
-        // dd($detail->livraisons);
-
-        if($detail->livraisons->count() > 0){
-            return $detail->qte - $detail->livraisons->sum('qte');
-        }else{
-            return $detail->qte;
-        }
-
+        return $detail->qteRestanteAAffecter();
     }
 
     public static function commission($montant){
@@ -591,6 +804,80 @@ class Help
         } while ($existe && $tentative < 20);
 
         return $candidat;
+    }
+
+    /**
+     * Numéro d'une commande — et du devis dont elle naîtra.
+     *
+     * Six chiffres, comme les commandes passées directement depuis le panier. Le
+     * parcours « demande de devis » produisait au contraire un AAMMJJ suivi de 6
+     * chiffres (getCommandeNo), si bien que deux commandes voisines n'affichaient
+     * pas le même format selon le chemin emprunté par le client.
+     *
+     * Le tirage est vérifié dans devis ET dans commande. La commande reprend le
+     * numéro de son devis et commande.numero porte un index UNIQUE : ne contrôler
+     * que la table devis laissait passer les numéros des commandes sans devis
+     * rattaché. Le devis s'enregistrait, puis la commande échouait sur l'index —
+     * page blanche, commande perdue.
+     */
+    public static function genererNumeroCommande(int $largeur = null): string
+    {
+        $largeur = $largeur ?? self::$NUMERO_FACTURE_WIDTH;
+        $max = (int) str_repeat('9', $largeur);
+        $min = max(100000, (int) ($max / 9));
+
+        for ($tentative = 0; $tentative < 50; $tentative++) {
+            $candidat = str_pad((string) random_int($min, $max), $largeur, '0', STR_PAD_LEFT);
+
+            $pris = DB::table('devis')->where('numero', $candidat)->exists()
+                || DB::table('commande')->where('numero', $candidat)->exists();
+
+            if (!$pris) {
+                return $candidat;
+            }
+        }
+
+        // Espace saturé : on élargit d'un chiffre plutôt que de renvoyer un numéro
+        // déjà pris, qui ferait échouer l'insertion.
+        return self::genererNumeroCommande($largeur + 1);
+    }
+
+    /**
+     * Enregistre un devis en réessayant si son numéro vient d'être pris.
+     *
+     * genererNumeroCommande() vérifie qu'un numéro est libre, mais rien ne garantit
+     * qu'il le soit encore à l'instant de l'INSERT : deux requêtes simultanées
+     * peuvent tirer le même nombre et le constater libre toutes les deux. L'index
+     * unique de devis.numero tranche alors correctement — mais le perdant recevait
+     * une erreur SQL, donc une page blanche, pour une commande parfaitement valide.
+     *
+     * On retente plutôt avec un nouveau numéro. La fenêtre est étroite (il faut le
+     * même tirage à la même fraction de seconde), mais elle s'ouvre avec le volume,
+     * et un client n'a pas à payer le prix d'une collision qui ne le concerne pas.
+     *
+     * Seule une violation d'unicité est rattrapée : toute autre erreur SQL remonte
+     * intacte, il n'est pas question de masquer un vrai défaut derrière une boucle.
+     *
+     * @param  callable(string):mixed  $creer  reçoit le numéro à utiliser
+     */
+    public static function creerAvecNumeroUnique(callable $creer, int $essais = 5)
+    {
+        for ($essai = 1; ; $essai++) {
+            try {
+                return $creer(self::genererNumeroCommande());
+            } catch (\Illuminate\Database\QueryException $e) {
+                if ($essai >= $essais || !self::estViolationUnicite($e)) {
+                    throw $e;
+                }
+            }
+        }
+    }
+
+    /** Le SQL a-t-il échoué sur un doublon de clé unique (MySQL 1062) ? */
+    private static function estViolationUnicite(\Throwable $e): bool
+    {
+        return ($e->getCode() === '23000' || $e->getCode() === 23000)
+            && (int) ($e->errorInfo[1] ?? 0) === 1062;
     }
 
     /**
@@ -737,7 +1024,8 @@ class Help
     public static function montantDu($client){
 
         $montantPaye = Help::totalPaiementClient($client);
-        $totalCommande = $client->commande->sum('montant_total');
+        // Même règle : total NET recalculé depuis les lignes, jamais montant_total.
+        $totalCommande = (float) $client->commande->sum(fn ($commande) => $commande->montantAPayer());
 
         return $totalCommande - $montantPaye;
     }
@@ -755,9 +1043,35 @@ class Help
         return $montantPaye;
     }
 
+    /**
+     * Valeur de la marchandise REELLEMENT enlevee sur une commande.
+     *
+     * Somme des lignes servies : prix de la ligne x quantite servie. Rien
+     * d'autre — ni TVA, ni livraison, ni remise.
+     *
+     * totalEnleveSurCommande(), juste en dessous, part au contraire de
+     * « TVA + livraison - remise » avant d'ajouter la marchandise. Ce decalage
+     * s'annule dans la soustraction « montantAPayer - totalEnleve », qui donne
+     * bien le reste a enlever ; mais affichee TELLE QUELLE dans la colonne
+     * « Deja enleve », la valeur annoncait 4 900 F enleves sur une commande
+     * ou rien n'avait ete retire — 900 de TVA et 4 000 de livraison.
+     */
+    public static function marchandiseEnleveeSurCommande($commande): float
+    {
+        $enleve = 0.0;
+
+        foreach ($commande->detailCommande as $detail) {
+            foreach ($detail->livraisons as $livraison) {
+                $enleve += (float) $detail->prix * (float) ($livraison->enlevement?->qte_servi ?? 0);
+            }
+        }
+
+        return $enleve;
+    }
+
     public static function totalEnleveSurCommande($commande){
 
-        $montantEnleveProduit = $commande->TvaCommande->montant + $commande->cout_livraison_client - $commande->remise;
+        $montantEnleveProduit = ($commande->TvaCommande?->montant ?? 0) + $commande->cout_livraison_client - $commande->remise;
 
         foreach($commande->detailCommande as $detail){
 
@@ -870,6 +1184,10 @@ class Help
         WHERE detail_commande.commande_id = ? AND enlevement.produit_id = ?
         AND detail_commande.statut = 1
         AND enlevement.deleted_at IS NULL AND livraison.deleted_at IS NULL
+        -- Les courses REFUSEES par le livreur ne comptent pas : rien n'a ete
+        -- transporte. Les compter revenait a dire la ligne entierement traitee,
+        -- et l'ecran ne proposait plus rien a reaffecter.
+        AND livraison.accepte <> 3
         GROUP BY enlevement.produit_id, detail_commande.qte";
         $total = DB::select($sql, [$commandeId, $produitId]);
         // $total = DB::scalar($sql, [$commandeId, $produitId]);

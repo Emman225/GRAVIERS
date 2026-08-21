@@ -325,7 +325,9 @@ class Apporteur {
   int? statut;
   String? createdAt;
   String? updatedAt;
-  int? pourcentage;
+  // apporteur.pourcentage est un DOUBLE(8,2) en base : declare int?, il faisait
+  // echouer toute la connexion via un TypeError avale par le catch.
+  double? pourcentage;
 
   Apporteur(
       {this.id,
@@ -345,7 +347,7 @@ class Apporteur {
     statut = json['statut'];
     createdAt = json['created_at'];
     updatedAt = json['updated_at'];
-    pourcentage = json['pourcentage'];
+    pourcentage = double.tryParse(json['pourcentage']?.toString() ?? '') ?? 0;
   }
 
   Map<String, dynamic> toJson() {

@@ -152,6 +152,11 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
                               _vir = await rognerImage(context, file.path);
                               recuController.text = "1 Fichier";
                             }
+                            // Le choix du fichier puis le recadrage laissent
+                            // largement le temps de quitter l'écran. Le fichier
+                            // reste enregistré dans tous les cas ; seul le
+                            // rafraîchissement est conditionné à sa présence.
+                            if (!mounted) return;
                             setState(() {});
                           }
                         },
@@ -190,6 +195,11 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
                                                 context, file.path);
                                             recuController.text = "1 Fichier";
                                           }
+                                          // Prise de vue puis recadrage : même
+                                          // précaution. Sans elle, refermer
+                                          // l'écran pendant le recadrage fait
+                                          // manipuler un contexte détruit.
+                                          if (!mounted) return;
                                           Navigator.pop(context);
                                           setState(() {});
                                         },

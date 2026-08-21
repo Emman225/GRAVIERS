@@ -18,9 +18,14 @@
     </div>
 
     <div class="row">
-        <div class="col-4 "><h3>Client: {{ucfirst($client->nom).' '.ucfirst($client->prenom)}} </h3></div>
+        <div class="col-4 "><h3>Client: {{ucfirst($client->display_name)}} </h3></div>
         <div class="col-4"><h3>Type de client: {{ucfirst($client->type_client)}} </h3></div>
-        <div class="col-4"><h3>Montant à payer: {{Help::soldeClient($client,$client->client_a_terme)}}  </h3></div>
+        {{-- Le 2e paramètre de soldeClient indique si l'on est sur un écran
+             ADMINISTRATEUR (le solde est alors ce que le client DOIT), pas le type
+             de client. On lui passait client_a_terme : pour un client ordinaire
+             (valeur 0), le calcul s'inversait et « Montant à payer » affichait le
+             total déjà réglé, avec le signe contraire. --}}
+        <div class="col-4"><h3>Montant à payer: {{Help::soldeClient($client, true)}}  </h3></div>
 
     </div>
 
@@ -35,7 +40,7 @@
                             <thead>
                                 <tr>
                                     <th style="background-color: #1c57a3; color: white; border-top-left-radius:5px">N° commande</th>
-                                    <th class="text-center" style="background-color: #1c57a3; color: white">Montant</th>
+                                    <th class="text-center" style="background-color: #1c57a3; color: white">Montant HT</th>
                                     <th class="text-center" style="background-color: #1c57a3; color: white">Etat</th>
                                     <th class="text-center" style="background-color: #1c57a3; color: white">Date</th>
                                     <!-- <th class="text-center" style="background-color: #1c57a3; color: white">Paiement</th> -->
@@ -53,7 +58,7 @@
                                             <tr>
                                                 <td > {{ $commande->numero }} </td>
 
-                                                <td class="texte-center">{{ number_format($commande->montant_total,'0','',' ') }} fcfa</td>
+                                                <td class="texte-center">{{ number_format($commande->montantHT(),'0','',' ') }} fcfa</td>
                                                 <td><span class="badge rounded-pill text-warning">{{ $commande->etat_commande }}</span>
                                                 </td>
                                                 <td class="texte-center">{{ Carbon::parse($commande->created_at)->format('d-m-Y à H:i') }}</td>
@@ -70,7 +75,11 @@
                                                     <a href="{{ route('orders.details', $commande->numero) }}" class="btn btn-md rounded font-sm">Detail</a>
                                                 </td>
                                                 <td>
-                                                    <a href="{{ route('paye.create', $commande->id) }}" class="btn btn-md rounded font-sm">Effectuer un paiement</a>
+                                                    {{-- Ces commandes sont celles de clients À TERME : leur règlement
+                                                         suit les factures de leur ligne de crédit, pas la caisse
+                                                         comptant. L'ancien écran /paiement/create, qui validait un
+                                                         paiement d'un seul clic, a été retiré. --}}
+                                                    <a href="{{ route('show.creancesTerme.paiements') }}" class="btn btn-md rounded font-sm">Encaisser (créances à terme)</a>
                                                 </td>
                                                 <td>
                                                     <a href="{{ route('orders.traitement', $commande) }}" class="btn btn-md rounded font-sm">Traiter la commande</a>

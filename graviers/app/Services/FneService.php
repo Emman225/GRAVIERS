@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AdresseLivraison;
 use App\Models\Configuration;
 use App\Models\Facture;
 use App\Models\Enlevement;
@@ -311,6 +312,30 @@ class FneService
         $tax = config('fne.defaults.tax', 'TVA');
         $items = [];
 
+        // Facture née d'un RÈGLEMENT et non d'un enlèvement : le client a payé
+        // sa commande d'avance, la marchandise n'est pas encore enlevée, et il
+        // n'y a donc aucun enlèvement d'où tirer les lignes. Sans ce repli, la
+        // déclaration partirait à la DGI avec un tableau d'articles VIDE — un
+        // document certifié sans contenu, pour une facture pourtant réglée.
+        //
+        // Les lignes sont alors celles de la commande, qui sont exactement ce
+        // que le client a payé.
+        if ($enlevements->isEmpty() && $commande) {
+            foreach ($commande->detailCommande as $detail) {
+                $produit = $detail->produit;
+
+                $items[] = [
+                    'taxes' => [$tax],
+                    'reference' => $produit?->reference ?? ('PROD-' . ($produit?->id ?? '')),
+                    'description' => $produit?->nom ?? 'Article',
+                    'quantity' => (float) ($detail->qte ?? 0),
+                    'amount' => (float) ($detail->prix ?? 0),
+                    'discount' => 0,
+                    'measurementUnit' => $produit?->uniteProduit?->libelle ?? 'U',
+                ];
+            }
+        }
+
         foreach ($enlevements as $env) {
             $produit = $env->produit;
             $detail  = $env->livraison?->detailCommande;
@@ -320,17 +345,48 @@ class FneService
                 'taxes' => [$tax],
                 'reference' => $produit?->reference ?? ('PROD-' . ($produit?->id ?? '')),
                 'description' => $produit?->nom ?? 'Article',
-                'quantity' => (float) $env->qte,
+                // Quantité RÉELLEMENT SERVIE, avec la même cascade de replis que
+                // le calcul du montant (OrdersController::genererFacture).
+                // La déclaration reprenait $env->qte, la quantité COMMANDÉE : dès
+                // qu'un fournisseur servait moins que prévu, quantity x amount ne
+                // correspondait plus au HT facturé, et le montant déclaré à la DGI
+                // s'écartait de celui de la facture.
+                'quantity' => (float) ($env->qte_servi ?? $env->qte ?? $detail?->qte ?? 0),
                 'amount' => (float) $prix,
                 'discount' => 0,
                 'measurementUnit' => $produit?->uniteProduit?->libelle ?? 'U',
             ];
         }
 
+        // Frais de livraison : ils entrent dans facture.montant mais n'étaient
+        // déclarés nulle part, si bien que le total certifié par la DGI était
+        // inférieur au total du document remis au client, du montant de la
+        // livraison. Ils deviennent une ligne à part entière.
+        //
+        // Part imputée à CETTE facture (une commande livrée en plusieurs fois
+        // donne plusieurs factures, chacune n'en portant qu'une fraction) ;
+        // repli sur le coût de la commande pour les factures antérieures à
+        // l'ajout de la colonne.
+        $livraison = (float) ($facture->cout_livraison_applique ?? $commande?->cout_livraison_client ?? 0);
+
+        if ($livraison > 0) {
+            $items[] = [
+                // Code à 0 % par défaut : l'application facture la livraison hors
+                // TVA. Réglable par FNE_DELIVERY_TAX, cf. config/fne.php.
+                'taxes' => [config('fne.defaults.delivery_tax', 'TVAC')],
+                'reference' => 'LIVRAISON',
+                'description' => config('fne.defaults.delivery_label', 'Frais de livraison'),
+                'quantity' => 1,
+                'amount' => $livraison,
+                'discount' => 0,
+                'measurementUnit' => 'U',
+            ];
+        }
+
         // Coordonnées client (selon template).
         $clientCompanyName = $template === 'B2C'
-            ? trim(($client?->nom ?? '') . ' ' . ($client?->prenom ?? ''))
-            : ($client?->raison_sociale ?? trim(($client?->nom ?? '') . ' ' . ($client?->prenom ?? '')));
+            ? ($client?->display_name ?? '')
+            : ($client?->raison_sociale ?? ($client?->display_name ?? ''));
 
         $payload = [
             'invoiceType' => 'sale',
@@ -348,7 +404,14 @@ class FneService
             'foreignCurrency' => '',
             'foreignCurrencyRate' => 0,
             'items' => $items,
-            'discount' => (float) ($commande?->remise ?? 0),
+            // Remise RÉELLEMENT imputée à cette facture, et non celle de la commande
+            // entière : une commande livrée en deux fois donne deux factures, et
+            // déclarer la remise complète sur chacune la comptait deux fois auprès
+            // de la DGI. La part est calculée au prorata du HT facturé et stockée
+            // à la génération (OrdersController::genererFacture).
+            // Repli sur la remise de la commande pour les factures antérieures à
+            // l'ajout de la colonne, dont la part n'a jamais été enregistrée.
+            'discount' => (float) ($facture->remise_appliquee ?? $commande?->remise ?? 0),
         ];
 
         // NCC obligatoire pour le template B2B.
@@ -400,9 +463,25 @@ class FneService
             ];
         }
 
+        // Même omission que pour les ventes : la facture de location inclut le
+        // coût de livraison (cf. genererFactureLocation) sans le déclarer.
+        $livraisonLoc = (float) ($location?->cout_livraison_client ?? 0);
+
+        if ($livraisonLoc > 0) {
+            $items[] = [
+                'taxes' => [config('fne.defaults.delivery_tax', 'TVAC')],
+                'reference' => 'LIVRAISON',
+                'description' => config('fne.defaults.delivery_label', 'Frais de livraison'),
+                'quantity' => 1,
+                'amount' => $livraisonLoc,
+                'discount' => 0,
+                'measurementUnit' => 'U',
+            ];
+        }
+
         $clientCompanyName = $template === 'B2C'
-            ? trim(($client?->nom ?? '') . ' ' . ($client?->prenom ?? ''))
-            : ($client?->raison_sociale ?? trim(($client?->nom ?? '') . ' ' . ($client?->prenom ?? '')));
+            ? ($client?->display_name ?? '')
+            : ($client?->raison_sociale ?? ($client?->display_name ?? ''));
 
         $payload = [
             'invoiceType' => 'sale',
@@ -577,6 +656,47 @@ class FneService
     }
 
     /**
+     * L'adresse postale du client, telle qu'elle est enregistrée en base.
+     *
+     * La table `client` ne porte aucune colonne d'adresse : la seule adresse
+     * saisie est celle de livraison. On prend celle marquée par défaut ; à
+     * défaut la plus récente, car sur huit adresses actives deux seulement
+     * portent ce drapeau.
+     *
+     * On retient `complement_adresse`, qui contient l'adresse complète
+     * (« Foyer des Jeunes, M77, Doukouré, Kouté, Yopougon, Abidjan »), et non
+     * `affichage`, souvent réduit à la commune.
+     *
+     * Auparavant cette case recevait l'adresse de courriel du client, faute de
+     * mieux : la facture normalisée affichait donc un courriel là où
+     * l'administration attend une adresse postale.
+     */
+    private static function adressePostaleClient($client): string
+    {
+        if (empty($client?->id)) {
+            return '';
+        }
+
+        $adresse = AdresseLivraison::lireDefautSurClient($client->id);
+        if (empty($adresse->id)) {
+            $adresse = AdresseLivraison::where('client_id', $client->id)
+                ->where('statut', \Help::$STATUT_ACTIF)
+                ->whereNull('deleted_at')
+                ->latest('id')
+                ->first();
+        }
+
+        foreach ([$adresse->complement_adresse ?? '', $adresse->affichage ?? ''] as $valeur) {
+            $valeur = trim((string) $valeur);
+            if ($valeur !== '') {
+                return $valeur;
+            }
+        }
+
+        return '';
+    }
+
+    /**
      * Récupère toutes les données FNE nécessaires pour le template
      */
     public static function getDonneesFne(?Facture $facture = null, $client = null): array
@@ -618,8 +738,8 @@ class FneService
         // Données client
         if ($client) {
             $data['fne_client'] = [
-                'nom'               => trim(($client->nom ?? '') . ' ' . ($client->prenom ?? '')),
-                'adresse'           => $client->user->email ?? '',
+                'nom'               => ($client?->display_name ?? ''),
+                'adresse'           => self::adressePostaleClient($client),
                 'ncc'               => $client->ncc_clt ?? '',
                 'regime_imposition' => $client->regime_imposition ?? '',
             ];

@@ -68,9 +68,13 @@
                     'show.recapDettes.tableauBord', 'show.recapDettes.detailFournisseurs',
                     'show.recapDettes.detailLivreurs', 'show.recapDettes.detailApporteurs',
 
+                    // Comptabilité (navAdmin)
+                    'show.comptabilite.tvaCollectee', 'show.comptabilite.beneficesLivraisons',
+
                     // Client (navAdmin)
                     'show.listClient',
                     'show.comptant.commandes', 'show.comptant.encaissements', 'show.comptant.synthese',
+                    'show.encaissements.locations',
                     'show.listClientATerme', 'show.listeDemandeClient',
                     'show.creancesTerme.factures', 'show.creancesTerme.paiements',
                     'show.creancesTerme.relances', 'show.creancesTerme.synthese',
@@ -92,6 +96,7 @@
 
                     // Demandes de livraison
                     'show.demandeLivraisonlist', 'show.demandeLivraisonTraitee',
+                    'show.comptant.livraisons.encaissements', 'show.grilleTarifaire',
 
                     // Fournisseurs
                     'show.listSeller', 'show.registerSeller', 'show.listSellerPourBon',
@@ -116,7 +121,7 @@
 
                     // Code promo / Modération / Paiements reçu
                     'show.creationDeCodePromo',
-                    'show.moderationCommentaire',
+                    'show.moderationCommentaire', 'show.moderationCommentairesBlog',
                     'paye.list',
 
                     // Demandes de paiement
@@ -127,7 +132,8 @@
                     'show.dettesApporteurs', 'show.dettesFournisseurs', 'show.dettesLivreurs',
 
                     // Divers
-                    'show.creationDeBlog', 'show.creationDeBanniere', 'show.lesRegions',
+                    'show.creationDeBlog', 'show.listeDesBlogs', 'show.creationDeBanniere', 'show.listeDesBannieres',
+                    'show.listeDesSlides', 'show.creationDeSlide', 'show.lesRegions',
                     'dest.lesVilles',
                     'show.agences.*', 'show.statutMetier.*', 'show.typeVehiculeLivreur.*',
 
@@ -143,8 +149,37 @@
 
             @auth
                 @unless($hideBack)
+                    @php
+                        // Page précédente réellement visitée, tenue côté serveur par
+                        // MemoriserPagePrecedente. Le bouton devient un VRAI lien : il
+                        // ramène exactement là d'où l'on vient.
+                        //
+                        // L'ancienne version rejouait l'historique du navigateur —
+                        // history.back(), et history.go(-2) quand la page semblait
+                        // s'être redirigée sur elle-même. Ce second cas se déclenchait
+                        // aussi sur un simple rechargement, et le retour sautait une
+                        // page de trop.
+                        $urlRetour = session(\App\Http\Middleware\MemoriserPagePrecedente::CLE_PRECEDENTE);
+                    @endphp
+                    <script>
+                        /**
+                         * Repli, pour les boutons « Retour » propres à une page qui
+                         * appellent encore l'historique, et pour la toute première page
+                         * d'une session, où le serveur n'a pas encore de précédente.
+                         */
+                        function retourPagePrecedente() {
+                            var cible = @json($urlRetour);
+
+                            if (cible) {
+                                location.href = cible;
+                            } else {
+                                history.back();
+                            }
+                            return false;
+                        }
+                    </script>
                     <div class="back-button-wrapper mb-3" id="globalBackBtn">
-                        <a href="javascript:history.back()" class="btn btn-light btn-back">
+                        <a href="{{ $urlRetour ?: 'javascript:retourPagePrecedente()' }}" class="btn btn-light btn-back">
                             <i class="material-icons md-arrow_back"></i>
                             <span>Retour</span>
                         </a>
@@ -173,6 +208,13 @@
                                 var isRetourLink = (txt.indexOf('retour') > -1 || txt === '') && (hasArrowBack || hasHistoryBack);
                                 if (hasHistoryBack || isRetourLink) {
                                     customFound = true;
+                                    // Boutons "Retour" propres à une page qui rejouent l'historique :
+                                    // on leur applique le même retour intelligent que le bouton global
+                                    // (cf. retourPagePrecedente). Les liens pointant vers une VRAIE
+                                    // route ne sont pas touchés : ils doivent continuer à y mener.
+                                    if (hasHistoryBack) {
+                                        a.setAttribute('href', 'javascript:retourPagePrecedente()');
+                                    }
                                     // Applique le design premium au bouton custom
                                     a.classList.remove('btn-outline-secondary', 'btn-sm', 'btn-light');
                                     a.classList.add('btn', 'btn-back');

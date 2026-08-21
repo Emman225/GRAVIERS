@@ -2,7 +2,7 @@
 @section('title','Apporteur - Paramètre')
 
 @php
-    $userName  = $apporteur->user->nom_prenoms ?? 'Apporteur';
+    $userName  = $apporteur->user?->nom_prenoms ?? 'Apporteur';
     $firstName = explode(' ', $userName)[0];
     $initials  = strtoupper(mb_substr($firstName, 0, 1));
 @endphp
@@ -46,7 +46,7 @@
                 <div class="premium-form-body text-center">
                     <div class="parametre-avatar mx-auto mb-3">{{ $initials ?: 'A' }}</div>
                     <h5 class="mb-1 fw-bold">{{ $userName }}</h5>
-                    <p class="text-muted mb-3" style="font-size:0.85rem">{{ $apporteur->user->email ?? '' }}</p>
+                    <p class="text-muted mb-3" style="font-size:0.85rem">{{ $apporteur->user?->email ?? '' }}</p>
 
                     <div class="parametre-info-grid">
                         <div class="parametre-info-row">
@@ -91,19 +91,19 @@
                             <div class="col-12">
                                 <label class="premium-field-label" for="nom_prenom"><i class="material-icons md-account_box"></i> Nom complet</label>
                                 <input id="nom_prenom" class="form-control" required type="text" name="nom_prenom"
-                                       value="{{ $apporteur->user->nom_prenoms }}" placeholder="Prénom NOM" />
+                                       value="{{ $apporteur->user?->nom_prenoms }}" placeholder="Prénom NOM" />
                             </div>
 
                             <div class="col-md-6">
                                 <label class="premium-field-label" for="contact"><i class="material-icons md-phone"></i> Contact</label>
                                 <input id="contact" class="form-control" required type="tel" name="contact"
-                                       value="{{ $apporteur->user->contact }}" placeholder="07 XX XX XX XX" />
+                                       value="{{ $apporteur->user?->contact }}" placeholder="07 XX XX XX XX" />
                             </div>
 
                             <div class="col-md-6">
                                 <label class="premium-field-label" for="email"><i class="material-icons md-mail"></i> Email</label>
                                 <input id="email" class="form-control {{ session('emailExiste') ? 'is-invalid' : '' }}"
-                                       required name="email" type="email" value="{{ $apporteur->user->email }}"
+                                       required name="email" type="email" value="{{ $apporteur->user?->email }}"
                                        placeholder="vous@exemple.com" />
                                 @if (session('emailExiste'))
                                     <div class="invalid-feedback d-block">{{ session('emailExiste') }}</div>
@@ -113,7 +113,7 @@
                             <div class="col-12">
                                 <label class="premium-field-label" for="adresse"><i class="material-icons md-home"></i> Adresse</label>
                                 <input id="adresse" class="form-control" required type="text" name="adresse"
-                                       value="{{ $apporteur->user->adresse }}" placeholder="Ville, quartier, rue..." />
+                                       value="{{ $apporteur->user?->adresse }}" placeholder="Ville, quartier, rue..." />
                                 @if (session('loginExiste'))
                                     <div class="invalid-feedback d-block">{{ session('loginExiste') }}</div>
                                 @endif

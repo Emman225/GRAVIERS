@@ -14,6 +14,10 @@ class CommissionApporteur extends Model
     protected $fillable = [
         'apporteur_id',
         'commande_id',
+        // Une commission naît d'une vente OU d'une location : l'un des deux
+        // seulement est renseigné. Sans cette entrée, create() l'ignorerait en
+        // silence et la commission de location repartirait sans son affaire.
+        'location_id',
         'montant',
         'statut',
         'type_affaire',
@@ -91,7 +95,10 @@ class CommissionApporteur extends Model
         $cmd = $this->commande;
         if ($cmd) {
             $cmdPaye   = $cmd->montantPayeComptant();
-            $cmdTotal  = (float) ($cmd->montant_total ?? 0);
+            // Comparer l'encaissé au NET réellement dû : sur une commande créée
+            // depuis le site, montant_total ne contient que le HT, et la commission
+            // passait « Due » dès que le HT était réglé, TVA et livraison encore dues.
+            $cmdTotal  = (float) $cmd->montantAPayer();
             if ($cmdTotal > 0 && $cmdPaye >= $cmdTotal) {
                 return 'Due';
             }

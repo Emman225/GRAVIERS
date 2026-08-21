@@ -59,13 +59,13 @@
                                         </td>
 
                                         <td class="text-center">
-                                            {{$ligne->paiement->client?->nom.' '.$ligne->paiement->client?->prenom}}
+                                            {{$ligne->paiement?->client?->display_name}}
                                         </td>
                                         <td class="text-center">
-                                            <span> {{$ligne->paiement->client?->user_id}} </span>
+                                            <span> {{$ligne->paiement?->client?->user_id}} </span>
                                         </td>
                                         <td class="text-center">
-                                            <span> {{$ligne->paiement->code}} </span>
+                                            <span> {{$ligne->paiement?->code}} </span>
                                         </td>
                                         <td class="text-center">
                                             <span> {{$ligne->moyen_paiement}} </span>

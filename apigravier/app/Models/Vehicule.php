@@ -24,6 +24,45 @@ class Vehicule extends Model
         "modele",
     ];
 
+    /**
+     * Rend le véhicule à nouveau disponible une fois ses courses achevées.
+     *
+     * L'affectation d'une demande de livraison passe « disponible » à 0, mais
+     * RIEN ne le remettait à 1 : le véhicule restait bloqué indéfiniment après
+     * sa première course, et le gestionnaire se retrouvait sans aucun véhicule
+     * à proposer alors que les livreurs avaient terminé.
+     *
+     * On ne libère que s'il ne reste AUCUNE course en cours sur ce véhicule :
+     * il peut porter plusieurs livraisons, en achever une ne le libère pas.
+     *
+     * Renvoie true si le véhicule vient d'être libéré.
+     */
+    public static function libererSiPlusAucuneCourse($vehiculeId): bool
+    {
+        if (empty($vehiculeId)) {
+            return false;
+        }
+
+        $vehicule = Vehicule::find($vehiculeId);
+        if (!$vehicule) {
+            return false;
+        }
+
+        $courseEnCours = Livraison::where('vehicule_id', $vehiculeId)
+            ->where('statut', Help::$STATUT_ACTIF)
+            ->where('etat_livraison', '!=', Help::$LIVRAISON_LIVREE)
+            ->exists();
+
+        if ($courseEnCours) {
+            return false;
+        }
+
+        $vehicule->disponible = 1;
+        $vehicule->save();
+
+        return true;
+    }
+
     public static function lire($id)
     {
         $obj = Vehicule::find($id);

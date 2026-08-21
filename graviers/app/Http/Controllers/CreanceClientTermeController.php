@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use Help;
+use App\Models\Agence;
 use App\Models\Client;
 use App\Models\Facture;
 use App\Models\Paiement;
@@ -26,9 +28,13 @@ class CreanceClientTermeController extends Controller
      */
     public function factures(Request $request)
     {
-        $clientsTerme = Client::where('client_a_terme', 1)->where('statut', 1)->pluck('id');
+        // Suspendre un client n'efface pas ce qu'il doit : le filtre sur son
+        // statut retirait sa créance de l'écran.
+        $clientsTerme = Client::where('client_a_terme', 1)->pluck('id');
 
         $factures = Facture::with([
+                // Le client porte le délai de paiement dont se déduit l'échéance.
+                'client',
                 'commande',
                 'commande.client',
                 'commande.client.user',
@@ -65,23 +71,40 @@ class CreanceClientTermeController extends Controller
                 $montantHt = (float) $details->sum(fn($d) => (float) $d->qte * (float) $d->prix);
             }
 
-            $tva            = $montantHt * ($tauxTva / 100);
-            $montantTtc     = $montantHt + $tva;
-            $fraisLivraison = (float) ($commande?->cout_livraison_client ?? 0);
-            $remise         = (float) ($commande?->remise ?? 0);
-            // La remise doit être déduite du dû (elle l'était dans montantAPayer()) :
-            // sans ça la créance affichée était surévaluée du montant de la remise.
-            $totalAPayer    = $montantTtc + $fraisLivraison - $remise;
+            // Frais et remise RÉELLEMENT imputés à cette facture, et non ceux de la
+            // commande entière : une commande facturée en plusieurs fois ne porte pas
+            // la même remise sur chaque facture.
+            $fraisLivraison = (float) ($f->cout_livraison_applique ?? $commande?->cout_livraison_client ?? 0);
+            $remise         = (float) ($f->remise_appliquee ?? $commande?->remise ?? 0);
 
-            // Si on n'a pas de détails (cas dégradé), on retombe sur facture.montant
-            if ($montantHt == 0 && $f->montant > 0) {
-                $totalAPayer = (float) $f->montant;
-                $montantTtc  = $totalAPayer - $fraisLivraison;
-                $montantHt   = $tauxTva > 0 ? $montantTtc / (1 + $tauxTva / 100) : $montantTtc;
-                $tva         = $montantTtc - $montantHt;
+            // Le dû est celui de la FACTURE, pas celui de la commande.
+            //
+            // Il était recalculé depuis toutes les lignes de la commande — quantité
+            // COMMANDÉE × prix. Or une facture est émise sur les enlèvements
+            // RÉELLEMENT servis : une livraison partielle, ou une commande facturée
+            // en plusieurs fois, produisait une facture bien inférieure à ce total.
+            // La créance affichée dépassait alors le montant réclamé au client, et un
+            // reste subsistait quoi qu'il paie — il ne pouvait pas solder une dette
+            // calculée sur autre chose que sa facture.
+            // Même règle que l'état « Client à terme » et la balance âgée :
+            // une seule méthode, pour qu'ils ne puissent plus se contredire.
+            $totalAPayer = $f->totalAPayer();
+
+            if ($totalAPayer > 0) {
+                // On redéduit le détail depuis le total facturé pour que la ligne reste
+                // cohérente : HT + TVA + livraison − remise = total à payer.
+                $montantTtc = $totalAPayer - $fraisLivraison + $remise;
+                $montantHt  = $tauxTva > 0 ? $montantTtc / (1 + $tauxTva / 100) : $montantTtc;
+                $tva        = $montantTtc - $montantHt;
+            } else {
+                // Facture sans montant enregistré : on retombe sur les lignes de la
+                // commande, seule source disponible.
+                $tva         = $montantHt * ($tauxTva / 100);
+                $montantTtc  = $montantHt + $tva;
+                $totalAPayer = $montantTtc + $fraisLivraison - $remise;
             }
 
-            $totalPaye   = (float) $f->paiements->where('statut', 1)->sum('montant_total');
+            $totalPaye   = $f->montantPaye();
             $reste       = max(0, $totalAPayer - $totalPaye);
             $joursRetard = $f->joursRetard();
 
@@ -89,7 +112,7 @@ class CreanceClientTermeController extends Controller
                 'facture'           => $f,
                 'date_facture'      => $f->created_at,
                 'client'            => $client,
-                'client_nom'        => $client ? trim($client->nom . ' ' . $client->prenom) : '-',
+                'client_nom'        => $client?->display_name ?? '-',
                 'code_client'       => $client?->id,
                 'numero_commande'   => $commande?->numero ?? $f->service_id,
                 'produit_principal' => $produitPrincipal,
@@ -102,7 +125,7 @@ class CreanceClientTermeController extends Controller
                 'total_a_payer'     => $totalAPayer,
                 'montant_paye'      => $totalPaye,
                 'reste_a_payer'     => $reste,
-                'date_echeance'     => $f->date_echeance,
+                'date_echeance'     => $f->echeance(),
                 'delai_jours'       => $client?->delai_paiement,
                 'jours_retard'      => $joursRetard,
                 'statut_creance'    => $f->statutCreance(),
@@ -131,10 +154,32 @@ class CreanceClientTermeController extends Controller
     {
         $clientsTerme = Client::where('client_a_terme', 1)->where('statut', 1)->pluck('id');
 
-        // Inclure les paiements validés (statut=1) ET en attente (statut=2)
-        $paiements = Paiement::with(['client', 'client.user'])
+        // Paiements encaissés (statut=1), plus ceux en attente d'une seconde
+        // validation (statut=2).
+        //
+        // Mais « en attente » ne veut pas dire la même chose selon l'origine. La
+        // passerelle crée le paiement AVANT que le client ne règle, en statut 2 :
+        // s'il abandonne devant Orange Money, la ligne reste là. Elle apparaissait
+        // ici avec un bouton « Valider » — un clic aurait crédité un encaissement
+        // qui n'a jamais eu lieu.
+        //
+        // Un encaissement saisi par un agent porte toujours un numéro de reçu et
+        // l'identifiant de son caissier ; un paiement initié par la passerelle n'a
+        // ni l'un ni l'autre. On ne propose donc à la validation que ce qu'un
+        // humain a réellement encaissé. Un paiement en ligne, lui, entre dans la
+        // liste quand la passerelle le confirme — en statut 1.
+        $paiements = Paiement::with(['client', 'client.user', 'initiateur', 'validateur'])
             ->whereIn('client_id', $clientsTerme)
-            ->whereIn('statut', [1, 2])
+            ->where(function ($q) {
+                $q->where('statut', 1)
+                    ->orWhere(function ($enAttente) {
+                        $enAttente->where('statut', 2)
+                            ->where(function ($saisiParUnAgent) {
+                                $saisiParUnAgent->whereNotNull('caissier_id')
+                                    ->orWhereNotNull('numero_recu');
+                            });
+                    });
+            })
             ->orderByDesc('created_at')
             ->get();
 
@@ -153,10 +198,13 @@ class CreanceClientTermeController extends Controller
             $peutValider = $enAttente && $estAdmin && (int) $p->user_valide_id !== (int) $userId;
             return (object) [
                 'paiement_id'           => $p->id,
+                // Traçabilité : qui a saisi l'enregistrement, qui l'a contrôlé.
+                'initie_par'           => $p->initie_par,
+                'valide_par'           => $p->valide_par,
                 'date_paiement'         => $p->created_at,
                 'numero_facture'        => $facture?->numero ?? '-',
                 'code_client'           => $p->client_id,
-                'client_nom'            => $p->client ? trim($p->client->nom . ' ' . $p->client->prenom) : '-',
+                'client_nom'            => $p->client?->display_name ?? '-',
                 'montant_recu'          => (float) $p->montant_total,
                 'mode_paiement'         => $mode ?: '-',
                 'reference_transaction' => $ligne?->reference ?? $p->code,
@@ -169,7 +217,9 @@ class CreanceClientTermeController extends Controller
         // Le total ne compte que les paiements validés
         $totalEncaisse = $lignes->where('en_attente', false)->sum('montant_recu');
 
-        $modesPaiement = ModePaiement::liste();
+        // Même règle que l'encaissement comptant : l'agent saisit l'instrument réel,
+        // pas « en agence ».
+        $modesPaiement = ModePaiement::listePourAgent();
         $facturesNonSoldees = Facture::with(['commande', 'commande.client', 'paiements'])
             ->whereIn('client_id', $clientsTerme)
             ->orderByDesc('created_at')
@@ -181,7 +231,7 @@ class CreanceClientTermeController extends Controller
                 $reste = max(0, (float) $f->montant - $totalPaye);
                 return (object) [
                     'numero'       => $f->numero,
-                    'client_nom'   => $client ? trim($client->nom . ' ' . $client->prenom) : '-',
+                    'client_nom'   => $client?->display_name ?? '-',
                     'total_a_payer'=> (float) $f->montant,
                     'reste'        => $reste,
                 ];
@@ -194,6 +244,10 @@ class CreanceClientTermeController extends Controller
             'totalEncaisse'      => $totalEncaisse,
             'modesPaiement'      => $modesPaiement,
             'facturesNonSoldees' => $facturesNonSoldees,
+            // Agence de la personne connectée : l'encaissement lui est imputé
+            // d'office. Elle n'est plus choisie dans une liste — voir
+            // storePaiement() et le commentaire de la migration.
+            'monAgence'          => Auth::user()?->agence,
         ]);
     }
 
@@ -216,7 +270,7 @@ class CreanceClientTermeController extends Controller
                 'date_relance'    => $r->date_relance,
                 'numero_facture'  => $r->facture?->numero ?? '-',
                 'code_client'     => $r->client_id,
-                'client_nom'      => $r->client ? trim($r->client->nom . ' ' . $r->client->prenom) : '-',
+                'client_nom'      => $r->client?->display_name ?? '-',
                 'type_relance'    => $r->type_relance,
                 'niveau'          => $r->niveau,
                 'reponse_client'  => $r->reponse_client,
@@ -229,7 +283,7 @@ class CreanceClientTermeController extends Controller
             ->get()->map(function (Client $c) {
                 return (object) [
                     'id'  => $c->id,
-                    'nom' => trim($c->nom . ' ' . $c->prenom),
+                    'nom' => $c->display_name,
                 ];
             });
         $facturesListe = Facture::with('paiements')
@@ -274,7 +328,7 @@ class CreanceClientTermeController extends Controller
                     'facture_id'    => $f->id,
                     'numero'        => $f->numero,
                     'client_id'     => $f->client_id,
-                    'client_nom'    => $f->client ? trim($f->client->nom . ' ' . $f->client->prenom) : '-',
+                    'client_nom'    => $f->client?->display_name ?? '-',
                     'date_echeance' => $f->date_echeance,
                     'jours_retard'  => $f->joursRetard(),
                     'reste'         => $f->resteAPayer(),
@@ -359,7 +413,7 @@ class CreanceClientTermeController extends Controller
         return response()->json([
             'facture' => [
                 'numero'        => $f->numero,
-                'client_nom'    => $client ? trim($client->nom . ' ' . $client->prenom) : '-',
+                'client_nom'    => $client?->display_name ?? '-',
                 'client_id'     => $f->client_id,
                 'total_a_payer' => $totalAPayer,
                 'total_paye'    => $totalPaye,
@@ -382,6 +436,19 @@ class CreanceClientTermeController extends Controller
             'reference'        => 'nullable|string|max:80',
             'notes'            => 'nullable|string|max:500',
         ]);
+
+        // L'agence n'est plus CHOISIE : c'est celle de la personne connectée.
+        //
+        // Tant qu'elle était sélectionnée dans une liste, un caissier pouvait
+        // imputer sa recette à un autre guichet que le sien, et la caisse d'une
+        // agence se retrouvait créditée d'un versement qu'elle n'avait jamais
+        // reçu. Refuser l'opération vaut mieux que d'inventer une agence par
+        // défaut, qui fausserait la caisse en silence.
+        $agenceId = Auth::user()?->agence_id;
+        if (!$agenceId) {
+            return back()->withInput()->with('error',
+                "Vous n'êtes rattaché à aucune agence : un administrateur doit vous affecter à un guichet avant que vous puissiez encaisser.");
+        }
 
         $f = Facture::where('numero', $validated['numero_facture'])->firstOrFail();
         $totalAPayer = (float) $f->montant;
@@ -416,6 +483,7 @@ class CreanceClientTermeController extends Controller
                 'service'        => 'COMMANDE',
                 'service_id'     => $f->service_id,
                 'facture_id'     => $f->id,
+                'agence_id'      => $agenceId,
                 'caissier_id'    => $caissier?->id,
                 'numero_recu'    => $numeroRecu,
                 'created_at'     => $validated['date_paiement'] ?? now(),
@@ -485,14 +553,14 @@ class CreanceClientTermeController extends Controller
 
     public function recu($paiementId)
     {
-        $p = Paiement::with(['client', 'caissier'])->findOrFail($paiementId);
+        $p = Paiement::with(['client', 'caissier', 'agence'])->findOrFail($paiementId);
         $data = $this->buildRecuData($p);
         return view('admin.shared.recu-paiement', $data);
     }
 
     public function recuPdf($paiementId)
     {
-        $p = Paiement::with(['client', 'caissier'])->findOrFail($paiementId);
+        $p = Paiement::with(['client', 'caissier', 'agence'])->findOrFail($paiementId);
         $data = $this->buildRecuData($p);
         $data['pdfMode'] = true;
 
@@ -537,11 +605,15 @@ class CreanceClientTermeController extends Controller
             'numeroRecu'         => $numeroRecu,
             'datePaiement'       => $p->created_at,
             'beneficiaireRole'   => 'Reçu de',
-            'beneficiaireNom'    => $client ? trim($client->nom . ' ' . $client->prenom) : '-',
+            'beneficiaireNom'    => $client?->display_name ?? '-',
             'beneficiaireContact'=> $client?->contact1,
             'modePaiement'       => $mode ?? '-',
             'reference'          => $ligne?->reference ?? $p->code,
             'caissier'           => $p->caissier?->nom_prenoms ?? '-',
+            // Le gabarit du reçu prévoyait déjà d'afficher l'agence, mais la
+            // valeur ne lui était jamais fournie : le bloc restait muet. Le
+            // client repart maintenant avec un reçu qui indique le guichet.
+            'agenceLabel'        => $p->agence?->nom,
             'libelle'            => $p->libelle,
             'montant'            => (float) $p->montant_total,
             'montantLabel'       => 'Montant encaissé',
@@ -625,7 +697,7 @@ class CreanceClientTermeController extends Controller
             return (object) [
                 'client'      => $client,
                 'code_client' => $client->id,
-                'nom'         => trim($client->nom . ' ' . $client->prenom),
+                'nom'         => $client->display_name,
                 'reste_du'    => $solde,
             ];
         })->filter(fn ($l) => $l->reste_du > 0)

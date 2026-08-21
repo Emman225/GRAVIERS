@@ -36,6 +36,13 @@ class Kernel extends HttpKernel
             \Illuminate\View\Middleware\ShareErrorsFromSession::class,
             \App\Http\Middleware\VerifyCsrfToken::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            // Retient la page précédente réellement visitée, pour que le bouton
+            // « Retour » y ramène sans deviner dans l'historique du navigateur.
+            \App\Http\Middleware\MemoriserPagePrecedente::class,
+            // Journal d'audit : trace les écritures du back-office.
+            // Placé en dernier, il s'exécute après la réponse et ne
+            // peut donc pas empêcher l'opération d'aboutir.
+            \App\Http\Middleware\TraceLesOperations::class,
         ],
 
         'api' => [
@@ -67,5 +74,6 @@ class Kernel extends HttpKernel
         'auth.type' => \App\Http\Middleware\RedirectToProperLogin::class,
         'authorizedAuthUser.type' => \App\Http\Middleware\autorizedAuthUser::class,
         'cors' => \App\Http\Middleware\Cors::class,
+        'admin.seulement' => \App\Http\Middleware\ReserveAuxAdministrateurs::class,
     ];
 }

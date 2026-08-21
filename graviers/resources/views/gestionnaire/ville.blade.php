@@ -80,7 +80,7 @@
 
                                                 <td><b>{{$ville->nom}}</b></td>
 
-                                                <td> {{$ville->pays->nom}} </td>
+                                                <td> {{$ville->pays?->nom}} </td>
 
                                                 <td class="text-end">
                                                     <div class="dropdown">

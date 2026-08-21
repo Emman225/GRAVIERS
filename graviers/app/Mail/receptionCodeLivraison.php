@@ -32,7 +32,7 @@ class receptionCodeLivraison extends Mailable
     {
         return new Envelope(
             subject: 'GRAVIERCI - Code de livraison',
-            to: $this->client->user->email
+            to: $this->client->user?->email ?: ($this->client->email ?: '')
         );
     }
 

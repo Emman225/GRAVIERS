@@ -127,6 +127,16 @@
                     <div class="kpi-card-label">Ratio Payé / Engagé</div>
                     <div class="kpi-card-value mt-2" style="color: #10b981;">{{ number_format($ratioPayeEngage, 1, ',', ' ') }} %</div>
                     <small class="text-muted">{{ number_format($ratioResteEngage, 1, ',', ' ') }}% restant à régler</small>
+                    {{-- Une avance apparaît quand un partenaire a été réglé au-delà
+                         de ce qu'il a gagné. Elle n'éteint aucune autre dette, donc
+                         elle n'entre pas dans le ratio : on la signale à part. --}}
+                    @if (($totalAvance ?? 0) > 0)
+                        <div class="mt-2">
+                            <span class="badge bg-warning text-dark">
+                                Avance de {{ Help::formatNombre($totalAvance, true) }}
+                            </span>
+                        </div>
+                    @endif
                 </div>
             </div>
         </div>

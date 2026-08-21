@@ -38,12 +38,23 @@
                                         <tr>
                                             <td><input type="radio" value="{{$enlevement->id}}" class="form-control"></td>
                                             <td> {{ $enlevement->code_enleve }} </td>
-                                            <td> {{ $enlevement->livraison->client->nom.' '.$enlevement->livraison->client->prenom }} </td>
-                                            <td><b> {{ $enlevement->fournisseur->nom.' '.$enlevement->fournisseur->prenom }} </b></td>
-                                            <td><b> {{ $enlevement->livreur->nom.' '.$enlevement->livreur->prenom }} </b></td>
-                                            <td>{{ $enlevement->produit->nom }}</td>
-                                            <td class="text-center">{{ $enlevement->qte }}</td>
-                                            <td class="text-center">{{ $enlevement->livraison->user?->nom_prenoms }}</td>
+                                            <td> {{ $enlevement->livraison?->client?->display_name }} </td>
+                                            <td><b> {{ $enlevement->fournisseur?->nom.' '.$enlevement->fournisseur?->prenom }} </b></td>
+                                            <td><b> {{ $enlevement->livreur?->nom.' '.$enlevement->livreur?->prenom }} </b></td>
+                                            <td>{{ $enlevement->produit?->nom }}</td>
+                                            <td class="text-center">
+                                                {{-- La quantité SERVIE par le fournisseur : c'est elle qui
+                                                     fait foi une fois le bon traité, et c'est elle qui est
+                                                     payée (cf. Enlevement::quantiteAPayer). --}}
+                                                {{ rtrim(rtrim(number_format($enlevement->quantiteAPayer(), 2, ',', ' '), '0'), ',') }}
+                                                @if ($enlevement->quantiteDiffereDeLaCommande())
+                                                    <br>
+                                                    <small class="text-muted">
+                                                        demandé : {{ rtrim(rtrim(number_format((float) $enlevement->qte, 2, ',', ' '), '0'), ',') }}
+                                                    </small>
+                                                @endif
+                                            </td>
+                                            <td class="text-center">{{ $enlevement->livraison?->user?->nom_prenoms }}</td>
                                             <td>{{ $enlevement->created_at->format('d-m-Y')}} @if($enlevement->fournisseur_validation != null) <span class="text-success"> (Fournisseur) @elseif($enlevement->livreur_validation != null) <span class="text-success"> (Livreur) </span> @endif</span> </td>
                                             {{-- <td class="text-end">
                                         <a href="" class="btn btn-md rounded font-sm">Detail</a>

@@ -46,14 +46,14 @@
             @if(isset($location))
                 @foreach($location->detailLocation as $detail)
                     @php
-                        $montant = ($detail->prix ?? $detail->produit->prix_moyen) * $detail->qte * $detail->nombre_jour;
+                        $montant = ($detail->prix ?? $detail->produit?->prix_moyen) * $detail->qte * $detail->nombre_jour;
                         $totalHT += $montant; $index++;
                     @endphp
                     <tr>
                         <td class="col-ref">{{ str_pad($index, 2, '0', STR_PAD_LEFT) }}</td>
-                        <td class="col-designation">{{ ucwords($detail->produit->nom) }}</td>
+                        <td class="col-designation">{{ ucwords($detail->produit?->nom) }}</td>
                         <td class="col-qte">{{ $detail->qte }}</td>
-                        <td class="col-pu">{{ number_format($detail->prix ?? $detail->produit->prix_moyen, 0, '', ' ') }}</td>
+                        <td class="col-pu">{{ number_format($detail->prix ?? $detail->produit?->prix_moyen, 0, '', ' ') }}</td>
                         <td class="col-unite">Du {{ $detail->debut }} au {{ $detail->fin }}</td>
                         <td class="col-montant">{{ number_format($montant, 0, '', ' ') }}</td>
                     </tr>

@@ -1,57 +1,82 @@
-# Secrets — ne jamais committer
+# ---------------------------------------------------------------------------
+# GRAVIERS — ce qui ne monte pas dans le dépôt.
+#
+# Le mono-dépôt réunit deux projets Laravel (graviers, apigravier) et trois
+# applications Flutter. Chacun produit des artefacts lourds qui se
+# reconstruisent à la demande : les publier les rendrait obsolètes dès le
+# lendemain, et ferait peser des gigaoctets au dépôt.
+# ---------------------------------------------------------------------------
+
+# --- Secrets -----------------------------------------------------------------
+# Chaque projet a déjà sa propre règle ; on la redouble ici pour qu'aucun
+# ajout de sous-dossier ne puisse y échapper. Les .env.example, eux, restent
+# suivis : ce sont eux qui documentent les variables attendues.
 .env
 .env.*
 !.env.example
+*.pem
+*.p12
+*.jks
+*.keystore
+auth.json
 
-# Laravel (apigravier, graviers)
-vendor/
+# --- Dépendances installables ------------------------------------------------
+# composer install / npm install / flutter pub get les rétablissent.
+/vendor/
+*/vendor/
 node_modules/
-storage/*.key
-apigravier/storage/logs/*.log
-graviers/storage/logs/*.log
-apigravier/storage/framework/cache/data/
-apigravier/storage/framework/sessions/
-apigravier/storage/framework/views/
-graviers/storage/framework/cache/data/
-graviers/storage/framework/sessions/
-graviers/storage/framework/views/
-apigravier/public/storage
-graviers/public/storage
-public/hot
+.pnp.*
 
-# Fichiers temporaires générés/uploadés
-graviers/public/public/storage/temp_pdfs/
+# --- Sorties de compilation Flutter ------------------------------------------
+# 3,8 Go à elles trois, reconstruites par « flutter build ».
+mon_gravier_mobile_*/build/
+mon_gravier_mobile_*/.dart_tool/
+mon_gravier_mobile_*/.flutter-plugins
+mon_gravier_mobile_*/.flutter-plugins-dependencies
+mon_gravier_mobile_*/android/.gradle/
+mon_gravier_mobile_*/android/app/debug/
+mon_gravier_mobile_*/android/app/profile/
+mon_gravier_mobile_*/android/app/release/
+mon_gravier_mobile_*/ios/Pods/
+mon_gravier_mobile_*/ios/.symlinks/
 
-# Dumps de base de données de production (données sensibles)
-graviers/bd.sql
-graviers/gravierci_production.sql
-
-# Flutter (mobile apporteur / client / livreur)
-**/build/
-**/.dart_tool/
-**/.flutter-plugins
-**/.flutter-plugins-dependencies
-**/android/.gradle/
-**/android/local.properties
-**/android/key.properties
-**/*.keystore
-**/*.jks
-**/ios/Pods/
-**/ios/.symlinks/
-
-# Config locale de l'outil Claude Code (propre à la machine, ne pas versionner)
-.claude/
-
-# Artefacts de build et archives locales (ne pas versionner)
+# --- Paquets applicatifs -----------------------------------------------------
+# GitHub refuse tout fichier de plus de 100 Mo ; nos APK pèsent de 74 à 89 Mo
+# pièce et il y en a une quinzaine. Pour les diffuser, passer par les
+# « Releases » de GitHub plutôt que par le dépôt.
 *.apk
-/apigravier.zip
-/graviers.zip
-/mon_gravier_mobile_apporteur.zip
-/mon_gravier_mobile_client.zip
-/mon_gravier_mobile_livreur.zip
+*.aab
+*.ipa
 
-# Divers
-~$*
+# --- Archives de déploiement -------------------------------------------------
+# Simples copies zippées de fichiers déjà présents dans le dépôt.
+deploiement-*.zip
+
+# --- Runtime Laravel ---------------------------------------------------------
+# Caches, sessions et vues compilées : propres à une machine, jamais partagés.
+*/storage/framework/cache/*
+*/storage/framework/sessions/*
+*/storage/framework/views/*
+*/storage/framework/testing/*
+*/storage/logs/*.log
+*/bootstrap/cache/*.php
+!*/storage/framework/**/.gitignore
+
+# --- Fichiers déposés par les utilisateurs -----------------------------------
+# Justificatifs, bons de commande, images de produits : ce sont des DONNÉES,
+# pas du code. Un exécutable s'y était même glissé.
+*/public/storage/
+*/public/public/storage/
+*/storage/app/public/
+
+# --- Outils et environnement local -------------------------------------------
+.claude/
+.phpunit.result.cache
+.php-cs-fixer.cache
+/.idea/
+/.vscode/
 *.log
-.DS_Store
 Thumbs.db
+.DS_Store
+desktop.ini
+~$*

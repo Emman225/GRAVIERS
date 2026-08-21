@@ -48,8 +48,8 @@
 
                                     <tr>
                                         <td class="text-center" > <a href="">{{$location->numero}}</a> </td>
-                                        <td class="text-center"><b> {{$location->client->nom.' '.$location->client->prenom}} </b></td>
-                                        <td class="text-center"> {{$location->client->type_client}} </td>
+                                        <td class="text-center"><b> {{$location->client?->display_name}} </b></td>
+                                        <td class="text-center"> {{$location->client?->type_client}} </td>
                                         <td class="text-center">
                                             {{-- Afficher le prix avant la reduction --}}
                                             <span class="vieux-prix"></span> <br>
@@ -77,29 +77,42 @@
                                         </td>
 
                                         <td class="text-end">
+                                            @php
+                                                // Paiement soldé (ou client à terme) exigé avant validation et facture FNE, comme pour les commandes.
+                                                $paiementOk = $location->statut == 3 || $location->client?->client_a_terme == 1;
+                                            @endphp
                                             @if ($location->etatLibelle() === 'EN ATTENTE')
-                                                <a href="{{ route('show.validerLocationPage', $location) }}" class="btn btn-sm btn-primary rounded font-sm">Valider &amp; affecter</a>
+                                                @if ($paiementOk)
+                                                    <a href="{{ route('show.validerLocationPage', $location) }}" class="btn btn-sm btn-primary rounded font-sm">Valider &amp; affecter</a>
+                                                @endif
                                             @elseif ($location->etatLibelle() === 'EN COURS')
                                                 <a href="{{ route('show.retourLocationPage', $location) }}" class="btn btn-sm btn-success rounded font-sm">Retour matériel</a>
                                             @endif
-                                            {{-- "Faire un paiement" seulement si la location n'est pas déjà soldée (statut 3). --}}
+                                            {{-- Paiement seulement si la location n'est pas déjà soldée (statut 3).
+                                                 Le bouton mène au GUICHET des encaissements, avec agence, reçu et
+                                                 seconde signature. L'écran de paiement historique, qui écrivait un
+                                                 règlement validé d'un seul clic, a été retiré. --}}
                                             @if ($location->statut != 3)
-                                                <a  href="{{route('paye.paiementLocation',$location)}}" class="btn btn-sm rounded font-sm">Faire un paiement</a>
+                                                <a href="{{ route('show.encaissements.locations', ['location' => $location->numero]) }}"
+                                                   class="btn btn-sm rounded font-sm">Faire un paiement</a>
                                             @endif
-                                            {{-- Facture FNE : générer (une fois) puis consulter. --}}
+                                            {{-- Facture FNE : générer (une fois, paiement soldé exigé) puis consulter. --}}
                                             @if ($location->factureFne)
                                                 <a href="{{ route('orders.factureLocation', ['facture' => $location->factureFne->id, 'action' => 'voir']) }}" target="_blank" class="btn btn-sm btn-outline-secondary rounded font-sm">Voir facture</a>
-                                            @else
+                                            @elseif ($paiementOk)
                                                 <form action="{{ route('orders.genererFactureLocation', $location) }}" method="post" style="display:inline-block">
                                                     @csrf
                                                     <button type="submit" class="btn btn-sm btn-outline-primary rounded font-sm"
                                                         onclick="return confirm('Générer la facture FNE de cette location ?');">Générer facture</button>
                                                 </form>
                                             @endif
-                                            {{-- Supprimer une location "fantôme" : EN ATTENTE ET non payée (statut != 3). --}}
-                                            @if ($location->statut != 3)
+                                            {{-- Supprimer une location "fantôme" : EN ATTENTE et SANS AUCUN paiement
+                                                 (statut 1). Dès qu'un acompte est encaissé (statut 2), la suppression
+                                                 disparaît : on ne supprime pas une location sur laquelle il y a de
+                                                 l'argent. Confirmation via SweetAlert2 (cf. jsParts). --}}
+                                            @if ($location->statut == 1)
                                                 <form action="{{ route('show.supprimerLocation', $location) }}" method="post" style="display:inline-block"
-                                                      onsubmit="return confirm('Supprimer cette location non payée ? Elle sera archivée.');">
+                                                      class="form-suppr-location" data-numero="{{ $location->numero }}">
                                                     @csrf
                                                     <button type="submit" class="btn btn-sm btn-outline-danger rounded font-sm">Supprimer</button>
                                                 </form>
@@ -138,6 +151,27 @@
                     url: '{{ asset('backend/plugins/DataTables/i18n/fr-FR.json') }}',
                 },
                 order: [],
+            });
+        });
+
+        // Confirmation SweetAlert2 de la suppression. Écouteur délégué au document :
+        // les lignes des autres pages DataTables sont hors DOM au chargement.
+        $(document).on('submit', '.form-suppr-location', function (e) {
+            var form = this;
+            if (form.dataset.confirmed === '1') return;
+            e.preventDefault();
+            if (typeof Swal === 'undefined') { form.dataset.confirmed = '1'; form.submit(); return; }
+            Swal.fire({
+                title: 'Supprimer cette location ?',
+                html: 'Location <b>N° ' + form.dataset.numero + '</b> — aucune somme encaissée.<br>'
+                    + 'Elle sera archivée et disparaîtra de la liste.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Oui, supprimer',
+                cancelButtonText: 'Annuler',
+                confirmButtonColor: '#d33',
+            }).then(function (r) {
+                if (r.isConfirmed) { form.dataset.confirmed = '1'; form.submit(); }
             });
         });
     </script>

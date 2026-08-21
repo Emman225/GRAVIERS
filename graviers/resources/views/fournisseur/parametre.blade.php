@@ -2,7 +2,7 @@
 @section('title','Fournisseur - Paramètre')
 
 @php
-    $userName  = trim(($frs->nom ?? '').' '.($frs->prenom ?? '')) ?: ($frs->user->nom_prenoms ?? 'Fournisseur');
+    $userName  = trim(($frs->nom ?? '').' '.($frs->prenom ?? '')) ?: ($frs->user?->nom_prenoms ?? 'Fournisseur');
     $firstName = explode(' ', $userName)[0];
     $initials  = strtoupper(mb_substr($frs->nom ?? 'F', 0, 1).mb_substr($frs->prenom ?? '', 0, 1));
 @endphp
@@ -42,7 +42,7 @@
                 <div class="premium-form-body text-center">
                     <div class="parametre-avatar mx-auto mb-3">{{ $initials ?: 'F' }}</div>
                     <h5 class="mb-1 fw-bold">{{ $userName }}</h5>
-                    <p class="text-muted mb-3" style="font-size:0.85rem">{{ $frs->user->email ?? '' }}</p>
+                    <p class="text-muted mb-3" style="font-size:0.85rem">{{ $frs->user?->email ?? '' }}</p>
 
                     <div class="parametre-info-grid">
                         <div class="parametre-info-row">
@@ -56,7 +56,7 @@
                             <i class="material-icons md-perm_identity text-primary"></i>
                             <div class="text-start">
                                 <div class="parametre-info-label">Login</div>
-                                <div class="parametre-info-value">{{ $frs->user->login ?? '—' }}</div>
+                                <div class="parametre-info-value">{{ $frs->user?->login ?? '—' }}</div>
                             </div>
                         </div>
                         <div class="parametre-info-row">
@@ -128,7 +128,7 @@
                             <div class="col-md-6">
                                 <label class="premium-field-label" for="login"><i class="material-icons md-perm_identity"></i> Login</label>
                                 <input id="login" class="form-control {{ session('loginExiste') ? 'is-invalid' : '' }}"
-                                       required type="text" name="login" value="{{ $frs->user->login }}" />
+                                       required type="text" name="login" value="{{ $frs->user?->login }}" />
                                 @if (session('loginExiste'))
                                     <div class="invalid-feedback d-block">{{ session('loginExiste') }}</div>
                                 @endif
@@ -137,7 +137,7 @@
                             <div class="col-md-6">
                                 <label class="premium-field-label" for="email"><i class="material-icons md-mail"></i> Email</label>
                                 <input id="email" class="form-control {{ session('emailExiste') ? 'is-invalid' : '' }}"
-                                       required type="email" name="email" value="{{ $frs->user->email }}"
+                                       required type="email" name="email" value="{{ $frs->user?->email }}"
                                        placeholder="vous@exemple.com" />
                                 @if (session('emailExiste'))
                                     <div class="invalid-feedback d-block">{{ session('emailExiste') }}</div>

@@ -18,7 +18,10 @@ class Like extends Model
     public static function liste($client_id)
     {
         $url = Help::$URL_BASE_FICHIER;
-        return Like::distinct()
+        // Même résolution de prix que le catalogue : la liste de souhaits
+        // renvoie des produits, elle doit donc afficher le prix réellement
+        // appliqué et non la colonne brute (cf. Produit::appliquerPrixCatalogue).
+        return Produit::appliquerPrixCatalogue(Like::distinct()
             ->selectRaw("produit.*, concat('$url',image_produit.image) as image")
             ->orderBy('produit.nom', 'asc')
             ->join('produit', 'likes.produit_id', '=', 'produit.id')
@@ -31,7 +34,7 @@ class Like extends Model
             })
             ->where('likes.client_id', $client_id)
             ->where('produit.statut', Help::$STATUT_ACTIF)
-            ->get();
+            ->get());
     }
 
     public static function lireCle($client_id, $produit_id)

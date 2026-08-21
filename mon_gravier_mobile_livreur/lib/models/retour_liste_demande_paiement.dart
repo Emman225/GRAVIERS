@@ -29,7 +29,9 @@ class RetourListeDemandePaiement {
 
 class DemandePaiement {
   int? id;
-  int? montant;
+  // demande_paiement.montant est un DOUBLE en base : déclaré int?, l'affectation
+  // levait un TypeError qui vidait toute la liste des demandes de paiement.
+  double? montant;
   int? modePaiementId;
   int? userId;
   int? userValideId;
@@ -62,7 +64,7 @@ class DemandePaiement {
 
   DemandePaiement.fromJson(Map<String, dynamic> json) {
     id = json['id'];
-    montant = json['montant'];
+    montant = double.tryParse(json['montant']?.toString() ?? '') ?? 0;
     modePaiementId = json['mode_paiement_id'];
     userId = json['user_id'];
     userValideId = json['user_valide_id'];

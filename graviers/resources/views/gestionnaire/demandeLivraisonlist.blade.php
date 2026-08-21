@@ -16,6 +16,17 @@
         </div>
 
         @endif
+
+        {{-- Clé propre, et non « error » : le projet utilise Flasher avec
+             flash_bag activé, qui capte error/success/warning/info avant la vue
+             et les rejoue en bulle flottante. Ce message-ci est long et
+             conditionne le travail du gestionnaire : il doit rester affiché. --}}
+        @if (session('blocage_reglement'))
+            <div class="alert alert-danger">
+                <i class="material-icons md-lock align-middle"></i>
+                {{ session('blocage_reglement') }}
+            </div>
+        @endif
     </div>
     <div class="card mb-4">
         <header class="card-header">
@@ -45,7 +56,7 @@
                         @foreach ($livraisons as $livraison )
                             @if ($livraison->etat_commande != "TERMINEE")
                                 <tr>
-                                    <td class="text-center" > {{$livraison->client->nom. ' '. $livraison->client->prenom}} </td>
+                                    <td class="text-center" > {{$livraison->client?->display_name}} </td>
                                     <td class="text-center">
                                         @foreach ($livraison->detailLivraison as $detail )
                                             {{$detail->nom_produit}} <br>
@@ -54,7 +65,7 @@
                                     <td class="text-center">
                                         {{-- {{$livraison->detailLivraison->qte.' '.$livraison->detailLivraison->unite}} --}}
                                         @foreach ($livraison->detailLivraison as $detail )
-                                            {{$detail->qte.' '.$detail->uniteProduit->libelle}} <br>
+                                            {{$detail->qte.' '.($detail->uniteProduit?->libelle ?? '')}} <br>
                                         @endforeach
 
                                     </td>
@@ -63,14 +74,20 @@
                                             {{$detail->description}} <br>
                                         @endforeach
                                     </td>
+                                    {{-- Les deux adresses sont NULLABLES en base et l'API mobile
+                                         recopie leurs identifiants depuis la requête sans les
+                                         contrôler. La prise en charge était déjà protégée — le
+                                         @dd laissé en commentaire ci-dessous garde la trace du
+                                         jour où le cas s'est produit ; la destination, elle, ne
+                                         l'était pas et faisait tomber la page entière. --}}
                                     <td class="text-center">
                                         {{-- @if ($livraison->priseEnCharge == null)
                                             @dd($livraison->id)
                                         @else --}}
-                                            {{$livraison->priseEnCharge?->affichage}}
+                                            {{$livraison->priseEnCharge?->affichage ?: '—'}}
                                         {{-- @endif --}}
                                     </td>
-                                    <td class="text-center"> {{$livraison->destination->affichage}} </td>
+                                    <td class="text-center"> {{$livraison->destination?->affichage ?: '—'}} </td>
                                     <td class="text-center">
                                         @switch($livraison->etat_commande)
                                             @case("EN ATTENTE")
@@ -80,13 +97,24 @@
                                             <span class=" badge bg-warning"> {{$livraison->etat_commande}} </span>
 
                                                 @break
-                                            @case("TERMINE")
+                                            {{-- « TERMINEE » avec deux E : c'est la valeur exacte de
+                                                 l'ENUM en base. Écrit « TERMINE », ce cas ne pouvait
+                                                 jamais correspondre. --}}
+                                            @case("TERMINEE")
                                             <span class="badge bg-success"> {{$livraison->etat_commande}} </span>
 
                                                 @break
                                             @default
 
                                         @endswitch
+
+                                        {{-- Un livreur qui refuse sa course laissait la demande
+                                             inchangee : elle restait « en attente » sans que rien
+                                             ne dise qu'il fallait la confier a quelqu'un d'autre. --}}
+                                        @if ($livraison->attendUneReaffectation())
+                                            <br>
+                                            <span class="badge bg-danger mt-1">Refus livreur - a reaffecter</span>
+                                        @endif
                                     </td>
                                     {{-- <td class="text-center"> {{$livraison->detailLivraison->poids_vehicule_souhaite}}t </td> --}}
                                     <td class="text-center fw_bold"> {{Carbon::parse($livraison->created_at)->format('d-m-Y à H:i')}} </td>

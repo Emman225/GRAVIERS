@@ -59,29 +59,36 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         var datas = jsonDecode(retourHttp.body);
         if (retourHttp.statusCode == 200) {
-          setState(() {
-            user.configs = ConfigModel.fromJson(datas);
+          user.configs = ConfigModel.fromJson(datas);
 
-            var ban = user.configs?.bannieres ?? [];
-            bannieresHaut =
-                ban.where((b) => b.typeBanniere == BANNIERE_TOP).toList();
-            bannieresMilieu =
-                ban.where((b) => b.typeBanniere == BANNIERE_FLASH).toList();
+          var ban = user.configs?.bannieres ?? [];
+          bannieresHaut =
+              ban.where((b) => b.typeBanniere == BANNIERE_TOP).toList();
+          bannieresMilieu =
+              ban.where((b) => b.typeBanniere == BANNIERE_FLASH).toList();
 
-            categories = user.configs?.categories ?? [];
-            produits = user.configs?.produits ?? [];
-          });
+          categories = user.configs?.categories ?? [];
+          produits = user.configs?.produits ?? [];
+
+          // Rafraîchir seulement si l'écran est encore affiché (voir
+          // chargerPoint()). Les données ci-dessus sont conservées dans tous
+          // les cas : rien n'est perdu si l'écran a été quitté.
+          if (mounted) setState(() {});
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
         user.code = 500;
-        user.message = "Une erreur s'est produite veuillez reesayer plus tard";
+        user.message = messageErreurTechnique(e);
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -105,27 +112,60 @@ class _HomeScreenState extends State<HomeScreen> {
           print(retourHttp.body);
         }
         var datas = jsonDecode(retourHttp.body);
+        // Le serveur doit répondre par un objet. S'il renvoie autre chose (une
+        // liste, un texte), « datas['code'] » échoue sur une erreur de type
+        // que rien ne distingue d'un vrai défaut de l'application. Mieux vaut
+        // nommer la situation que la laisser passer pour une panne.
+        if (datas is! Map) {
+          afficherErreur("Réponse inattendue du serveur pour les points de "
+              "fidélité (${datas.runtimeType}).");
+          return;
+        }
         if (retourHttp.statusCode == 200) {
           if (datas['code'] == 200) {
             montantPoint = double.tryParse(datas['montantPoint']?.toString() ?? '0') ?? 0;
             nombrePoint = double.tryParse(datas['nombrePoint']?.toString() ?? '0') ?? 0;
-            tva = datas['tva'];
-            montantTva = getTotalAmount() * tva / 100;
-            devise = datas['devise'];
-            setState(() {});
+            // Sans garde, un type inattendu levait une exception avalée par le catch :
+            // tva restait à 0 et TOUS les totaux du panier étaient calculés hors taxe,
+            // sans que personne ne le voie.
+            tva = int.tryParse(datas['tva']?.toString() ?? '0') ?? 0;
+            devise = datas['devise']?.toString() ?? '';
+            // montantTva est déjà positionné par getTotalAmount() à partir du HT ;
+            // le recalculer ici sur un montant TVA INCLUSE le surévaluait, et cette
+            // valeur partait telle quelle vers l'API (resume-commande, enregistrer-commande).
+            getTotalAmount();
+
+            // « Aller à l'accueil » après une commande reconstruit toute la
+            // pile de navigation : l'accueil bâti pendant la transition est
+            // remplacé alors que cet appel est encore en vol, et la réponse
+            // revient sur un écran qui n'existe plus.
+            //
+            // setState() se termine par « _element! » dans le framework
+            // (framework.dart:1219). En debug une assertion explique la
+            // situation ; en build release elle est retirée et il ne reste que
+            // l'erreur de type. C'est ce « [_TypeError] » qui s'affichait à
+            // chaque retour à l'accueil : le serveur n'y était pour rien.
+            //
+            // Les valeurs globales ci-dessus (tva, points, devise) restent
+            // affectées dans tous les cas — les sauter ferait calculer les
+            // paniers hors taxe.
+            if (mounted) setState(() {});
           } else {
-            EasyLoading.showError(datas['message']);
+            afficherErreur(datas['message']);
           }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
         if (kDebugMode) {
           print(e.toString());
         }
-        EasyLoading.showError(
-            "Une erreur s'est produite veuillez reesayer plus tard");
+        afficherErreur(messageErreurTechnique(e));
       }
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -135,6 +175,7 @@ class _HomeScreenState extends State<HomeScreen> {
     var lig = paniers.indexWhere((p) => p.type == 2);
     if (lig >= 0) {
       paniers.clear();
+      devisRepris = null;
     }
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {

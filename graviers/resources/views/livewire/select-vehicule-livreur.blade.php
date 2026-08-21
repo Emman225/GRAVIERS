@@ -7,7 +7,7 @@
             <option value="">Selection un livreur</option>
             @foreach ($livreurs as $livreur)
                 <option value="{{ $livreur->id }}">
-                    {{ $livreur->nom.' '.$livreur->prenom . ' | ' . $livreur->user->contact }}
+                    {{ $livreur->nom.' '.$livreur->prenom . ' | ' . $livreur->user?->contact }}
                 </option>
             @endforeach
 

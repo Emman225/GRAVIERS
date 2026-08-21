@@ -14,7 +14,7 @@
     ) || $isRecapCreancesActive || $isRecapDettesActive;
 
     $isClientOrdinaireActive = request()->routeIs(
-        'show.listClient',
+        'show.listClient', 'show.listClientEnAttente',
         'show.comptant.commandes', 'show.comptant.encaissements', 'show.comptant.synthese'
     );
     $isClientATermeActive    = request()->routeIs(
@@ -24,6 +24,15 @@
         'show.creancesTerme.synthese'
     );
     $isClientActive = $isClientOrdinaireActive || $isClientATermeActive;
+
+    // Comptabilité : un menu à part, et non une entrée sous « Etat ».
+    // « Etat » regroupe le pilotage commercial ; ces écrans-là servent la
+    // déclaration fiscale et le calcul de la marge, un autre métier.
+    $isComptabiliteActive = request()->routeIs(
+        'show.comptabilite.tvaCollectee', 'show.comptabilite.beneficesLivraisons'
+    );
+
+    $isAuditActif = request()->routeIs('show.audit.index');
 
     $isAdministrateursActive = request()->routeIs('show.listeAdmin', 'show.registerAdmin');
     $isGestionnairesActive   = request()->routeIs('show.listeGestionnaire', 'show.registerGestionnaire');
@@ -71,6 +80,31 @@
     </div>
 </li>
 
+<li class="menu-item has-submenu {{ $isComptabiliteActive ? 'active' : '' }}">
+    <a class="menu-link" href="javascript:void(0)">
+        <i class="icon material-icons md-calculate"></i>
+        <span class="text">Comptabilité</span>
+    </a>
+    <div class="submenu">
+        <a class="{{ request()->routeIs('show.comptabilite.tvaCollectee') ? 'active' : '' }}"
+           href="{{ route('show.comptabilite.tvaCollectee') }}">État de TVA collectée</a>
+        <a class="{{ request()->routeIs('show.comptabilite.beneficesLivraisons') ? 'active' : '' }}"
+           href="{{ route('show.comptabilite.beneficesLivraisons') }}">Bénéfices sur les livraisons</a>
+    </div>
+</li>
+
+{{-- Audit : réservé au superadministrateur et à l'administrateur.
+     Le même test protège la route (middleware admin.seulement) : masquer
+     l'entrée ne suffirait pas, l'adresse peut être tapée à la main. --}}
+@if (in_array((int) Auth::user()->type_user_id, [(int) Help::$USER_SA, (int) Help::$USER_ADMIN], true))
+    <li class="menu-item {{ $isAuditActif ? 'active' : '' }}">
+        <a class="menu-link" href="{{ route('show.audit.index') }}">
+            <i class="icon material-icons md-history"></i>
+            <span class="text">Audit</span>
+        </a>
+    </li>
+@endif
+
 <li class="menu-item has-submenu {{ $isClientActive ? 'active' : '' }}">
     <a class="menu-link" href="javascript:void(0)">
         <i class="icon material-icons md-person"></i>
@@ -84,8 +118,13 @@
             </a>
             <div class="submenu">
                 <a class="{{ request()->routeIs('show.listClient') ? 'active' : '' }}" href="{{route('show.listClient')}}">Liste client ordinaire</a>
+                <a class="{{ request()->routeIs('show.listClientEnAttente') ? 'active' : '' }}" href="{{route('show.listClientEnAttente')}}">Inscriptions en attente</a>
                 <a class="{{ request()->routeIs('show.comptant.commandes') ? 'active' : '' }}" href="{{route('show.comptant.commandes')}}">Commandes comptant</a>
                 <a class="{{ request()->routeIs('show.comptant.encaissements') ? 'active' : '' }}" href="{{route('show.comptant.encaissements')}}">Encaissements Agence</a>
+                {{-- « Encaissements demandes de livraison » et « Grille tarifaire
+                     livraisons » ont été déplacés sous « Demandes de livraison » :
+                     tous deux concernent TOUS les clients, ordinaires comme à
+                     terme, et n'avaient rien à faire ici. --}}
                 <a class="{{ request()->routeIs('show.comptant.synthese') ? 'active' : '' }}" href="{{route('show.comptant.synthese')}}">Synthèse comptant</a>
             </div>
         </div>

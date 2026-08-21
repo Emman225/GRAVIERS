@@ -1,8 +1,16 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:http/http.dart' as http;
 
 import '../../../components/custom_surfix_icon.dart';
 import '../../../components/form_error.dart';
 import '../../../constants.dart';
+import '../../../globale.dart';
+import '../../../models/User.dart';
+import '../../otp/otp_screen.dart';
 
 class ForgotPassForm extends StatefulWidget {
   const ForgotPassForm({super.key});
@@ -63,10 +71,51 @@ class _ForgotPassFormState extends State<ForgotPassForm> {
           FormError(errors: errors),
           const SizedBox(height: 8),
           ElevatedButton(
-            onPressed: () {
-              if (_formKey.currentState!.validate()) {
-                // Do what you want to do
+            // Le corps de ce bouton était VIDE : le livreur qui avait oublié son
+            // mot de passe cliquait « Continuer » et il ne se passait rien. Le
+            // parcours complet (envoi du code -> saisie -> nouveau mot de passe)
+            // était donc inaccessible. Implémentation alignée sur l'app apporteur.
+            onPressed: () async {
+              if (!_formKey.currentState!.validate()) return;
+              _formKey.currentState!.save();
+
+              if (!await verifierConnexion()) {
+                afficherInfo("Veuillez vérifier votre connexion internet");
+                return;
               }
+
+              afficherChargement();
+              try {
+                final http.Response retourHttp = await http
+                    .post(Uri.parse('${lienAPI()}demandeReinititPass'),
+                        headers: {"Content-Type": "application/json"},
+                        body: jsonEncode({"email": email}))
+                    .timeout(const Duration(minutes: 2));
+                if (kDebugMode) {
+                  print('demandeReinititPass status: ${retourHttp.statusCode}');
+                }
+                if (retourHttp.statusCode == 200) {
+                  var datas = jsonDecode(retourHttp.body);
+                  if (datas['code'] == 200) {
+                    user = User.fromJson(datas);
+                    fermerChargement();
+                    Get.toNamed(OtpScreen.routeName, arguments: 2);
+                    return;
+                  } else {
+                    afficherErreur(datas['message']);
+                  }
+                } else {
+                  afficherErreur(
+                      "Le serveur est momentanément indisponible (code ${retourHttp.statusCode}). Veuillez réessayer.");
+                }
+              } catch (e) {
+                if (kDebugMode) {
+                  print(e.toString());
+                }
+                afficherErreur(
+                    "Impossible de contacter le serveur. Vérifiez votre connexion et réessayez.");
+              }
+              fermerChargement();
             },
             child: const Text("Continuer"),
           ),

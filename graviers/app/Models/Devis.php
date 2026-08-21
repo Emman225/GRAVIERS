@@ -34,6 +34,63 @@ class Devis extends Model
         'date_livraison',
     ];
 
+    /**
+     * Montant réellement à payer sur ce devis.
+     *
+     * La colonne `montant` ne veut PAS dire la même chose selon l'origine :
+     *   - devis créé sur le site   -> montant = HT (montant == montant_ht) ;
+     *   - devis créé sur le mobile -> montant = TOTAL déjà net de TVA, de
+     *     livraison et de remise (l'API y range `$request->total`, que
+     *     l'application calcule comme HT + TVA + livraison − remise).
+     *
+     * Les écrans faisaient partout « montant + tva + cout_livraison ». Pour un
+     * devis venu du mobile, cela ajoutait la TVA une SECONDE fois : un devis de
+     * 23 789 F s'affichait 27 418 F sur le site alors que l'application, elle,
+     * annonçait le bon chiffre. Le client voyait deux prix, et c'est celui du
+     * site qui était faux.
+     *
+     * On part donc de montant_ht, seule colonne dont le sens ne dépend pas du
+     * canal, et on rebâtit le net. Repli sur `montant` pour les devis anciens
+     * qui n'ont pas de HT enregistré — même convention que la requête des
+     * paiements en attente (COALESCE(NULLIF(montant_ht, 0), …)).
+     */
+    public function montantHT(): float
+    {
+        $ht = (float) $this->detailDevis->sum(function ($d) {
+            return (float) $d->prix * (float) $d->qte;
+        });
+
+        if ($ht > 0) {
+            return $ht;
+        }
+
+        // Replis, pour les devis sans lignes : d'abord la colonne HT, puis le
+        // montant. Un devis sans ligne ne devrait pas exister.
+        $ht = (float) ($this->montant_ht ?? 0);
+
+        return $ht > 0 ? $ht : (float) $this->montant;
+    }
+
+    public function montantAPayer(): float
+    {
+        // Le HT vient des LIGNES, jamais de la colonne montant_ht.
+        //
+        // Constaté sur le devis 687789 : montant_ht valait 10 000 pour une
+        // ligne unique de 50 × 100 = 5 000. Le client lisait 14 900 F sur son
+        // devis et 9 900 F sur la commande qui en est issue — deux prix pour
+        // la même chose, et c'est celui du devis qui était faux.
+        //
+        // Même règle que Commande::montantHT() : les lignes sont la seule
+        // source dont le sens ne dépend ni du canal, ni d'une reprise de
+        // saisie ultérieure.
+        $ht = $this->montantHT();
+
+        return max(0, $ht
+            + (float) ($this->tva ?? 0)
+            + (float) ($this->cout_livraison ?? 0)
+            - (float) ($this->cout_reduction ?? 0));
+    }
+
     public static function lire($id)
     {
         $obj = Devis::find($id);

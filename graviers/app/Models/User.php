@@ -35,11 +35,36 @@ class User extends Authenticatable
         'photo',
         'adresse',
         'type_user_id',
+        'agence_id',
         'statut',
         'token',
         'ville_id',
         'deleted_at'
     ];
+
+    /**
+     * Agence de rattachement — le guichet où cette personne travaille.
+     *
+     * Elle sert à imputer automatiquement un encaissement au bon guichet.
+     * L'agence était auparavant choisie dans une liste au moment de la saisie :
+     * un caissier pouvait imputer sa recette à une autre agence que la sienne,
+     * et la caisse d'un guichet se retrouvait créditée d'un versement qu'il
+     * n'avait jamais reçu.
+     */
+    public function agence()
+    {
+        return $this->belongsTo(\App\Models\Agence::class, 'agence_id');
+    }
+
+    /**
+     * Peut-elle encaisser ou décaisser ? Seulement si elle est rattachée à un
+     * guichet actif.
+     */
+    public function peutEncaisser(): bool
+    {
+        return $this->agence_id !== null
+            && (int) ($this->agence?->statut ?? 0) === \Help::$STATUT_ACTIF;
+    }
 
 
 

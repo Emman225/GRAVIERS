@@ -164,7 +164,24 @@ class _DetailsScreenState extends State<DetailsScreen> {
                 }
                 if (bPass) {
                   if (quantiteStr.isNotEmpty) {
-                    final qte = double.parse(quantiteStr);
+                    // Clavier français : la virgule est le séparateur décimal par
+                    // défaut. double.parse("2,5") levait une exception non gérée
+                    // (bouton mort / écran rouge).
+                    final qte = double.tryParse(quantiteStr.replaceAll(',', '.'));
+                    if (qte == null) {
+                      afficherErreur("Veuillez saisir une quantité valide");
+                      return;
+                    }
+                    // Location : une date de fin antérieure à la date de début donne
+                    // un nombre de jours nul ou négatif, donc un total nul ou négatif.
+                    final nbJours = product.type_affaire == LOCATION
+                        ? nombreDeJoursEntre2Dates(debutStr, finStr)
+                        : 1;
+                    if (product.type_affaire == LOCATION && (nbJours == null || nbJours <= 0)) {
+                      afficherErreur(
+                          "La date de fin doit être postérieure ou égale à la date de début");
+                      return;
+                    }
                     if (qte > 0) {
                       int index =
                           paniers.indexWhere((p) => p.product.id == product.id);
@@ -175,24 +192,24 @@ class _DetailsScreenState extends State<DetailsScreen> {
                               product: product,
                               numOfItem: qte,
                               type: 1,
-                              nbreJours: nombreDeJoursEntre2Dates(debutStr, finStr),
+                              nbreJours: nbJours,
                               dateDebut: debutStr,
                               dateDeFin: finStr));
                         });
-                        EasyLoading.showSuccess("Ajouté au panier avec succès");
+                        afficherSucces("Ajouté au panier avec succès");
                       } else {
-                        EasyLoading.showInfo("Déjà présent dans votre panier");
+                        afficherInfo("Déjà présent dans votre panier");
                       }
                     } else {
-                      EasyLoading.showError(
+                      afficherErreur(
                           "Veuillez saisir une quantité supérieur à 0");
                     }
                   } else {
-                    EasyLoading.showError(
+                    afficherErreur(
                         "Veuillez saisir une quantité valide");
                   }
                 } else {
-                  EasyLoading.showError(
+                  afficherErreur(
                       "Veuillez choisir des produits en ${paniers.first.product.type_affaire}");
                 }
               },

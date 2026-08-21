@@ -77,7 +77,7 @@
                                             @if(!Cart::content()->isEmpty())
                                                 @foreach (Cart::content() as $produit)
                                                     @php $type_affaire = $produit->options?->type_affaire @endphp
-                                                    <tr class="pt-30 cart-row" data-rowid="{{ $produit->rowId }}">
+                                                    <tr class="pt-30 cart-row" data-rowid="{{ $produit->rowId }}" data-price="{{ $produit->price }}">
                                                         <td class="custome-checkbox pl-30"></td>
 
                                                         <td class="image product-thumbnail pt-40">
@@ -125,10 +125,10 @@
 
                                                         <td class="price" data-title="Sous-total">
                                                             <div class="detail-extralink mr-15">
-                                                                <div class="radius w-100 cart-subtotal-wrap">
-                                                                    <span class="cart-subtotal-amount font-md text-brand">{{ number_format($produit->price * $produit->qty, 0, '', ' ') }} fcfa</span>
-                                                                    <input type="hidden" id="montant" name="montant[]"
-                                                                           value="{{ $produit->price * $produit->qty }}">
+                                                                <div class="radius w-100 cart-subtotal-wrap" title="Saisissez un montant : la quantité sera recalculée automatiquement">
+                                                                    <input type="text" id="montant" name="montant[]" class="qty-val"
+                                                                           value="{{ number_format($produit->price * $produit->qty, 0, '', '') }}">
+                                                                    <span class="cart-subtotal-suffix">fcfa</span>
                                                                 </div>
                                                             </div>
                                                         </td>
@@ -411,11 +411,20 @@
 
         /* Sous-total éditable */
         .cart-subtotal-wrap {
+            display: flex;
+            align-items: center;
+            gap: 6px;
             background: #ffffff;
             border: 1.5px solid #e5e7eb;
             border-radius: 10px;
             padding: 7px 10px;
             transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .cart-subtotal-suffix {
+            color: #6b7280;
+            font-size: 0.82rem;
+            font-weight: 600;
+            white-space: nowrap;
         }
         .cart-subtotal-wrap:focus-within {
             border-color: #ea580c;
@@ -675,8 +684,7 @@
                 },
                 success: function (response) {
                     if (response.success) {
-                        row.find('input[id=montant]').val(response.subtotal);
-                        row.find('.cart-subtotal-amount').text(response.subtotal + ' fcfa');
+                        row.find('input[name="montant[]"]').val(response.subtotal);
                         $('#montant_total').text(response.total);
                         $('#montant_tva').text(response.tva);
                         $('#montant_ttc').text(response.ttc);
@@ -759,17 +767,21 @@
         });
 
 
-        $('input[name="qte[]"]').on('keyup', function () {
-            let row = $(this).closest('tr');
-            let newQty = parseInt($(this).val());
+        // Saisie directe de la quantité : événement 'input' (fiable aussi sur
+        // clavier mobile, contrairement à keyup) + debounce, et parseFloat
+        // pour accepter les quantités décimales (ex : 2.5).
+        const qteDebounceTimers = {};
+        $(document).on('input', 'input[name="qte[]"]', function () {
+            const row = $(this).closest('tr');
+            const rowId = row.data('rowid');
+            const newQty = parseFloat($(this).val());
 
+            clearTimeout(qteDebounceTimers[rowId]);
             if (newQty > 0) {
-                updateTotals(row, newQty);
+                qteDebounceTimers[rowId] = setTimeout(function () {
+                    updateTotals(row, newQty);
+                }, 500);
             }
-            //else {
-            //    $(this).val(0.1);
-           //     updateTotals(row, 0.1);
-           // }
         });
 
 
@@ -801,7 +813,17 @@
 
                         // Mettre à jour les champs qte[] et montant[]
                         tr.find('input[name="qte[]"]').val(response.qte);
-                        tr.find('input[name="montant[]"]').val(response.subtotal);
+                        // Ne pas réécrire le montant pendant que l'utilisateur
+                        // le saisit encore (sinon la valeur tapée est écrasée
+                        // en cours de frappe et se combine avec la réponse).
+                        const montantInput = tr.find('input[name="montant[]"]');
+                        if (!montantInput.is(':focus')) {
+                            montantInput.val(response.subtotal);
+                        } else {
+                            // Mémorise le sous-total réel : il sera appliqué
+                            // quand l'utilisateur quittera le champ.
+                            montantInput.data('pendingSubtotal', response.subtotal);
+                        }
                         $('#montant_total').text(response.total);
                         $('#montant_tva').text(response.tva);
                         $('#montant_ttc').text(response.ttc);
@@ -825,6 +847,16 @@
 
         }
 
+        // À la sortie du champ montant, applique le sous-total réel renvoyé
+        // par le serveur pendant la saisie (voir pendingSubtotal ci-dessus).
+        $(document).on('blur', 'input[name="montant[]"]', function () {
+            const pending = $(this).data('pendingSubtotal');
+            if (pending !== undefined) {
+                $(this).val(pending);
+                $(this).removeData('pendingSubtotal');
+            }
+        });
+
         const debounceTimers = {}; // Dictionnaire de timers par champ
 
         $(document).on('input', 'input[name="montant[]"]', function () {
@@ -840,10 +872,11 @@
                 const montant = parseFloat(inputMontant.val()) || 0;
                 const qte = parseFloat(tr.find('input[name="qte[]"]').val()) || 0;
 
-                const prixText = tr.find('td.price .detail-qty').text().trim();
-                const matchPrix = prixText.match(/(\d+([.,]?\d+)?)/);
-                const prixUnitaire = matchPrix ? parseFloat(matchPrix[1].replace(',', '.')) : 0;
-                if(montant> 0){
+                // Prix unitaire brut porté par la ligne (data-price) : ne pas
+                // le re-parser depuis le texte affiché, l'espace des milliers
+                // (« 12 000 fcfa ») tronquerait la valeur (12 au lieu de 12000).
+                const prixUnitaire = parseFloat(tr.data('price')) || 0;
+                if(montant > 0 && prixUnitaire > 0){
                     console.log('montant là: ' + montant);
 
                     updateByTotal(rowId, qte, prixUnitaire, montant);

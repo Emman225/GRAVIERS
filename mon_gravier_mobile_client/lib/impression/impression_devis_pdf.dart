@@ -153,6 +153,7 @@ class ImpressionDevisPdf extends StatelessWidget {
       totalTva: montantTvaCalc,
       totalTtc: totalTtc,
       totalAPayer: totalAPayer,
+      remise: coutReductionDevis,
       resumeFiscal: resumeFiscal,
       adresseLivraison: devis.adresse_livraison,
     );

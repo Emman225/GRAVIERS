@@ -304,6 +304,75 @@ function showCartToast(type, title, text) {
     setTimeout(close, 3000);
 }
 
+/* =============================================================
+   Vue rapide : quantité et montant se répondent
+   =============================================================
+
+   Le client raisonne dans les deux sens : « il m'en faut 3 » ou « j'ai
+   15 000 francs ». La fenêtre acceptait la quantité seule, et le montant
+   affiché ne bougeait pas.
+
+   Le prix unitaire est porté par data-price sur le conteneur, jamais relu
+   depuis le texte affiché : « 12 000 fcfa » se parse en 12.
+
+   La quantité reste entière — le bouton « Ajouter au panier » la transmet via
+   parseInt, et le pas de l'incrément est de 1. Un montant qui ne tombe pas
+   juste donne donc la quantité la plus proche, et le montant se réaligne
+   quand on quitte le champ, pour que les deux ne se contredisent jamais. */
+
+function prixUnitaireQuickView(bloc){
+    return bloc ? (parseFloat(bloc.getAttribute('data-price')) || 0) : 0;
+}
+
+function blocQuickView(element){
+    // Le conteneur est celui qui porte le prix : il englobe À LA FOIS le grand
+    // montant affiché en haut et les deux champs de saisie.
+    return element ? element.closest('[data-price]') : null;
+}
+
+/** Écrit le total en toutes lettres dans le grand montant du haut. */
+function afficheTotalQuickView(bloc, total){
+    if (!bloc) return;
+    var cible = bloc.querySelector('.total-val');
+    if (!cible) return;
+    // Espace insécable fine comme séparateur de milliers, à l'identique du
+    // rendu serveur (number_format avec un espace).
+    cible.textContent = ' ' + Math.round(total).toString()
+        .replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' fcfa';
+}
+
+/** Recalcule le montant à partir de la quantité. */
+function montantDepuisQte(bloc){
+    var prix = prixUnitaireQuickView(bloc);
+    var champQte = bloc ? bloc.querySelector('.qty-val') : null;
+    var champMontant = bloc ? bloc.querySelector('.montant-val') : null;
+    if (!prix || !champQte || !champMontant) return;
+
+    var qte = parseInt(champQte.value, 10);
+    if (isNaN(qte) || qte < 1) qte = 1;
+    champMontant.value = Math.round(qte * prix);
+    afficheTotalQuickView(bloc, qte * prix);
+}
+
+/** Recalcule la quantité à partir du montant saisi. */
+function qteDepuisMontant(bloc){
+    var prix = prixUnitaireQuickView(bloc);
+    var champQte = bloc ? bloc.querySelector('.qty-val') : null;
+    var champMontant = bloc ? bloc.querySelector('.montant-val') : null;
+    if (!prix || !champQte || !champMontant) return;
+
+    var montant = parseFloat(champMontant.value);
+    if (isNaN(montant) || montant < 0) montant = 0;
+
+    // Au moins une unité : la fenêtre ne sait pas commander « zéro ».
+    var qte = Math.max(1, Math.round(montant / prix));
+    champQte.value = qte;
+    // Le grand montant suit la saisie, pas la quantité arrondie : le client
+    // doit voir ce qu'il tape. Il se réalignera sur la quantité à la sortie
+    // du champ, via montantDepuisQte().
+    afficheTotalQuickView(bloc, montant);
+}
+
 // Gère les boutons +/- de quantité dans les modals "Vue rapide" (quickView).
 // La quantité est un <input class="qty-val"> voisin du bouton cliqué (dans .detail-qty)
 // et reste saisissable au clavier ; on borne simplement à un minimum de 1.
@@ -313,7 +382,25 @@ function changeQtyQuickView(btn, delta){
     var val = parseInt(field.value, 10);
     if (isNaN(val) || val < 1) val = 1;
     field.value = Math.max(1, val + delta);
+    montantDepuisQte(blocQuickView(field));
 }
+
+document.addEventListener('input', function (e){
+    if (e.target.classList.contains('qty-val')) {
+        montantDepuisQte(blocQuickView(e.target));
+    } else if (e.target.classList.contains('montant-val')) {
+        qteDepuisMontant(blocQuickView(e.target));
+    }
+});
+
+// À la sortie du champ montant, on affiche le montant réellement dû pour la
+// quantité retenue : saisir 250 pour un article à 100 laisse 3 unités, donc
+// 300. Réaligner pendant la frappe empêcherait d'écrire le nombre.
+document.addEventListener('focusout', function (e){
+    if (e.target.classList && e.target.classList.contains('montant-val')) {
+        montantDepuisQte(blocQuickView(e.target));
+    }
+});
 
 function ajouter(id, qty){
     var quantite = parseInt(qty, 10);

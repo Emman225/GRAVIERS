@@ -43,7 +43,7 @@
                         <div class="text">
                             <h6 class="mb-1">Info client</h6>
                             <p class="mb-1">
-                                {{ $devis->client?->nom }} {{ $devis->client?->prenom }} <br />
+                                {{ $devis->client?->display_name }} <br />
                                 {{ $devis->client?->email }} <br />
                                 {{ $devis->client?->contact1 }} <br>
                                 {{ $devis->client?->contact2 }}
@@ -140,7 +140,7 @@
                                             <dl class="dlist">
                                                 <dt>Total:</dt>
                                                 <dd><b class="h5">
-                                                        {{ Help::formatNombre($devis->montant + $devis->tva + $devis->cout_livraison, true) }} </b></dd>
+                                                        {{ Help::formatNombre($devis->montantAPayer(), true) }} </b></dd>
                                             </dl>
                                             <dl class="dlist">
 

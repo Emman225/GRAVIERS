@@ -51,7 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       try {
-        retourHttp = await http
+        final http.Response retourHttp = await http
             .post(Uri.parse('${lienAPI()}home-livreur'),
             headers: {"Content-Type": "application/json"},
             body: jsonEncode(param))
@@ -61,19 +61,26 @@ class _HomeScreenState extends State<HomeScreen> {
           print(datas);
         }
         if (retourHttp.statusCode == 200) {
-          retHome = RetourHome.fromJson(datas);
-          if (retHome.code == 200) {
+          final reponseHome = RetourHome.fromJson(datas);
+          if (reponseHome.code == 200) {
+            // retHome n'est remplace QU'EN cas de succes : sur une reponse d'erreur,
+            // data vaut null et le prochain rebuild plantait sur retHome.data! .
+            retHome = reponseHome;
             setState(() {
               demandes = retHome.data?.demandePaiement ?? [];
               livreur = retHome.data?.livreur ?? Livreur();
               user.livreur = livreur;
             });
           } else {
-            EasyLoading.showError(retHome.message ?? '');
+            afficherErreur(retHome.message ?? '');
           }
+        } else {
+          // Sans cette branche, une reponse serveur en erreur ne produisait
+          // AUCUNE reaction a l'ecran.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez reessayer.");
         }
       } catch (e) {
-        EasyLoading.showError(
+        afficherErreur(
             "Une erreur s'est produite veuillez reesayer plus tard");
         if (kDebugMode) {
           print(e.toString());
@@ -83,7 +90,7 @@ class _HomeScreenState extends State<HomeScreen> {
         fermerChargement();
       }
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -159,7 +166,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     Text(
                                       (afficheSolde == true)
                                           ? formaterMontant(user.livreur?.solde?.toDouble() ?? 0)
-                                          : "*" * user.livreur!.solde.toString().length,
+                                          : "*" * (user.livreur?.solde?.toString().length ?? 4),
                                       style: white14BoldTextStyle,
                                     ),
                                     addHorizontalSpace(20),
@@ -200,7 +207,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 crossAxisAlignment: crossCenter,
                                 children: [
                                   const Text("En Attente", style: black14MediumTextStyle,),
-                                  Text(retHome.data!.stats!.first.attente.toString(), style: black18BoldTextStyle,),
+                                  Text((retHome.data?.stats?.isNotEmpty == true ? retHome.data!.stats!.first.attente : 0).toString(), style: black18BoldTextStyle,),
                                 ],
                               ),
                             ),
@@ -218,7 +225,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 crossAxisAlignment: crossCenter,
                                 children: [
                                   const Text("Effectué", style: black14MediumTextStyle,),
-                                  Text(retHome.data!.stats!.first.livree.toString(), style: black18BoldTextStyle,),
+                                  Text((retHome.data?.stats?.isNotEmpty == true ? retHome.data!.stats!.first.livree : 0).toString(), style: black18BoldTextStyle,),
                                 ],
                               ),
                             ),

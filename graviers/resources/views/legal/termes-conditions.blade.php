@@ -274,7 +274,7 @@
                             </div>
                             <div>
                                 <div class="legal-contact__label">Email</div>
-                                <a href="mailto:support@gravier.com" class="legal-contact__value">support@gravier.com</a>
+                                <a href="mailto:info@fneconnect.net" class="legal-contact__value">info@fneconnect.net</a>
                             </div>
                         </div>
                         <div class="legal-contact">

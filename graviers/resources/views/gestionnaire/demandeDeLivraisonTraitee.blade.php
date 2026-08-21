@@ -27,8 +27,10 @@
 
                     <thead>
                         <tr>
-                            <th class="text-center" style="background-color: #1c57a3; color: white; border-top-left-radius:5px">Client</th>
-                            <th class="text-center" style="background-color: #1c57a3; color: white; border-top-left-radius:5px">Client</th>
+                            {{-- La première colonne porte le NUMÉRO de la demande, pas le
+                                 client : les deux en-têtes affichaient « Client ». --}}
+                            <th class="text-center" style="background-color: #1c57a3; color: white; border-top-left-radius:5px">N° demande</th>
+                            <th class="text-center" style="background-color: #1c57a3; color: white;">Client</th>
                             <th class="text-center" style="background-color: #1c57a3; color: white; ">Produit</th>
                             <th class="text-center" style="background-color: #1c57a3; color: white; ">Quantité</th> {{--  --}}
                             <th class="text-center" style="background-color: #1c57a3; color: white; ">Description</th>
@@ -45,7 +47,12 @@
 
                             <tr>
                                 <td class="text-center" > {{$livraison->numero}} </td>
-                                <td class="text-center" > {{$livraison->client->nom. ' '. $livraison->client->prenom}} </td>
+                                {{-- Relations lues sans risque : adresse_livraison_pec_id et
+                                     adresse_livraison_dest_id sont NULLABLES en base, et l'API
+                                     mobile recopie ces identifiants depuis la requête sans les
+                                     contrôler. Une seule demande incomplète faisait tomber la
+                                     PAGE ENTIÈRE en erreur 500, pas seulement sa ligne. --}}
+                                <td class="text-center" > {{($livraison->client?->display_name ?? '') ?: '—'}} </td>
                                 <td class="text-center">
                                     @foreach ($livraison->detailLivraison as $detail )
                                         {{$detail->nom_produit}} <br>
@@ -54,13 +61,13 @@
                                 <td class="text-center">
                                     {{-- {{$livraison->detailLivraison->qte.' '.$livraison->detailLivraison->unite}} --}}
                                     @foreach ($livraison->detailLivraison as $detail )
-                                        {{$detail->qte.' '.$detail->uniteProduit->libelle}} <br>
+                                        {{$detail->qte.' '.($detail->uniteProduit?->libelle ?? '')}} <br>
                                     @endforeach
 
                                 </td>
                                 <td class="text-center"> {{$livraison->description}} </td>
-                                <td class="text-center"> {{$livraison->priseEnCharge->affichage}} </td>
-                                <td class="text-center"> {{$livraison->destination->affichage}} </td>
+                                <td class="text-center"> {{$livraison->priseEnCharge?->affichage ?: '—'}} </td>
+                                <td class="text-center"> {{$livraison->destination?->affichage ?: '—'}} </td>
                                 {{-- <td class="text-center"> {{$livraison->detailLivraison->poids_vehicule_souhaite}}t </td> --}}
                                 <td class="text-center fw_bold"> {{Carbon::parse($livraison->created_at)->format('d-m-Y à H:i')}} </td>
                                 <td class="text-center"> <a href="{{route('show.detailDemandeLivraison',$livraison)}}" class="btn btn-primary"> Détails</a> </td>

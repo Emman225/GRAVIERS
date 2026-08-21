@@ -34,7 +34,7 @@
                             <tr>
                                 <td>
                                     <a class="itemside">
-                                        <div class="info">{{ $bon->produit->nom }}</div>
+                                        <div class="info">{{ $bon->produit?->nom }}</div>
                                     </a>
                                 </td>
                                 <td> {{ $produit->prix }} fcfa</td>
@@ -82,7 +82,7 @@
                             <tr>
                                 <td>
                                     <a class="itemside">
-                                        <div class="info">{{ $bon->livraison->livreur->user->nom_prenoms }}</div>
+                                        <div class="info">{{ $bon->livraison?->livreur?->user?->nom_prenoms }}</div>
                                     </a>
                                 </td>
                                 <td> {{ $bon->matricule_vehicule }}</td>
@@ -116,36 +116,31 @@
     </html>
 
         <div class="container" style="max-width: 800px; margin: 0 auto; border: 1px solid #000; padding: 20px;">
-            <div class="header" style="display: flex; justify-content: space-between; margin-bottom: 20px;">
-                <div>
-                   {{-- <img width="150px" src="{{asset('backend/assets/imgs/theme/logoAvecFond.jpg')}}" alt=""> --}}
-                </div>
-                <div>
-                    <p>02 BP 578 Abidjan 02</p>
-                    <p>Téléphone : 07 97 85 68 27</p>
-                    <p>Télécopie :</p>
-                    <p>Adresse mail :</p>
-                    <p>Site internet :</p>
-                </div>
-            </div>
+            @include('document.partials.entete-bon')
 
             <div class="title" style="text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 20px;">
                 Bon de livraison N° <span style="font-weight:bold"> {{$bon->code_enleve}} </span>
             </div>
 
             {{-- <div class="info-box">
-                <p>En date du: <span style="font-weight:bold">{{$enlevement->livraison->date_livraison}}</span> </p>
-                <p>Référence Fournisseur: <span style="font-weight:bold">{{ $enlevement->fournisseur->nom_prenoms }}</span></p>
-                <p>Adresse <span style="font-weight:bold">{{ $enlevement->fournisseur->adresse_geo }}</span></p>
-                <p>Contact: <span style="font-weight:bold">{{ $enlevement->fournisseur->contact1 }}</span></p>
+                <p>En date du: <span style="font-weight:bold">{{$enlevement->livraison?->date_livraison}}</span> </p>
+                <p>Référence Fournisseur: <span style="font-weight:bold">{{ $enlevement->fournisseur?->nom_prenoms }}</span></p>
+                <p>Adresse <span style="font-weight:bold">{{ $enlevement->fournisseur?->adresse_geo }}</span></p>
+                <p>Contact: <span style="font-weight:bold">{{ $enlevement->fournisseur?->contact1 }}</span></p>
             </div> --}}
 
             <div class="info-box" style="border: 1px solid #000; padding: 10px; margin-bottom: 20px;  ">
-                <p>Détail livreur</p>
-                <p>Nom prénom : <span style="font-weight:bold">{{ $bon->livraison->livreur->user->nom_prenoms }}</span> </p>
-                <p>matricule du véhicule <span style="font-weight:bold">{{ $bon->matricule_vehicule }}</span> </p>
+                {{-- Ce bon est remis au fournisseur : il doit lui dire quand
+                     l'enlèvement a lieu et qui se présente pour le charger. Les
+                     libellés retombent sur « - » plutôt que de rester vides, un
+                     blanc laissant croire à une donnée oubliée. --}}
+                <p style="font-weight:bold; margin-bottom: 6px;">Détail livreur</p>
+                <p>En date du : <span style="font-weight:bold">{{ $bon->livraison?->date_livraison ? \Carbon\Carbon::parse($bon->livraison->date_livraison)->format('d/m/Y') : '-' }}</span></p>
+                <p>Nom et prénoms : <span style="font-weight:bold">{{ $bon->livraison?->livreur?->user?->nom_prenoms ?: '-' }}</span></p>
+                <p>Contact : <span style="font-weight:bold">{{ $bon->livraison?->livreur?->user?->contact ?: '-' }}</span></p>
+                <p>Matricule du véhicule : <span style="font-weight:bold">{{ $bon->matricule_vehicule ?: '-' }}</span></p>
                 {{-- <p>Télécopie</p>
-                <p>Lieu de livraison:  <span style="font-weight:bold">{{$enlevement->livraison->AdresseLivraison->complement_adresse}}</span></p> --}}
+                <p>Lieu de livraison:  <span style="font-weight:bold">{{$enlevement->livraison?->AdresseLivraison->complement_adresse}}</span></p> --}}
             </div>
 
             <table style=" width: 100%; border-collapse: collapse; margin-bottom: 20px;  ">
@@ -159,10 +154,20 @@
                 </thead>
                 <tbody>
                     <tr>
-                        <td style="border: 1px solid #000; padding: 10px; text-align: left;">{{ $bon->produit->nom }}</td>
-                        <td style="border: 1px solid #000; padding: 10px; text-align: left;">{{ $bon->qte }}</td>
-                        <td style="border: 1px solid #000; padding: 10px; text-align: left;">{{ $produit->prix }} fcfa</td>
-                        <td style="border: 1px solid #000; padding: 10px; text-align: left; background-color: yellow;">{{ $produit->prix * $bon->qte }} fcfa</td>
+                        <td style="border: 1px solid #000; padding: 10px; text-align: left;">{{ $bon->produit?->nom ?: '-' }}</td>
+                        <td style="border: 1px solid #000; padding: 10px; text-align: left;">
+                            {{-- La quantité SERVIE fait foi dès qu'elle est saisie : c'est elle
+                                 qui sera payée au fournisseur (Enlevement::quantiteAPayer). --}}
+                            {{ rtrim(rtrim(number_format($bon->quantiteAPayer(), 2, ',', ' '), '0'), ',') }}
+                            @if ($bon->quantiteDiffereDeLaCommande())
+                                <br>
+                                <span style="font-size: 11px; color: #555;">
+                                    quantité demandée : {{ rtrim(rtrim(number_format((float) $bon->qte, 2, ',', ' '), '0'), ',') }}
+                                </span>
+                            @endif
+                        </td>
+                        <td style="border: 1px solid #000; padding: 10px; text-align: left;">{{ number_format((float) ($produit?->prix ?? 0), 0, '', ' ') }} fcfa</td>
+                        <td style="border: 1px solid #000; padding: 10px; text-align: left; background-color: yellow;">{{ number_format((float) ($produit?->prix ?? 0) * $bon->quantiteAPayer(), 0, '', ' ') }} fcfa</td>
                     </tr>
                     {{-- <tr class="total-row" style="">
                         <td colspan="3" style="border: 1px solid #000; padding: 10px; text-align: left;">Total</td>

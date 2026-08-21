@@ -52,6 +52,11 @@ class SignInScreen extends StatelessWidget {
                   const SizedBox(height: 20),
                   const NoAccountText(),
                   const SizedBox(height: 16),
+                  const Text(
+                    'Version $kVersionApplication',
+                    style: TextStyle(fontSize: 12, color: Colors.black54),
+                  ),
+                  const SizedBox(height: 12),
                 ],
               ),
             ),

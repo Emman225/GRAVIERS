@@ -24,27 +24,27 @@
             @php
                 $serviceLabel = '';
                 $serviceNumero = '';
-                switch($ligne->paiement->service) {
+                switch($ligne->paiement?->service) {
                     case 'COMMANDE':
                         $serviceLabel = 'Paiement commande';
-                        $serviceNumero = $ligne->paiement->commande?->numero ?? 'N/A';
+                        $serviceNumero = $ligne->paiement?->commande?->numero ?? 'N/A';
                         break;
                     case 'LOCATION':
                         $serviceLabel = 'Paiement location';
-                        $serviceNumero = $ligne->paiement->location?->numero ?? 'N/A';
+                        $serviceNumero = $ligne->paiement?->location?->numero ?? 'N/A';
                         break;
                     case 'LIVRAISON':
                         $serviceLabel = 'Paiement livraison';
-                        $serviceNumero = $ligne->paiement->livraison?->numero ?? 'N/A';
+                        $serviceNumero = $ligne->paiement?->livraison?->numero ?? 'N/A';
                         break;
                     default:
                         $serviceLabel = 'Paiement';
-                        $serviceNumero = $ligne->paiement->code;
+                        $serviceNumero = $ligne->paiement?->code;
                 }
                 $montant = $ligne->montant;
             @endphp
             <tr>
-                <td class="col-ref">{{ $ligne->paiement->code }}</td>
+                <td class="col-ref">{{ $ligne->paiement?->code }}</td>
                 <td class="col-designation">{{ $serviceLabel }} n°{{ $serviceNumero }}<br><small>Référence : {{ $ligne->reference ?? 'N/A' }}</small></td>
                 <td class="col-pu">{{ number_format($montant, 0, '', ' ') }}</td>
                 <td class="col-qte">1</td>

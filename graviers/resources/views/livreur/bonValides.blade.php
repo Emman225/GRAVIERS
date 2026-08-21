@@ -87,7 +87,7 @@
                                 <td>{{ $vehicule?->marque ?: '—' }}</td>
                                 <td>@if($vehicule?->immatriculation) <span class="badge bg-light text-dark">{{ $vehicule->immatriculation }}</span> @else — @endif</td>
                                 <td class="text-end">{{ $vehicule?->capacite ? $vehicule->capacite.'t' : '—' }}</td>
-                                <td>{{ optional($enlevement->livraison)->date_livraison ? Carbon::parse($enlevement->livraison->date_livraison)->format('d/m/Y') : '—' }}</td>
+                                <td>{{ optional($enlevement->livraison)->date_livraison ? Carbon::parse($enlevement->livraison?->date_livraison)->format('d/m/Y') : '—' }}</td>
                             </tr>
                         @empty
                             <tr>

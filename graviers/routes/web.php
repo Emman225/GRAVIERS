@@ -4,6 +4,7 @@ use App\Models\Paiement;
 use Gloudemans\Shoppingcart\Cart;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Artisan;
+use App\Http\Controllers\AuditController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\TestController;
 use App\Http\Controllers\UserController;
@@ -22,9 +23,13 @@ use App\Http\Controllers\ConfigurationPrixController;
 use App\Http\Controllers\ResetProcessController;
 use App\Http\Controllers\CreanceClientTermeController;
 use App\Http\Controllers\CommandeComptantController;
+use App\Http\Controllers\DemandeLivraisonComptantController;
+use App\Http\Controllers\LocationComptantController;
+use App\Http\Controllers\GrilleTarifaireController;
 use App\Http\Controllers\DetteFournisseurController;
 use App\Http\Controllers\DetteLivreurController;
 use App\Http\Controllers\DetteApporteurController;
+use App\Http\Controllers\ComptabiliteController;
 use App\Http\Controllers\RecapGlobalDettesController;
 use App\Http\Controllers\AgenceController;
 use App\Http\Controllers\RecapCreancesController;
@@ -209,9 +214,31 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::post('/comptant/encaissements', [CommandeComptantController::class, 'storeEncaissement'])->name('comptant.encaissements.store');
     Route::post('/comptant/encaissements/{paiement}/valider', [CommandeComptantController::class, 'validerEncaissement'])->name('comptant.encaissements.valider');
     Route::get('/comptant/commande/{numero}/historique', [CommandeComptantController::class, 'commandeHistorique'])->name('comptant.commande.historique');
-    Route::get('/comptant/recu/{paiement}', [CommandeComptantController::class, 'recu'])->name('comptant.recu');
-    Route::get('/comptant/recu/{paiement}/pdf', [CommandeComptantController::class, 'recuPdf'])->name('comptant.recuPdf');
+    Route::get('/recu/{paiement}', [CommandeComptantController::class, 'recu'])->name('recu');
+    Route::get('/recu/{paiement}/pdf', [CommandeComptantController::class, 'recuPdf'])->name('recuPdf');
     Route::get('/comptant/synthese', [CommandeComptantController::class, 'synthese'])->name('comptant.synthese');
+
+    // Demandes de livraison réglées en agence. Écran distinct de celui des
+    // commandes : la caisse des ventes filtre en dur sur service = 'COMMANDE'.
+    // Le reçu, lui, est partagé — il travaille à partir du paiement.
+    Route::get('/comptant/livraisons/encaissements', [DemandeLivraisonComptantController::class, 'encaissements'])->name('comptant.livraisons.encaissements');
+    Route::post('/comptant/livraisons/encaissements', [DemandeLivraisonComptantController::class, 'storeEncaissement'])->name('comptant.livraisons.encaissements.store');
+    Route::post('/comptant/livraisons/encaissements/{paiement}/valider', [DemandeLivraisonComptantController::class, 'validerEncaissement'])->name('comptant.livraisons.encaissements.valider');
+
+    // Locations réglées en agence. Le règlement se saisissait depuis la fiche de
+    // la location, sans guichet, sans agence, sans reçu et SANS seconde
+    // signature — seul flux d'encaissement du back-office dans ce cas.
+    Route::get('/encaissements/locations', [LocationComptantController::class, 'encaissements'])->name('encaissements.locations');
+    Route::post('/encaissements/locations', [LocationComptantController::class, 'storeEncaissement'])->name('encaissements.locations.store');
+    Route::post('/encaissements/locations/{paiement}/valider', [LocationComptantController::class, 'validerEncaissement'])->name('encaissements.locations.valider');
+    Route::get('/encaissements/locations/{numero}/historique', [LocationComptantController::class, 'locationHistorique'])->name('encaissements.locations.historique');
+
+    // Grille tarifaire des demandes de livraison. Elle ne se modifiait
+    // jusqu'ici qu'en base, ce qui la rendait inexploitable par l'entreprise.
+    Route::get('/grille-tarifaire', [GrilleTarifaireController::class, 'index'])->name('grilleTarifaire');
+    Route::post('/grille-tarifaire', [GrilleTarifaireController::class, 'store'])->name('grilleTarifaire.store');
+    Route::post('/grille-tarifaire/{coutLivraison}', [GrilleTarifaireController::class, 'update'])->name('grilleTarifaire.update');
+    Route::delete('/grille-tarifaire/{coutLivraison}', [GrilleTarifaireController::class, 'destroy'])->name('grilleTarifaire.destroy');
 
     // Dettes fournisseurs - écrans dédiés (Enlèvements / Paiements / Synthèse)
     Route::get('/fournisseurs/enlevements', [DetteFournisseurController::class, 'enlevements'])->name('fournisseurs.enlevements');
@@ -248,6 +275,17 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::get('/recap-dettes/detail-fournisseurs', [RecapGlobalDettesController::class, 'detailFournisseurs'])->name('recapDettes.detailFournisseurs');
     Route::get('/recap-dettes/detail-livreurs', [RecapGlobalDettesController::class, 'detailLivreurs'])->name('recapDettes.detailLivreurs');
     Route::get('/recap-dettes/detail-apporteurs', [RecapGlobalDettesController::class, 'detailApporteurs'])->name('recapDettes.detailApporteurs');
+
+    // Comptabilité - états destinés à la déclaration et au pilotage de la marge.
+    Route::get('/comptabilite/tva-collectee', [ComptabiliteController::class, 'tvaCollectee'])->name('comptabilite.tvaCollectee');
+    Route::get('/comptabilite/benefices-livraisons', [ComptabiliteController::class, 'beneficesLivraisons'])->name('comptabilite.beneficesLivraisons');
+
+    // Journal d'audit — réservé au superadministrateur et à l'administrateur.
+    // Le middleware refuse les autres profils : masquer l'entrée de menu
+    // ne protège rien, l'adresse peut être tapée à la main.
+    Route::get('/audit', [AuditController::class, 'index'])
+        ->middleware('admin.seulement')
+        ->name('audit.index');
 
     // CRUD Agences
     Route::get('/agences', [AgenceController::class, 'index'])->name('agences.index');
@@ -555,7 +593,14 @@ Route::name('orders.')->controller(OrdersController::class)->middleware('auth.ty
     route::get('/orders-details/{numero}', 'ordersDetails')->name('details');
     route::get('/orders-be/{numero}', 'BECommande')->name('BECommande');
     route::get('/orders-be/{numero}/pdf', 'BECommandePdf')->name('BECommande.pdf');
+    route::get('/orders-be/{numero}/word', 'BECommandeWord')->name('BECommande.word');
     route::post('/generer-facture/{commande}', 'genererFacture')->name('genererFacture');
+    // Facture d'un seul bon : le cas du bon servi partiellement, qui se facture
+    // pour ce qu'il a livré sans attendre le reliquat. En POST — elle crée un
+    // document fiscal, elle ne doit pas partir sur un simple lien visité.
+    route::post('/generer-facture-enlevement/{enlevement}', 'genererFactureEnlevement')->name('genererFactureEnlevement');
+    // Tous les bons facturables de la commande, en une seule facture.
+    route::post('/generer-facture-totale/{commande}', 'genererFactureTotale')->name('genererFactureTotale');
     route::post('/recertifier-facture/{facture}', 'recertifierFacture')->name('recertifierFacture');
     route::get('/factures-non-validees', 'facturesNonValidees')->name('facturesNonValidees');
     route::get('/factures-validees', 'facturesValidees')->name('facturesValidees');
@@ -608,11 +653,18 @@ Route::name('paye.')->controller(PaiementController::class)->middleware('auth.ty
     Route::post('effectuer/paiement/{client}', 'effectuerPaiementTraitement')->name('effectuerPaiementTraitement');
 
     // route::get('/paiement/liste/{commande}')->name('liste');
-    route::get('/paiement/create/{commande}', 'paiementPage')->name('create');
-    route::post('/paiement/create/{commande}','paiement')->name('store');
+    // [RETIRÉ] /paiement/create/{commande} — écran de règlement d'une VENTE.
+    // Paiement validé d'un seul clic, sans agence, sans reçu, sans seconde
+    // signature, et sans rattachement au service. Remplacé par le guichet
+    // /comptant/encaissements pour les clients ordinaires, et par
+    // /clients-terme/paiements pour les clients à terme.
     Route::get('/paiement/liste','paiementList')->name('list');
-    Route::get('/paiement-location-{location}','paiementLocation')->name('paiementLocation');
-    Route::post('/paiement-location-{location}','paiementLocationTraitement')->name('paiementLocationTraitement');
+    // [RETIRÉ] /paiement-location-{location} — écran de règlement d'une location.
+    // Il écrivait un paiement DÉJÀ VALIDÉ d'un seul clic, sans agence, sans reçu
+    // et sans seconde signature : le seul encaissement du back-office dans ce cas.
+    // Remplacé par le guichet /encaissements/locations, qui applique la
+    // double validation comme les ventes et les demandes de livraison, et qui
+    // sert aussi les clients à terme.
 
     Route::get('/effectuer/paiement/{client}', 'effectuerPaiement')->name('effectuerPaiement');
 

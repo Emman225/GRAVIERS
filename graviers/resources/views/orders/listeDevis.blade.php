@@ -63,7 +63,7 @@
                                             {{-- Afficher le prix avant la reduction --}}
                                             <span
                                                 class="vieux-prix">{{ $d->remise > 0 ? Help::formatNombre($d->remise + $d->montant_total, true) : '' }}</span>
-                                            {{ Help::formatNombre($d->montant + $d->tva + $d->cout_livraison, true) }}
+                                            {{ Help::formatNombre($d->montantAPayer(), true) }}
                                         </td>
                                         <td>
                                              @if($d->cout_livraison > 0 ) {{number_format($d->cout_livraison, '0','', ' ')}} fcfa @else <span class="fw-bold"> Pas à livrer </span> @endif

@@ -29,6 +29,48 @@ class Location extends Model
         "est_livrable",
     ];
 
+    // ------------------------------------------------------------------
+    //  Montants d'une location — PORTÉS À L'IDENTIQUE depuis le site
+    //  (graviers/app/Models/Location.php). Voir la note du modèle Commande :
+    //  le plafond doit donner le même chiffre sur les deux canaux.
+    // ------------------------------------------------------------------
+
+    public function tvaLocation()
+    {
+        // Filtre type_affaire : commande_id d'une location et d'une commande
+        // peuvent porter la même valeur (tables séparées).
+        return $this->hasOne(TvaCommande::class, 'commande_id')
+            ->where('type_affaire', Help::$LOCATION)
+            ->withDefault(['montant' => 0]);
+    }
+
+    /**
+     * Total net à payer : HT − remise, puis TVA et livraison.
+     * Même formule qu'à la facturation (OrdersController::genererFactureLocation).
+     */
+    public function montantAPayer(): float
+    {
+        return max(0, (float) $this->montant_total - (float) ($this->remise ?? 0))
+            + (float) ($this->tvaLocation->montant ?? 0)
+            + (float) ($this->cout_livraison_client ?? 0);
+    }
+
+    /** Ce qui a réellement été encaissé sur la location. */
+    public function montantPayeComptant(): float
+    {
+        return (float) LignePaiement::where('service', Help::$LOCATION)
+            ->where('service_id', $this->id)
+            ->where('statut', Help::$STATUT_ACTIF)
+            ->sum('montant');
+    }
+
+    /** Reste dû ; un résidu < 1 fcfa est considéré comme nul. */
+    public function montantRestantDu(): float
+    {
+        $reste = $this->montantAPayer() - $this->montantPayeComptant();
+        return $reste < 1 ? 0.0 : $reste;
+    }
+
     public static function lire($id)
     {
         $obj = Location::selectRaw('location.*, mode_paiement.libelle as mode_paiement, tva_commande.montant as montant_tva, adresse_livraison.complement_adresse as adresse')

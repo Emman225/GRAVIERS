@@ -18,9 +18,9 @@
             <div class="row gx-3">
                 <div style="width:100%" class="col-lg-4 col-md-6 me-auto">
                     <p class="d-flex justify-content-between" >
-                        <span class="text-success h4">montant de la facture : {{ number_format($totalFacture, 0, '', ' ') }} fcfa</span>
-                        <span class="text-success h4">Montant reglé : {{ number_format($totalRegle, 0, '', ' ') }} fcfa</span>
-                        <span class="text-success h4">SOLDE : {{ number_format($totalSolde, 0, '', ' ') }} fcfa</span>
+                        <span class="text-success h4">Total facturé : {{ number_format($totalFacture, 0, ',', ' ') }} fcfa</span>
+                        <span class="text-success h4">Total réglé : {{ number_format($totalRegle, 0, ',', ' ') }} fcfa</span>
+                        <span class="text-success h4">Solde restant dû : {{ number_format($totalSolde, 0, ',', ' ') }} fcfa</span>
                     </p>
                 </div>
             </div>
@@ -34,38 +34,42 @@
                     <thead>
                         <tr>
                             <th class="text-center">Date mvt</th>
-                            <th class="text-center">Compte Tier</th>
-                            <th class="text-center">CLIENTS</th> {{--  --}}
-                            <th class="text-center">N° FACTURE / Chèque / Reçu</th>
-                            <th class="text-center">Montant de la fature</th> {{--  --}}
-                            <th class="text-center">Montant reglé</th> {{--  --}}
-                            <th class="text-center">SOLDE </th>
-                            <th class="text-center">Date Ech </th>
-                            <th class="text-center">Date EXO </th>
-                            <th class="text-center">Échéance </th>
-                            <th class="text-center">Age </th>
-                            <th class="text-center">Ageing1 </th>
-                            <th class="text-center">Ageing2 </th>
+                            <th class="text-center">Compte tiers</th>
+                            <th class="text-center">Client</th>
+                            <th class="text-center">N° facture</th>
+                            <th class="text-center">Montant de la facture</th>
+                            <th class="text-center">Montant réglé</th>
+                            <th class="text-center">Solde</th>
+                            <th class="text-center">Date d'échéance</th>
+                            {{-- « Échéance » nommait en fait le statut de la créance, et trois
+                                 colonnes — Date EXO, Ageing1, Ageing2 — n'affichaient qu'un
+                                 tiret écrit en dur. La ventilation par ancienneté existe, et
+                                 c'est la Balance âgée. --}}
+                            <th class="text-center">Statut</th>
+                            <th class="text-center">Retard</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach ($lignes as $l)
+                        @forelse ($lignes as $l)
                             <tr>
                                 <td class="text-center">{{ $l->date ? \Carbon\Carbon::parse($l->date)->format('d/m/Y') : '-' }}</td>
                                 <td class="text-center">{{ $l->client_id ?? '-' }}</td>
                                 <td class="text-center">{{ $l->client_nom }}</td>
                                 <td class="text-center">{{ $l->numero }}</td>
-                                <td class="text-center">{{ number_format($l->total_a_payer, 0, '', ' ') }}</td>
-                                <td class="text-center">{{ number_format($l->montant_paye, 0, '', ' ') }}</td>
-                                <td class="text-center">{{ number_format($l->reste, 0, '', ' ') }}</td>
+                                <td class="text-end">{{ number_format($l->total_a_payer, 0, ',', ' ') }}</td>
+                                <td class="text-end">{{ number_format($l->montant_paye, 0, ',', ' ') }}</td>
+                                <td class="text-end fw-bold">{{ number_format($l->reste, 0, ',', ' ') }}</td>
                                 <td class="text-center">{{ $l->date_echeance ? \Carbon\Carbon::parse($l->date_echeance)->format('d/m/Y') : '-' }}</td>
-                                <td class="text-center">-</td>
-                                <td class="text-center">{{ $l->facture->statutCreance() }}</td>
-                                <td class="text-center">{{ $l->jours_retard }} j</td>
-                                <td class="text-center">-</td>
-                                <td class="text-center">-</td>
+                                <td class="text-center">{{ $l->facture?->statutCreance() }}</td>
+                                <td class="text-center">{{ $l->jours_retard > 0 ? $l->jours_retard . ' j' : '-' }}</td>
                             </tr>
-                        @endforeach
+                        @empty
+                            <tr>
+                                <td colspan="10" class="text-center text-muted py-5">
+                                    Aucune créance client à terme.
+                                </td>
+                            </tr>
+                        @endforelse
                     </tbody>
                 </table>
                 <!-- table-responsive.// -->
@@ -85,11 +89,20 @@
     <script src="{{ asset('backend/plugins/DataTables/datatables.min.js') }}"></script>
     <script type="text/javascript">
         $(function() {
-            var $table = $('#liste').DataTable({
-                language: {
-                    url: '{{ asset('backend/plugins/DataTables/i18n/fr-FR.json') }}',
-                },
-            });
+            // Sans ce garde-fou, une table vide — le cas dès qu'aucun client à
+            // terme ne doit rien — fait échouer DataTables sur « Requested
+            // unknown parameter » : la ligne « Aucune créance » n'a qu'une
+            // cellule là où il en attend dix.
+            var $table = $('#liste');
+            if ($table.find('tbody tr').length > 0 &&
+                $table.find('tbody tr td[colspan]').length === 0) {
+                $table.DataTable({
+                    columnDefs: [{ targets: '_all', defaultContent: '-' }],
+                    language: {
+                        url: '{{ asset('backend/plugins/DataTables/i18n/fr-FR.json') }}',
+                    },
+                });
+            }
         });
     </script>
 @endsection

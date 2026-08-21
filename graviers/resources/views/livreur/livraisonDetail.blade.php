@@ -36,12 +36,12 @@
                                 <tr>
                                     <td>
                                         <a class="itemside">
-                                            <div class=" h4 info"> {{ $enlevement->produit->nom }} </div>
+                                            <div class=" h4 info"> {{ $enlevement->produit?->nom }} </div>
                                         </a>
                                     </td>
-                                    <td class="fw-bold h5"> {{ $enlevement->produit->prix_moyen }} fcfa</td>
+                                    <td class="fw-bold h5"> {{ $enlevement->produit?->prix_moyen }} fcfa</td>
                                     <td class="h4"> {{ $enlevement->qte }} </td>
-                                    <td class="text-end"><dd><b class="h5 text-success fw-bold "> {{ $enlevement->produit->prix_moyen * $enlevement->qte }} fcfa </b> <br>
+                                    <td class="text-end"><dd><b class="h5 text-success fw-bold "> {{ $enlevement->produit?->prix_moyen * $enlevement->qte }} fcfa </b> <br>
 
                                     </td>
                                 </tr>
@@ -78,14 +78,14 @@
                                         <tr>
                                             <td>
                                                 <a>
-                                                    <div class="h4 info ">{{ $enlevement->livraison->client->nom.' '.$enlevement->livraison->client->prenom }}</div>
+                                                    <div class="h4 info ">{{ $enlevement->livraison?->client?->display_name }}</div>
                                                 </a>
                                             </td>
                                             <td class="h4">
-                                                {{ $enlevement->livraison->client->contact1 }}</td>
+                                                {{ $enlevement->livraison?->client?->contact1 }}</td>
                                             </td>
                                             <td class="h4">
-                                                {{ $enlevement->livraison->commande->adresseLivraison->complement_adresse}}</td>
+                                                {{ $enlevement->livraison?->commande?->adresseLivraison->complement_adresse}}</td>
                                             </td>
                                         </tr>
                                     </tbody>

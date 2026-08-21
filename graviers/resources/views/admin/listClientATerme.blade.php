@@ -12,17 +12,23 @@
 
     </div>
 
-    {{-- Retours des actions de cette page. Ni la vue ni le gabarit n'en
-         affichaient : une révision de plafond enregistrée, ou refusée par la
-         validation, restait sans le moindre message à l'écran. --}}
-    @if (session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-    @if (session('error'))
-        <div class="alert alert-danger">{{ session('error') }}</div>
-    @endif
-    @if (session('info'))
-        <div class="alert alert-info">{{ session('info') }}</div>
+    {{-- Retours des actions de cette page.
+
+         Les clés « success », « error », « warning » et « info » ne sont PAS
+         lisibles ici : le projet utilise Flasher, configuré avec flash_bag
+         activé (config/flasher.php), qui capte ces quatre clés avant la vue et
+         les rejoue en notification flottante. Les tester dans un @if ne produit
+         donc jamais rien — c'est le cas dans tout le back-office.
+
+         L'avertissement sur le plafond emprunte pour cette raison une clé qui
+         lui est propre : trop long et trop lourd de conséquence pour une bulle
+         qui s'efface au bout de quelques secondes, il doit rester sous les yeux
+         du gestionnaire jusqu'à ce qu'il change de page. --}}
+    @if (session('avertissement_plafond'))
+        <div class="alert alert-warning">
+            <i class="material-icons md-warning align-middle"></i>
+            {{ session('avertissement_plafond') }}
+        </div>
     @endif
     @if ($errors->any())
         <div class="alert alert-danger">
@@ -87,7 +93,7 @@
                             <td class="text-center">
                                 <strong>{{ $codeClient }}</strong>
                             </td>
-                            <td>{{ trim($c->nom . ' ' . $c->prenom) }}</td>
+                            <td>{{ trim($c->display_name) }}</td>
                             <td class="text-center">
                                 <span class="badge bg-light text-dark">{{ $typeBadge }}</span>
                             </td>
@@ -176,7 +182,7 @@
                     <div class="modal-body text-center">
                         <p>
                             Voulez-vous vraiment supprimer le client : <span class="fw-bold">
-                                {{ $c->nom .' '.$c->prenom }} </span>
+                                {{ $c->display_name }} </span>
                         </p>
 
                         <h5 class="fw-bold text-danger" id="deleteNom"></h5>
@@ -219,7 +225,7 @@
                     <div class="modal-body text-center">
                         <p>
                             Voulez-vous vraiment Bloquer le client : <span class="fw-bold">
-                                {{ $c->nom .' '.$c->prenom }} </span>
+                                {{ $c->display_name }} </span>
                         </p>
 
                         <h5 class="fw-bold text-danger" id="deleteNom"></h5>
@@ -262,7 +268,7 @@
                     <div class="modal-body text-center">
                         <p>
                             Voulez-vous vraiment débloquer le client : <span class="fw-bold">
-                                {{ $c->nom .' '.$c->prenom }} </span>
+                                {{ $c->display_name }} </span>
                         </p>
 
                         <h5 class="fw-bold text-danger" id="deleteNom"></h5>
@@ -309,7 +315,7 @@
 
                         <div class="modal-body">
                             <p class="mb-3">
-                                Client : <span class="fw-bold">{{ trim($c->nom . ' ' . $c->prenom) }}</span>
+                                Client : <span class="fw-bold">{{ trim($c->display_name) }}</span>
                             </p>
 
                             <div class="mb-3">
@@ -360,7 +366,7 @@
                     <div class="modal-body text-center">
                         <p>
                             Voulez-vous vraiment {{ $c->applique_tva == 1 ? 'retirer la TVA' : 'appliquer la TVA' }} au client : <span class="fw-bold">
-                                {{ $c->nom .' '.$c->prenom }} </span>
+                                {{ $c->display_name }} </span>
                         </p>
 
                         <h5 class="fw-bold text-danger" id="deleteNom"></h5>
@@ -390,47 +396,11 @@
             </div>
         </div>
          <!-- Modal retirer tva -->
-        <div class="modal fade" id="deblockModal-{{ $c->id }}" tabindex="-1">
-            <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
 
-                    <div class="modal-header bg-info text-white">
-                        <h5 class="modal-title text-white">Confirmation de débloquage</h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                    </div>
+        {{-- Le modal « Débloquer » figurait ici une seconde fois, à l'identique.
+             Deux éléments ne peuvent pas porter le même identifiant : le navigateur
+             n'ouvrait jamais celui-ci. Doublon retiré. --}}
 
-                    <div class="modal-body text-center">
-                        <p>
-                            Voulez-vous vraiment débloquer le client : <span class="fw-bold">
-                                {{ $c->nom .' '.$c->prenom }} </span>
-                        </p>
-
-                        <h5 class="fw-bold text-danger" id="deleteNom"></h5>
-
-                        <p class="text-muted">
-                            Il pourra acceder à la plateforme.
-                        </p>
-                    </div>
-
-                    <div class="modal-footer">
-                        <form method="POST" id="deleteForm">
-                            @csrf
-                            @method('DELETE')
-
-                            <button type="button" class="btn btn-sm btn-secondary rounded font-sm mt-15"
-                                data-bs-dismiss="modal">
-                                Annuler
-                            </button>
-
-
-                            <a href="{{ route('show.bloquerCompte', ['id' => $c->user_id, 'type' => 'blok']) }}"
-                                class="btn btn-sm btn-info rounded font-sm mt-15">Débloquer</a>
-                        </form>
-                    </div>
-
-                </div>
-            </div>
-        </div>
     @endforeach
 
 @endsection

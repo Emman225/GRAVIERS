@@ -27,7 +27,7 @@ signInCtrl(login, pass) async {
         print("Appel API: $urlComplete");
       }
 
-      retourHttp = await http.post(Uri.parse(urlComplete),
+      final http.Response retourHttp = await http.post(Uri.parse(urlComplete),
           headers: {"Content-Type": "application/json"},
           body: jsonEncode(param))
           .timeout(const Duration(seconds: 30));
@@ -55,6 +55,11 @@ signInCtrl(login, pass) async {
           print(datas);
         }
         user = User.fromJson(datas);
+      } else {
+        // L'ecran de connexion affiche user.message : sans ces deux lignes il
+        // affichait litteralement « null » sur une reponse 401 ou 500.
+        user.code = retourHttp.statusCode;
+        user.message = "Connexion impossible (code ${retourHttp.statusCode}). Verifiez vos identifiants ou reessayez plus tard.";
       }
     } catch (e) {
       user.code = 500;

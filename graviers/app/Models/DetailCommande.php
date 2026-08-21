@@ -156,8 +156,16 @@ class DetailCommande extends Model
         return $this->hasMany(Livraison::class);
     }
 
+    /**
+     * DERNIÈRE demande de retour déposée sur cette ligne.
+     *
+     * « latestOfMany » et non un hasOne nu : après un refus, le client peut
+     * déposer une nouvelle demande, et c'est l'état actuel qui l'intéresse. Un
+     * hasOne sans tri renvoie une ligne arbitraire — en pratique la plus
+     * ancienne, c'est-à-dire justement celle qui ne vaut plus.
+     */
     public function retour(){
-        return $this->hasOne(RetourProduit::class);
+        return $this->hasOne(RetourProduit::class)->latestOfMany();
     }
     public function ticket(){
         return $this->hasOne(TicketSAV::class);

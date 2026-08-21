@@ -90,7 +90,7 @@
                                         <option value="">Selectionnez une ville...</option>
                                         @foreach ($villes as $ville)
                                             <option
-                                            {{-- @selected($ville->id == $client->user->ville_id) --}}
+                                            {{-- @selected($ville->id == $client->user?->ville_id) --}}
                                             value="{{ $ville->id }}">{{ $ville->nom }}</option>
                                         @endforeach
                                     </select>

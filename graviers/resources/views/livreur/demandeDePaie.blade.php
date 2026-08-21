@@ -84,10 +84,10 @@
                     <i class="material-icons md-paid"></i>
                 </div>
                 <div class="kpi-card-body">
-                    <div class="kpi-card-label">Payées</div>
+                    <div class="kpi-card-label">Reçus</div>
                     <div class="kpi-card-value">{{ $totalPayees }}</div>
                     <div class="kpi-card-meta">
-                        <span class="kpi-card-meta-text">demandes validées</span>
+                        <span class="kpi-card-meta-text">{{ number_format($montantRecu, 0, ',', ' ') }} FCFA reçus</span>
                     </div>
                 </div>
                 <div class="kpi-card-shape"></div>
@@ -100,7 +100,7 @@
                     <i class="material-icons md-receipt_long"></i>
                 </div>
                 <div class="kpi-card-body">
-                    <div class="kpi-card-label">Total demandes</div>
+                    <div class="kpi-card-label">Total paiements</div>
                     <div class="kpi-card-value">{{ $totalDemandes }}</div>
                     <div class="kpi-card-meta">
                         <span class="kpi-card-meta-text">historique cumulé</span>
@@ -176,7 +176,7 @@
                 <div class="card-header dash-card-header">
                     <h5 class="dash-card-title">
                         <i class="material-icons md-history text-primary"></i>
-                        Historique de mes demandes
+                        Historique de mes paiements
                     </h5>
                 </div>
                 <div class="card-body p-0">
@@ -184,33 +184,54 @@
                         <table class="table table-striped mb-0">
                             <thead>
                                 <tr>
-                                    <th>N°</th>
+                                    <th>Référence</th>
                                     <th>Date</th>
+                                    <th>Origine</th>
                                     <th class="text-end">Montant</th>
                                     <th>Mode</th>
                                     <th class="text-center">Statut</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @forelse($demandes as $d)
+                                @forelse($mouvements as $m)
                                     @php
-                                        $estPayee = (int) $d->paye === 1;
-                                        $badge = $estPayee ? 'bg-success' : 'bg-warning text-dark';
-                                        $label = $estPayee ? 'PAYÉE' : 'EN ATTENTE';
+                                        $badge = match ($m->statut) {
+                                            1       => 'bg-success',
+                                            2       => 'bg-danger',
+                                            default => 'bg-warning text-dark',
+                                        };
+                                        $label = match ($m->statut) {
+                                            1       => 'PAYÉ',
+                                            2       => 'REFUSÉ',
+                                            default => 'EN ATTENTE',
+                                        };
                                     @endphp
                                     <tr>
-                                        <td><strong class="text-primary">{{ $d->numero }}</strong></td>
-                                        <td>{{ optional($d->created_at)->format('d/m/Y') }}</td>
-                                        <td class="text-end fw-bold">{{ number_format((float) $d->montant, 0, ',', ' ') }} FCFA</td>
-                                        <td>{{ $d->modePaiement?->libelle ?? '—' }}</td>
+                                        <td>
+                                            <strong class="text-primary">{{ $m->reference }}</strong>
+                                            <br><small class="text-muted">{{ $m->detail }}</small>
+                                        </td>
+                                        <td>{{ $m->date ? \Carbon\Carbon::parse($m->date)->format('d/m/Y') : '—' }}</td>
+                                        <td>
+                                            {{-- Qui a lancé le versement : vous, ou l'entreprise
+                                                 de sa propre initiative. Les seconds n'étaient
+                                                 visibles nulle part sur cet écran. --}}
+                                            @if ($m->origine === 'Vous')
+                                                <span class="badge bg-info">Votre demande</span>
+                                            @else
+                                                <span class="badge bg-secondary">L'entreprise</span>
+                                            @endif
+                                        </td>
+                                        <td class="text-end fw-bold">{{ number_format($m->montant, 0, ',', ' ') }} FCFA</td>
+                                        <td>{{ $m->mode ?? '—' }}</td>
                                         <td class="text-center">
                                             <span class="badge {{ $badge }}">{{ $label }}</span>
                                         </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="5" class="text-center text-muted py-4">
-                                            Aucune demande de paiement pour le moment.
+                                        <td colspan="6" class="text-center text-muted py-4">
+                                            Aucun paiement pour le moment.
                                         </td>
                                     </tr>
                                 @endforelse

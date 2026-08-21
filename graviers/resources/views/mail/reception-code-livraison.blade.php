@@ -1,7 +1,7 @@
 <x-mail::message>
 
 <div style="text-align:center; margin-bottom: 20px;">
-    <img src="https://graviers.fneconnect.net/backend/assets/imgs/theme/logoAvecFond.jpg" alt="Logo Granite" width="180" style="max-width:180px; height:auto;">
+    <img src="https://graviers.fneconnect.net/frontend/assets/imgs/logo/dalakoun-blanc.png" alt="Logo Granite" width="180" style="max-width:180px; height:auto;">
 </div>
 
 Bonjour M./Mme {{$client->prenom}}, veuillez utiliser ce code pour permettre au livreur de valider sa livraison. <br>
@@ -23,8 +23,8 @@ Bonjour M./Mme {{$client->prenom}}, veuillez utiliser ce code pour permettre au 
             <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$produit->nom}}</td>
             <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$livraison->qte}} </td>
             <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$livraison->numero}} </td>
-            <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$livraison->livreur->user->nom_prenoms}} </td>
-            <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$livraison->vehicule->immatriculation}} </td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$livraison->livreur?->user?->nom_prenoms}} </td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$livraison->vehicule?->immatriculation}} </td>
             <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$livraison->date_livraison}} </td>
         </tr>
     </tbody>

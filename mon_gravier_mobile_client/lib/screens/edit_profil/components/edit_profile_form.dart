@@ -75,6 +75,10 @@ class _EditProfileFormState extends State<EditProfileForm> {
                             File file = File(chemin!);
                             _photoIdentite =
                                 await rognerImage(context, file.path);
+                            // Choix du fichier puis recadrage : l'écran peut
+                            // avoir été quitté entre-temps. La photo reste
+                            // retenue ; seul l'affichage est conditionné.
+                            if (!mounted) return;
                             setState(() {});
                           }
                         },
@@ -106,6 +110,9 @@ class _EditProfileFormState extends State<EditProfileForm> {
                                         onFile: (file) async {
                                           _photoIdentite = await rognerImage(
                                               context, file.path);
+                                          // Même précaution après la prise de
+                                          // vue et le recadrage.
+                                          if (!mounted) return;
                                           Navigator.pop(context);
                                           setState(() {});
                                         },
@@ -159,7 +166,9 @@ class _EditProfileFormState extends State<EditProfileForm> {
         if (retourHttp.statusCode == 200) {
           leUser = InformationUtilisateur.fromJson(datas);
           if (leUser.code == 200) {
-            setState(() {
+            // Écran quitté pendant l'appel : la réponse revient sur un écran détruit
+            // et le rafraîchissement échoue (voir devis_screen.dart).
+            if (mounted) setState(() {
               nomController.text = leUser.data?.nomPrenoms.toString() ?? '';
               telephoneController.text = leUser.data?.contact.toString() ?? '';
               adresseController.text = leUser.data?.adresse ?? '';
@@ -175,19 +184,22 @@ class _EditProfileFormState extends State<EditProfileForm> {
               }
             });
           } else {
-            EasyLoading.showError(leUser.message ?? '');
+            afficherErreur(leUser.message ?? '');
           }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
-        EasyLoading.showError(
-            "Une erreur s'est produite veuillez reesayer plus tard");
+        afficherErreur(messageErreurTechnique(e));
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -382,21 +394,28 @@ class _EditProfileFormState extends State<EditProfileForm> {
             leUser = InformationUtilisateur.fromJson(datas);
 
             if (leUser.code == 200) {
-              setState(() {
-                user.nom = leUser.data?.nomPrenoms.toString() ?? '';
-                user.photo = leUser.data?.photo.toString() ?? '';
-                urlPhoto = user.photo ?? '';
-                lireOuEcrireDonnee("nom", user.nom ?? '', 1);
-                lireOuEcrireDonnee("photo", user.photo ?? '', 1);
-              });
-              EasyLoading.showSuccess(leUser.message.toString());
+              // Ici, contrairement aux autres écrans, les valeurs sont GLOBALES
+              // et enregistrées sur l'appareil : les sauter parce que l'écran a
+              // été quitté ferait perdre la modification du profil que le
+              // serveur vient pourtant d'accepter. Seul l'affichage est
+              // conditionné à la présence de l'écran.
+              user.nom = leUser.data?.nomPrenoms.toString() ?? '';
+              user.photo = leUser.data?.photo.toString() ?? '';
+              urlPhoto = user.photo ?? '';
+              lireOuEcrireDonnee("nom", user.nom ?? '', 1);
+              lireOuEcrireDonnee("photo", user.photo ?? '', 1);
+              if (mounted) setState(() {});
+              afficherSucces(leUser.message.toString());
             } else {
-              EasyLoading.showError(leUser.message.toString());
+              afficherErreur(leUser.message.toString());
             }
+          } else {
+            // Sans cette branche, une réponse serveur en erreur ne produisait
+            // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+            afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
           }
         } catch (e) {
-          EasyLoading.showError(
-              "Une erreur s'est produite veuillez reesayer plus tard");
+          afficherErreur(messageErreurTechnique(e));
           ;
           if (kDebugMode) {
             print(e.toString());
@@ -405,10 +424,10 @@ class _EditProfileFormState extends State<EditProfileForm> {
 
         fermerChargement();
       } else {
-        EasyLoading.showError("Veuillez vérifier votre connexion internet");
+        afficherErreur("Veuillez vérifier votre connexion internet");
       }
     } else {
-      EasyLoading.showError(msgErr);
+      afficherErreur(msgErr);
     }
   }
 

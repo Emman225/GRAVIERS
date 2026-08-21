@@ -20,6 +20,28 @@ class StockProduit extends Model
         'statut',
     ];
 
+    public function produit()
+    {
+        return $this->belongsTo(Produit::class, 'produit_id');
+    }
+
+    public function fournisseur()
+    {
+        return $this->belongsTo(Fournisseur::class, 'fournisseur_id');
+    }
+
+    /** La ligne est-elle en rupture, ou seulement sous son seuil ? */
+    public function estEnRupture(): bool
+    {
+        return (float) $this->qte <= 0;
+    }
+
+    /** Ce qu'il manque pour repasser au-dessus du seuil d'alerte. */
+    public function manquePourAtteindreLeSeuil(): float
+    {
+        return max(0, (float) $this->seuil_alert - (float) $this->qte);
+    }
+
     public static function lire($id)
     {
         $obj = StockProduit::find($id);

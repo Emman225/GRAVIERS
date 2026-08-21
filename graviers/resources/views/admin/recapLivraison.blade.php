@@ -51,7 +51,18 @@
                                 <td class="text-center"> {{ $enlevement->date_livraison }} </td>
                                 <td class="text-center"> {{ $enlevement->le_client}} </td>
                                 <td class="text-center"> {{ $enlevement->le_produit}} </td>
-                                <td class="text-center"> {{ $enlevement->qte}} </td>
+                                <td class="text-center">
+                                    {{-- La quantité SERVIE par le fournisseur : c'est elle qui
+                                         fait foi une fois le bon traité, et c'est elle qui est
+                                         payée (cf. Enlevement::quantiteAPayer). --}}
+                                    {{ rtrim(rtrim(number_format($enlevement->quantiteAPayer(), 2, ',', ' '), '0'), ',') }}
+                                    @if ($enlevement->quantiteDiffereDeLaCommande())
+                                        <br>
+                                        <small class="text-muted">
+                                            demandé : {{ rtrim(rtrim(number_format((float) $enlevement->qte, 2, ',', ' '), '0'), ',') }}
+                                        </small>
+                                    @endif
+                                </td>
                                 <td class="text-center"> {{ $enlevement->code_enleve}} </td>
                                 <td class="text-center">
                                     <p>{{$enlevement->complement_adresse}}</p>

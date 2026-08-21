@@ -158,7 +158,8 @@ class LigneCommande {
 class LigneLivraison {
   int? id;
   String? nomProduit;
-  int? qte;
+  // Quantite decimale en base (ex. 2.5 t) : int? tronquait ou levait un TypeError.
+  double? qte;
   String? unite;
   String? description;
   int? poidsVehiculeSouhaite;
@@ -181,7 +182,7 @@ class LigneLivraison {
   String? complementAdresseDest;
   String? longitudeDest;
   String? latitudeDest;
-  int? montantTotal;
+  double? montantTotal;
   String? etatCommande;
   String? dateLivraison;
   String? dateFinLivraison;
@@ -226,7 +227,7 @@ class LigneLivraison {
   LigneLivraison.fromJson(Map<String, dynamic> json) {
     id = json['id'];
     nomProduit = json['nom_produit'];
-    qte = json['qte'];
+    qte = double.tryParse(json['qte']?.toString() ?? '') ?? 0;
     unite = json['unite'];
     description = json['description'];
     poidsVehiculeSouhaite = json['poids_vehicule_souhaite'];
@@ -249,7 +250,7 @@ class LigneLivraison {
     complementAdresseDest = json['complement_adresse_dest'];
     longitudeDest = json['longitude_dest'];
     latitudeDest = json['latitude_dest'];
-    montantTotal = json['montantTotal'];
+    montantTotal = double.tryParse(json['montantTotal']?.toString() ?? '') ?? 0;
     etatCommande = json['etat_commande'];
     dateLivraison = json['date_livraison'];
     dateFinLivraison = json['date_fin_livraison'];

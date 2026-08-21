@@ -68,7 +68,7 @@
                             <p class="recap-livraison-side__text">
                                 Validez votre demande pour la transmettre à notre équipe. Vous serez recontacté(e) rapidement.
                             </p>
-                            <a href="{{ route('client.valideDemande') }}" class="recap-livraison-cta">
+                            <a href="{{ route('client.valideDemandeLivraison') }}" class="recap-livraison-cta">
                                 <i class="fi-rs-check"></i> Valider la demande
                             </a>
                             <a href="javascript:history.back()" class="recap-livraison-back">

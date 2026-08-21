@@ -27,6 +27,121 @@
         </div>
     @endif
 
+    {{-- ===== DEMANDES INITIÉES PAR LES APPORTEURS =====
+         Elles vivent dans une autre table que les règlements ci-dessous : un
+         règlement porte sur une commission précise, une demande porte sur un
+         montant. Elles n'apparaissaient donc nulle part ici, alors que c'est
+         sur cet écran que l'administrateur suit ce qu'il doit aux apporteurs. --}}
+    @if (($demandesApporteurs ?? collect())->isNotEmpty())
+        <div class="card mb-4 border-warning">
+            <header class="card-header bg-warning-subtle">
+                <p class="d-flex justify-content-between align-items-center mb-0">
+                    <span class="h5 mb-0">
+                        <i class="material-icons md-outbox"></i>
+                        Demandes de paiement initiées par les apporteurs
+                    </span>
+                    <a href="{{ route('show.listeDeDemandeApporteur') }}" class="btn btn-sm btn-warning">
+                        Traiter les demandes
+                    </a>
+                </p>
+            </header>
+
+            <div class="card-body">
+                <p class="text-muted small">
+                    Le montant demandé est <strong>déjà retenu sur le solde de l'apporteur</strong> :
+                    il est réservé, pas encore versé. Le versement demande
+                    <strong>deux validations par deux administrateurs différents</strong> —
+                    celui qui donne la première ne peut pas donner la seconde.
+                </p>
+
+                <div class="table-responsive">
+                    <table class="table table-striped" id="demandesApporteurs">
+                        <thead style="background-color: #b8860b; color: white;">
+                            <tr>
+                                <th class="text-center">Date</th>
+                                <th class="text-center">Code App.</th>
+                                <th>Apporteur</th>
+                                <th class="text-end">Montant demandé</th>
+                                <th class="text-center">Mode de paiement</th>
+                                <th class="text-center">N° de compte</th>
+                                <th class="text-center">Initié par</th>
+                                <th class="text-center">1re validation</th>
+                                <th class="text-center">2e validation</th>
+                                <th class="text-center">État</th>
+                                <th class="text-center">Validation</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($demandesApporteurs as $d)
+                                <tr>
+                                    <td class="text-center">
+                                        {{ $d->date ? Carbon::parse($d->date)->format('d/m/Y H:i') : '-' }}
+                                    </td>
+                                    <td class="text-center">{{ $d->code_apporteur }}</td>
+                                    <td>{{ $d->apporteur_nom }}</td>
+                                    <td class="text-end">{{ Help::formatNombre($d->montant, true) }}</td>
+                                    <td class="text-center">{{ $d->mode_paiement }}</td>
+                                    <td class="text-center">{{ $d->numero_compte ?: '-' }}</td>
+                                    <td class="text-center">
+                                        <span class="badge bg-info">L'apporteur</span>
+                                        <br><small class="text-muted">{{ $d->initie_par }}</small>
+                                    </td>
+                                    <td class="text-center small">{{ $d->valide_par_1 }}</td>
+                                    <td class="text-center small">{{ $d->valide_par_2 }}</td>
+                                    <td class="text-center">
+                                        <span class="badge bg-{{ $d->couleur_etat }}">{{ $d->etat }}</span>
+                                    </td>
+                                    <td class="text-center text-nowrap">
+                                        {{-- Mêmes règles que l'écran dédié : deux validations,
+                                             par deux administrateurs différents. Le serveur les
+                                             fait respecter de toute façon ; on n'affiche que les
+                                             boutons qu'il acceptera. --}}
+                                        @php
+                                            $lienValidation = fn ($reponse) => route('show.valideDemande', [
+                                                'id'      => $d->id,
+                                                'type'    => 'apporteur',
+                                                'reponse' => $reponse,
+                                                // Pour revenir ici, et non sur l'autre écran.
+                                                'retour'  => 'show.apporteurs.paiements',
+                                            ]);
+                                        @endphp
+
+                                        @if ($d->finalisee)
+                                            <span class="text-muted small">—</span>
+                                        @elseif (!$d->peut_valider)
+                                            <span class="text-muted small"><em>Réservé aux administrateurs</em></span>
+                                        @elseif ($d->attend_1re)
+                                            <a href="{{ $lienValidation('accepter') }}"
+                                               class="btn btn-sm btn-success"
+                                               onclick="return confirm('Donner la 1re validation à cette demande ?');">
+                                                <i class="material-icons md-check"></i> 1re validation
+                                            </a>
+                                        @elseif ($d->attend_2e && $d->est_initiateur)
+                                            <span class="text-muted small">
+                                                <em>En attente d'un autre administrateur</em>
+                                            </span>
+                                        @elseif ($d->attend_2e)
+                                            <a href="{{ $lienValidation('accepter') }}"
+                                               class="btn btn-sm btn-success"
+                                               onclick="return confirm('Accepter et payer cette demande ?');">
+                                                <i class="material-icons md-check"></i> 2e validation
+                                            </a>
+                                            <a href="{{ $lienValidation('refuser') }}"
+                                               class="btn btn-sm btn-danger"
+                                               onclick="return confirm('Refuser cette demande ? Le montant sera restitué au solde de l\'apporteur.');">
+                                                <i class="material-icons md-denied"></i> Rejeter
+                                            </a>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    @endif
+
     <div class="card mb-4">
         <header class="card-header">
             <div class="row gx-3">
@@ -56,6 +171,8 @@
                             <th class="text-center">Mode de paiement</th>
                             <th class="text-center">Référence</th>
                             <th>Notes</th>
+                            <th class="text-center">Initié par</th>
+                            <th class="text-center">Validé par</th>
                             <th class="text-center">Reçu</th>
                         </tr>
                     </thead>
@@ -81,6 +198,8 @@
                                 <td class="text-center">{{ $l->mode_paiement }}</td>
                                 <td class="text-center">{{ $l->reference ?? '-' }}</td>
                                 <td>{{ $l->notes ?? '-' }}</td>
+                                <td class="text-center small">{{ $l->initie_par ?? '-' }}</td>
+                                <td class="text-center small">{{ $l->valide_par ?? '-' }}</td>
                                 <td class="text-center">
                                     @if ($l->peut_valider ?? false)
                                         <form action="{{ route('show.apporteurs.paiements.valider', $l->paiement_id) }}"
@@ -109,7 +228,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="10" class="text-center text-muted">
+                                <td colspan="12" class="text-center text-muted">
                                     Aucun paiement enregistré.
                                 </td>
                             </tr>
@@ -120,7 +239,7 @@
                             <tr>
                                 <td colspan="5" class="text-end">TOTAL</td>
                                 <td class="text-end text-success">{{ Help::formatNombre($totalPaye, true) }}</td>
-                                <td colspan="4"></td>
+                                <td colspan="6"></td>
                             </tr>
                         </tfoot>
                     @endif
@@ -267,6 +386,27 @@
     <script src="{{ asset('backend/plugins/DataTables/datatables.min.js') }}"></script>
     <script type="text/javascript">
         $(function () {
+            // Les demandes des apporteurs : recherche, pagination, 5 lignes.
+            var $demandesApp = $('#demandesApporteurs');
+            if ($demandesApp.length &&
+                $demandesApp.find('tbody tr').length > 0 &&
+                $demandesApp.find('tbody tr td[colspan]').length === 0) {
+                $demandesApp.DataTable({
+                    // Garde-fou du projet : sans defaultContent, DataTables lève
+                    // « Requested unknown parameter » dès qu'une cellule manque.
+                    columnDefs: [
+                        { targets: '_all', defaultContent: '-' },
+                        { targets: -1, orderable: false, searchable: false },
+                    ],
+                    language: { url: '{{ asset('backend/plugins/DataTables/i18n/fr-FR.json') }}' },
+                    pageLength: 5,
+                    lengthMenu: [[5, 10, 25, 50, -1], [5, 10, 25, 50, 'Tout']],
+                    // Le tri vient du serveur (de la plus récente à la plus ancienne).
+                    order: [],
+                });
+            }
+
+
             var $table = $('#liste');
             if ($table.find('tbody tr').length > 0 &&
                 $table.find('tbody tr td[colspan]').length === 0) {
@@ -372,6 +512,35 @@
                 if (m <= 0) { e.preventDefault(); alert('Montant > 0'); return false; }
                 if (max > 0 && m > max + 0.01) { e.preventDefault(); alert('Dépasse le reste à payer ('+fmt(max)+')'); return false; }
             });
+
+            // Arrivée depuis l'écran des dettes : le tiers est passé en
+            // paramètre, on ouvre le guichet sur lui plutôt que de laisser
+            // l'agent le rechercher dans la liste.
+            //
+            // EN FIN D'INITIALISATION, et non au début : `trigger('change')`
+            // n'a d'effet qu'une fois le gestionnaire du filtre attaché.
+            // Placé plus haut, le tiers était bien sélectionné et le
+            // formulaire s'ouvrait, mais la liste de ses pièces restait vide.
+            //
+            // L'ouverture passe par un clic sur le bouton existant : la
+            // version de Bootstrap embarquée ici n'expose pas
+            // Modal.getOrCreateInstance, et l'appeler ne faisait rien.
+            var tierARegler = new URLSearchParams(window.location.search).get('regler');
+
+            if (tierARegler) {
+                var $tiers = $('#filtreApporteur');
+
+                if ($tiers.find('option[value="' + tierARegler + '"]').length) {
+                    $tiers.val(tierARegler).trigger('change');
+                    $('[data-bs-target="#modalPaiementApp"]').first().trigger('click');
+                } else {
+                    // Plus rien à payer pour ce tiers : le dire, plutôt que
+                    // d'ouvrir un formulaire vide sans explication.
+                    $('.content-header').after(
+                        '<div class="alert alert-info">Ce tiers n\'a plus de pièce en attente de règlement.</div>'
+                    );
+                }
+            }
         });
     </script>
 @endsection

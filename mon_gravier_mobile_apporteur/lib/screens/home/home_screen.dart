@@ -43,7 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       try {
-        retourHttp = await http
+        final http.Response retourHttp = await http
             .post(Uri.parse('${lienAPI()}home-apporteur'),
                 headers: {"Content-Type": "application/json"},
                 body: jsonEncode(param))
@@ -56,21 +56,24 @@ class _HomeScreenState extends State<HomeScreen> {
           if (kDebugMode) {
             print(datas);
           }
-          retHome = RetourHome.fromJson(datas);
-          if (retHome.code == 200) {
+          final reponseHome = RetourHome.fromJson(datas);
+          if (reponseHome.code == 200) {
+            // retHome n'est remplace QU'EN cas de succes : sur une reponse d'erreur,
+            // data vaut null et le prochain rebuild plantait sur retHome.data! .
+            retHome = reponseHome;
             setState(() {
               paiements = retHome.data?.paiementsList ?? [];
               apporteur = retHome.apporteur ?? Apporteur();
               user.apporteur = apporteur;
             });
           } else {
-            EasyLoading.showError(retHome.message ?? '');
+            afficherErreur(retHome.message ?? '');
           }
         } else {
-          EasyLoading.showError("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e, stackTrace) {
-        EasyLoading.showError(
+        afficherErreur(
             "Une erreur s'est produite veuillez réessayer plus tard");
         if (kDebugMode) {
           print('Erreur home-apporteur: $e');
@@ -81,7 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
         fermerChargement();
       }
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -322,12 +325,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 mainAxisAlignment: mainCenter,
                 crossAxisAlignment: crossStart,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 15),
-                    child: Text(
-                      'Compte: ${d.numeroCompte.toString()}',
+                  // « Compte » n'a de sens que pour une demande de retrait, où
+                  // l'apporteur indique où il veut être payé. Une commission réglée
+                  // par un gestionnaire n'en a pas : la ligne affichait « Compte: null »
+                  // puis « Compte: - ». On la masque simplement quand il n'y a rien à
+                  // montrer, et on l'intitule « Référence » lorsque la valeur vient
+                  // d'un règlement du back-office.
+                  if ((d.numeroCompte ?? '').trim().isNotEmpty &&
+                      (d.numeroCompte ?? '').trim() != '-')
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 15),
+                      child: Text(
+                        '${d.paye == 1 ? 'Référence' : 'Compte'}: ${d.numeroCompte}',
+                      ),
                     ),
-                  ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 15),
                     child: Text(

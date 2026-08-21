@@ -6,7 +6,7 @@
 <nav>
     <div class="col-12 bg-primary text-center text-white fw-bold p-3" >
 
-            {{ucfirst(Auth::user()->type_user->nom)}}
+            {{ucfirst(Auth::user()->type_user?->nom)}}
 
 
     </div>

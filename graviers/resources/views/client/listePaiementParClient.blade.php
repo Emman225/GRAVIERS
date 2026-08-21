@@ -12,7 +12,7 @@
 
     <div class="content-header">
         <div>
-            <h2 class="content-title card-title">Liste des paiements de : {{ucwords($paiements->first()->client->nom.' '.$paiements->first()->client->prenom)}} </h2>
+            <h2 class="content-title card-title">Liste des paiements de : {{ucwords($paiements->first()->client?->nom.' '.$paiements->first()->client?->prenom)}} </h2>
 
         </div>
     </div>

@@ -23,8 +23,9 @@
                             <span class="list-cmd-card__state list-cmd-card__state--{{ strtolower(str_replace(' ', '-', $commande->etat_commande)) }}">{{ $commande->etat_commande }}</span>
                         </div>
                         <div class="list-cmd-card__total">
-                            <span class="list-cmd-card__total-label">Total commande</span>
-                            <span class="list-cmd-card__total-value">{{ number_format($commande->montant_total, 0, '', ' ') }} <small>FCFA</small></span>
+                            {{-- Montant HT : la TVA et la livraison s'ajoutent au montant à payer. --}}
+                            <span class="list-cmd-card__total-label">Montant HT</span>
+                            <span class="list-cmd-card__total-value">{{ number_format($commande->montantHT(), 0, '', ' ') }} <small>FCFA</small></span>
                         </div>
                     </div>
 
@@ -45,37 +46,37 @@
                                         @csrf
                                         @foreach ($commande->detailCommande as $detail)
                                             <tr class="pt-30">
-                                                @foreach ($detail->produit->image as $image)
+                                                @foreach ($detail->produit?->image as $image)
                                                     <td class="image product-thumbnail pt-40"><img src="/storage/{{ $image->image }}"
                                                 @endforeach
-                                                        alt="{{ $detail->produit->nom }}"></td>
+                                                        alt="{{ $detail->produit?->nom }}"></td>
                                                 <td class="product-des product-name">
-                                                    <h6 class="mb-5 list-cmd-product__name">{{ $detail->produit->nom }}</h6>
-                                                    @if(($detail->produit->meilleur_note ?? 0) > 0)
+                                                    <h6 class="mb-5 list-cmd-product__name">{{ $detail->produit?->nom }}</h6>
+                                                    @if(($detail->produit?->meilleur_note ?? 0) > 0)
                                                         <div class="product-rate-cover">
                                                             <div class="product-rate d-inline-block">
-                                                                <div class="product-rating" style="width: {{ $detail->produit->meilleur_note }}%"></div>
+                                                                <div class="product-rating" style="width: {{ $detail->produit?->meilleur_note }}%"></div>
                                                             </div>
-                                                            <span class="font-small ml-5 text-muted">({{ round(($detail->produit->meilleur_note * 5) / 100, 1) }})</span>
+                                                            <span class="font-small ml-5 text-muted">({{ round(($detail->produit?->meilleur_note * 5) / 100, 1) }})</span>
                                                         </div>
                                                     @endif
                                                 </td>
                                                 <td class="price text-end" data-title="Prix">
-                                                    @if(isset($prixPerso[$detail->produit->id]))
-                                                        <h4 class="list-cmd-price">{{ number_format($prixPerso[$detail->produit->id], 0, '', ' ') }} <small>FCFA</small></h4>
-                                                        <span class="old-price text-muted text-decoration-line-through">{{ number_format($detail->produit->prix_moyen, 0, '', ' ') }} FCFA</span>
+                                                    @if(isset($prixPerso[$detail->produit?->id]))
+                                                        <h4 class="list-cmd-price">{{ number_format($prixPerso[$detail->produit?->id], 0, '', ' ') }} <small>FCFA</small></h4>
+                                                        <span class="old-price text-muted text-decoration-line-through">{{ number_format($detail->produit?->prix_moyen, 0, '', ' ') }} FCFA</span>
                                                     @else
-                                                        <h4 class="list-cmd-price">{{ number_format($detail->produit->prix_moyen, 0, '', ' ') }} <small>FCFA</small></h4>
+                                                        <h4 class="list-cmd-price">{{ number_format($detail->produit?->prix_moyen, 0, '', ' ') }} <small>FCFA</small></h4>
                                                     @endif
                                                 </td>
                                                 <td class="text-center detail-info" data-title="Quantité">
                                                     <span class="list-cmd-qte-badge">{{ $detail->qte }}</span>
                                                 </td>
                                                 <td class="price text-end" data-title="Sous-total">
-                                                    @if(isset($prixPerso[$detail->produit->id]))
-                                                        <h4 class="list-cmd-subtotal">{{ number_format($prixPerso[$detail->produit->id] * $detail->qte, 0, '', ' ') }} <small>FCFA</small></h4>
+                                                    @if(isset($prixPerso[$detail->produit?->id]))
+                                                        <h4 class="list-cmd-subtotal">{{ number_format($prixPerso[$detail->produit?->id] * $detail->qte, 0, '', ' ') }} <small>FCFA</small></h4>
                                                     @else
-                                                        <h4 class="list-cmd-subtotal">{{ number_format($detail->produit->prix_moyen * $detail->qte, 0, '', ' ') }} <small>FCFA</small></h4>
+                                                        <h4 class="list-cmd-subtotal">{{ number_format($detail->produit?->prix_moyen * $detail->qte, 0, '', ' ') }} <small>FCFA</small></h4>
                                                     @endif
                                                 </td>
                                             </tr>

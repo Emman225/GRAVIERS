@@ -32,7 +32,7 @@
                             <div class="mb-3">
                                 <select class="form-control" name="livreur">
                                     @foreach ($livreurs as $livreur )
-                                    <option value="{{$livreur->id}}"> {{$livreur->user->nom_prenoms}} </option>
+                                    <option value="{{$livreur->id}}"> {{$livreur->user?->nom_prenoms}} </option>
                                     @endforeach
                                 </select>
                             </div>

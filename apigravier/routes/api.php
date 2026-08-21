@@ -47,6 +47,9 @@ Route::post('supprimer-devis/{id}', [CommandeController::class, 'supprimerDevis'
 Route::post('enregistrer-commande', [CommandeController::class, 'enregistrerCommande']);
 Route::post('liste-commande', [CommandeController::class, 'listeCommande']);
 Route::post('resume-commande', [CommandeController::class, 'resumeCommande']);
+// Montant définitif calculé par le serveur, demandé par l'application AVANT
+// validation : le client voit exactement ce qui lui sera prélevé.
+Route::post('verifier-montant', [CommandeController::class, 'verifierMontant']);
 Route::post('details-commande/{id}', [CommandeController::class, 'detailsCommande']);
 Route::post('liste-livraison', [LivraisonController::class, 'listeLivraison']);
 Route::post('details-livraison/{id}', [LivraisonController::class, 'detailsLivraison']);

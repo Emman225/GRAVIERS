@@ -53,7 +53,7 @@
                                 {{-- @role('Admin') --}}
                                 <td class="text-center">{{ Carbon::parse($fournisseur->created_at)->format('d-m-Y'); }}</td>
                                 {{-- @endrole --}}
-                                <td class="text-center"> <a href="{{route('grandLivre.bonFournisseur',$fournisseur)}}">{{$fournisseur->user->nom_prenoms}}</a></td>
+                                <td class="text-center"> <a href="{{route('grandLivre.bonFournisseur',$fournisseur)}}">{{$fournisseur->user?->nom_prenoms}}</a></td>
                                 {{-- @role('Admin') --}}
                                 {{-- <td class="text-center">|
                                     @foreach ($fournisseur->produits as $produit )
@@ -66,7 +66,7 @@
                                     <p> {{$fournisseur->contact1}} </p>
                                     <p> {{$fournisseur->contact2}} </p>
                                 </td>
-                                <td class="text-center">{{$fournisseur->user->email}}</td>
+                                <td class="text-center">{{$fournisseur->user?->email}}</td>
 
                                 {{-- <td class="text-end">
                                     <a href="{{route('show.editSellers',$fournisseur->id)}}" class="btn btn-sm btn-brand rounded font-sm mt-15">Modifier les infos</a>

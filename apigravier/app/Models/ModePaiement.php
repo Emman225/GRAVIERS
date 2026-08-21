@@ -33,6 +33,37 @@ class ModePaiement extends Model
             ->get();
     }
 
+    /**
+     * Moyens de règlement en ligne proposés au CLIENT dans l'application.
+     *
+     * liste() ne retenait que en_ligne = 1, en supposant qu'un instrument bancaire
+     * n'y soit jamais. Le drapeau n'est pas fiable : en production « Carte
+     * bancaire » et « Virement bancaire » y sont à 1, et l'application les
+     * proposait donc comme s'ils passaient par la passerelle mobile money.
+     *
+     * Un virement ou une carte, c'est l'agent qui les constate à l'encaissement.
+     * Ils sont écartés par leur LIBELLÉ, qui dit ce que la chose EST, et non par un
+     * drapeau saisi au back-office. Même règle que sur le site
+     * (ModePaiement::listePourClient de graviers).
+     *
+     * Le règlement en agence n'apparaît pas ici : l'application le traite par son
+     * propre indicateur (mode_paiement = 2), pas par un mode de cette table.
+     */
+    public static function listePourClient()
+    {
+        $instrumentsReservesAgent = ['virement', 'chèque', 'cheque', 'espèce', 'espece', 'carte'];
+
+        return ModePaiement::orderBy('libelle', 'asc')
+            ->where('statut', Help::$STATUT_ACTIF)
+            ->where('en_ligne', 1)
+            ->where(function ($query) use ($instrumentsReservesAgent) {
+                foreach ($instrumentsReservesAgent as $motif) {
+                    $query->where('libelle', 'not like', '%' . $motif . '%');
+                }
+            })
+            ->get();
+    }
+
     public static function listeTous()
     {
         return ModePaiement::orderBy('libelle', 'asc')

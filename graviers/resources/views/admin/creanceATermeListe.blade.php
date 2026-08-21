@@ -39,15 +39,15 @@
                     <tbody>
                         @forelse ($lignes as $ligne)
                             <tr>
-                                <td>{{ $ligne->client->nom }} {{ $ligne->client->prenom }}</td>
-                                <td>{{ $ligne->client->contact1 ?? $ligne->client->user?->contact ?? '-' }}</td>
+                                <td>{{ $ligne->client?->display_name }}</td>
+                                <td>{{ $ligne->client?->contact1 ?? $ligne->client?->user?->contact ?? '-' }}</td>
                                 <td class="text-end">{{ Help::formatNombre($ligne->totalFacture, true) }}</td>
                                 <td class="text-end">{{ Help::formatNombre($ligne->totalPaye, true) }}</td>
                                 <td class="text-end text-danger">
                                     <strong>{{ Help::formatNombre($ligne->solde, true) }}</strong>
                                 </td>
                                 <td class="text-center">
-                                    <a href="{{ route('grandLivre.clientATerme') }}?client_id={{ $ligne->client->id }}"
+                                    <a href="{{ route('grandLivre.clientATerme') }}?client_id={{ $ligne->client?->id }}"
                                        class="btn btn-sm btn-primary">
                                         <i class="material-icons md-visibility align-middle"></i> Détails
                                     </a>

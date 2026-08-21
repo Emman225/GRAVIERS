@@ -55,7 +55,7 @@
                             <div class="paiements-card__body">
                                 @if (count($lignes) > 0)
                                     <div class="table-responsive">
-                                        <table class="table paiements-table" id="liste">
+                                        <table class="table paiements-table" id="tablePaiementsEffectues">
                                             <thead>
                                                 <tr>
                                                     <th>Code paiement</th>
@@ -64,7 +64,12 @@
                                                     <th class="text-end">Montant</th>
                                                     <th>Date commande</th>
                                                     <th>Date paiement</th>
-                                                    <th class="text-center" colspan="2">Actions</th>
+                                                    {{-- Deux en-têtes distincts, et non un seul avec colspan="2" :
+                                                         DataTables exige autant de cellules d'en-tête que de colonnes
+                                                         dans le corps, sinon l'initialisation échoue et le tableau
+                                                         reste brut. --}}
+                                                    <th class="text-center">Facture</th>
+                                                    <th class="text-center">Téléchargement</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -109,8 +114,13 @@
                 @else
                     {{-- ===== Paiements en attente ===== --}}
                     <div class="col-12">
-                        <form action="{{ route('paye.effectuerPaiementTraitement', $client->id) }}" method="post">
-                            @csrf
+                        {{-- Plus de formulaire : cette page ne déclenche aucun paiement.
+                             Elle envoyait auparavant vers paye.effectuerPaiementTraitement,
+                             qui lançait la passerelle en ligne dès que la demande venait
+                             d'un client. Le règlement se fait désormais au guichet, où il
+                             est saisi par la caisse — le même traitement, appelé depuis le
+                             back-office, reste en place pour cela. --}}
+                        <div>
 
                             <div class="paiements-card">
                                 <div class="paiements-card__header">
@@ -135,72 +145,69 @@
 
                                     @if (count($lignes) > 0)
                                         <div class="table-responsive">
-                                            <table class="table paiements-table" id="liste">
+                                            <table class="table paiements-table" id="tablePaiementsEnAttente">
                                                 <thead>
                                                     <tr>
-                                                        <th class="text-center" style="width:50px"></th>
+                                                        {{-- Pour un client à terme, chaque ligne est une FACTURE : son
+                                                             numéro doit être visible, sinon deux factures d'une même
+                                                             commande sont indiscernables. Un client comptant, lui, n'a
+                                                             pas de facture ici : la colonne ne lui est pas montrée. --}}
+                                                        @if ($client->client_a_terme == 1)
+                                                            <th>N° facture</th>
+                                                        @endif
                                                         <th>N° commande</th>
                                                         <th class="text-end">Montant facturé</th>
                                                         <th class="text-end">Reste à payer</th>
-                                                        <th>Date commande</th>
+                                                        <th>{{ $client->client_a_terme == 1 ? 'Date facture' : 'Date commande' }}</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     @foreach ($lignes as $l)
                                                         <tr>
-                                                            <td class="text-center">
-                                                                @if ($client->client_a_terme == 1)
-                                                                    <input type="checkbox" class="paiements-checkbox"
-                                                                           name="factures[]"
-                                                                           value="{{ isset($l->facture_id) ? $l->facture_id : $l->commande_id }}">
-                                                                @endif
-                                                            </td>
-                                                            <td><strong class="paiements-link">{{ $l->num_commande }}</strong></td>
+                                                            @if ($client->client_a_terme == 1)
+                                                                <td><strong class="paiements-link">{{ $l->num_facture ?? '—' }}</strong></td>
+                                                            @endif
+                                                            <td>{{ $l->num_commande }}</td>
                                                             <td class="text-end fw-bold">{{ number_format($l->montant_a_payer, '0', '', ' ') }} <small>FCFA</small></td>
                                                             <td class="text-end fw-bold paiements-restant">{{ number_format($l->montant_restant, '0', '', ' ') }} <small>FCFA</small></td>
-                                                            <td><small>{{ \Carbon\Carbon::parse($l->date_commande)->format('d/m/Y') }}</small></td>
+                                                            <td><small>{{ \Carbon\Carbon::parse(($client->client_a_terme == 1 ? ($l->date_facture ?? $l->date_commande) : $l->date_commande))->format('d/m/Y') }}</small></td>
                                                         </tr>
                                                     @endforeach
                                                 </tbody>
                                             </table>
                                         </div>
 
-                                        {{-- Bloc paiement (client à terme uniquement) --}}
-                                        @if ($client->client_a_terme == 1)
-                                            <div class="paiements-pay-block">
-                                                <div class="paiements-pay-block__title">
-                                                    <i class="fi-rs-credit-card"></i> Effectuer un paiement
-                                                </div>
-                                                <div class="paiements-pay-block__grid">
-                                                    <div>
-                                                        <label class="paiements-field-label">Montant à payer</label>
-                                                        <input type="number" placeholder="Entrez le montant" name="montant" class="form-control paiements-input">
-                                                    </div>
-                                                    <div>
-                                                        <label class="paiements-field-label">Moyen de paiement</label>
-                                                        <select required name="mode" class="form-control paiements-input">
-                                                            <option value="">Choisir un moyen...</option>
-                                                            @foreach ($moyens as $moyen)
-                                                                <option value="{{ $moyen->id }}">{{ $moyen->libelle }}</option>
-                                                            @endforeach
-                                                        </select>
-                                                    </div>
-                                                    <div class="paiements-pay-block__action">
-                                                        <button type="submit" class="paiements-pay-btn">
-                                                            <i class="fi-rs-credit-card"></i> Payer
-                                                        </button>
-                                                    </div>
-                                                </div>
+                                        {{-- Cette page est une CONSULTATION, pour tous les clients.
+                                             Le règlement se fait en agence, jamais ici.
+
+                                             Elle proposait auparavant aux comptes à terme de payer
+                                             eux-mêmes en ligne, sur n'importe quelle facture. Or le mode
+                                             annoncé à la commande — « Paiement en agence » le plus
+                                             souvent — n'était consulté nulle part : le client déclarait
+                                             qu'il réglerait au guichet, et le site lui proposait quand
+                                             même de payer par mobile money. Le bloc offrait d'ailleurs
+                                             « Paiement en agence » parmi les moyens, alors que ce choix
+                                             lançait lui aussi la passerelle en ligne.
+
+                                             Décision de gestion du 11/08/2026 : les factures et
+                                             commandes non réglées s'affichent en lecture seule, et le
+                                             règlement se fait au guichet. --}}
+                                        <div class="paiements-info-banner">
+                                            <i class="fi-rs-info"></i>
+                                            <div>
+                                                @if ($client->client_a_terme == 1)
+                                                    <strong>Ces factures se règlent en agence.</strong>
+                                                    Présentez le numéro de la facture à nos guichets ;
+                                                    le règlement est enregistré immédiatement et disparaît de cette liste.
+                                                @else
+                                                    <strong>Ces commandes se règlent en agence.</strong>
+                                                    Présentez le numéro de la commande à nos guichets pour la régler ;
+                                                    elle sera traitée dès le paiement enregistré.
+                                                @endif
+                                                <br>
+                                                Une question ? <a href="mailto:info@fneconnect.net">info@fneconnect.net</a>
                                             </div>
-                                        @else
-                                            <div class="paiements-info-banner">
-                                                <i class="fi-rs-info"></i>
-                                                <div>
-                                                    Vous ne pouvez pas effectuer un paiement en ligne car vous n'êtes pas un client à terme.
-                                                    <a href="mailto:support@gravier.com">Contactez le support</a> pour plus d'informations.
-                                                </div>
-                                            </div>
-                                        @endif
+                                        </div>
                                     @else
                                         <div class="paiements-empty">
                                             <div class="paiements-empty__icon paiements-empty__icon--success"><i class="fi-rs-check"></i></div>
@@ -210,7 +217,7 @@
                                     @endif
                                 </div>
                             </div>
-                        </form>
+                        </div>
                     </div>
                 @endif
             </div>
@@ -532,5 +539,106 @@
             .paiements-tab { justify-content: center; }
             .paiements-action-btn { padding: 6px 8px; font-size: 0.75rem; }
         }
+
+        /* Habillage des commandes DataTables : la feuille de style officielle
+           n'est pas chargée sur les pages client, et sans ces quelques règles
+           la recherche et la pagination s'affichent sans mise en forme, en
+           rupture avec le reste de la page.
+           La bibliothèque installée est la version 2 : ses classes s'appellent
+           « dt-search », « dt-paging »… et non plus « dataTables_filter »,
+           « dataTables_paginate » comme en version 1. Les deux séries sont
+           visées pour rester correct si la version change. */
+        .dt-search input, .dataTables_filter input,
+        .dt-length select, .dataTables_length select {
+            border: 1px solid #dcdcdc;
+            border-radius: 8px;
+            padding: 6px 10px;
+            margin-left: 8px;
+        }
+        .dt-search, .dataTables_filter { margin-bottom: 12px; }
+        .dt-info, .dataTables_info { padding-top: 12px; font-size: 0.85rem; color: #666; }
+        .dt-paging, .dataTables_paginate { padding-top: 10px; }
+        .dt-paging .dt-paging-button,
+        .dataTables_paginate .paginate_button {
+            padding: 5px 11px;
+            margin-left: 4px;
+            border: 1px solid #e2e2e2;
+            border-radius: 8px;
+            background: #fff;
+            cursor: pointer;
+        }
+        .dt-paging .dt-paging-button.current,
+        .dataTables_paginate .paginate_button.current {
+            background: #1c57a3;
+            border-color: #1c57a3;
+            color: #fff !important;
+        }
+        .dt-paging .dt-paging-button.disabled,
+        .dataTables_paginate .paginate_button.disabled {
+            opacity: .45;
+            cursor: default;
+        }
     </style>
+
+    {{-- DataTables ne peut PAS être inclus par une simple balise ici : sur les
+         pages client, jQuery est chargé par le pied de page, donc APRÈS le
+         contenu. Un <script src="datatables"> placé à cet endroit s'exécute
+         avant que jQuery n'existe et ne s'y rattache jamais : le fichier est
+         bien téléchargé (200), mais $.fn.DataTable reste introuvable et le
+         tableau demeure brut. C'est exactement ce qui se produit aujourd'hui
+         sur « Mon compte », où aucun des tableaux n'est réellement activé.
+
+         On attend donc le chargement complet de la page — pied de page inclus,
+         donc jQuery disponible — avant d'injecter la bibliothèque, puis on
+         initialise une fois celle-ci prête. --}}
+    <script>
+        window.addEventListener('load', function () {
+            if (typeof window.jQuery === 'undefined') {
+                return; // sans jQuery, rien à faire : le tableau reste lisible tel quel
+            }
+
+            var script = document.createElement('script');
+            script.src = '{{ asset('backend/plugins/DataTables/datatables.min.js') }}';
+            script.onload = function () { activerLesTableaux(window.jQuery); };
+            document.body.appendChild(script);
+        });
+
+        function activerLesTableaux($) {
+            // Les deux tableaux ne s'affichent jamais ensemble : l'onglet actif
+            // décide lequel est rendu. On initialise donc celui qui est présent,
+            // et seulement s'il l'est — initialiser un tableau absent, ou vide,
+            // provoque l'erreur « Requested unknown parameter » déjà rencontrée
+            // ailleurs dans le projet après un vidage de données.
+            if (typeof $.fn.DataTable === 'undefined') {
+                return;
+            }
+
+            var communs = {
+                language: { url: '{{ asset('backend/plugins/DataTables/i18n/fr-FR.json') }}' },
+                order: [],
+                pageLength: 10,
+                lengthMenu: [[10, 25, 50, -1], [10, 25, 50, 'Tout']],
+                // Une cellule absente ne doit pas interrompre le rendu de toute
+                // la table : elle s'affiche vide.
+                columnDefs: [{ targets: '_all', defaultContent: '' }]
+            };
+
+            var $attente = $('#tablePaiementsEnAttente');
+            if ($attente.length && $attente.find('tbody tr').length) {
+                $attente.DataTable(communs);
+            }
+
+            var $effectues = $('#tablePaiementsEffectues');
+            if ($effectues.length && $effectues.find('tbody tr').length) {
+                $effectues.DataTable($.extend({}, communs, {
+                    // Les deux dernières colonnes ne portent que des boutons :
+                    // les trier ou les fouiller n'a aucun sens.
+                    columnDefs: [
+                        { targets: '_all', defaultContent: '' },
+                        { targets: [-1, -2], orderable: false, searchable: false }
+                    ]
+                }));
+            }
+        }
+    </script>
 @endsection

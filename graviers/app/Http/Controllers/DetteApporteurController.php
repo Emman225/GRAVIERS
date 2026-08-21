@@ -45,7 +45,9 @@ class DetteApporteurController extends Controller
 
             $typeCmd = $client && (int) $client->client_a_terme === 1 ? 'Terme' : 'Comptant';
 
-            $cmdTotal     = (float) ($cmd?->montant_total ?? 0);
+            // Net réellement dû (HT + TVA + livraison − remise), recalculé depuis les
+            // lignes : montant_total contient le HT côté site et le NET côté mobile.
+            $cmdTotal     = (float) ($cmd ? $cmd->montantAPayer() : 0);
             $cmdEncaisse  = $cmd ? $cmd->montantPayeComptant() : 0;
             $tauxBrut     = (float) ($apporteur?->pourcentage ?? 0);
             $taux         = $tauxBrut > 0 ? $tauxBrut : $tauxStandard;
@@ -75,7 +77,7 @@ class DetteApporteurController extends Controller
                 'nom_apporteur'     => $apporteur?->user?->nom_prenoms ?? '-',
                 'numero_commande'   => $cmd?->numero ?? '-',
                 'type_commande'     => $typeCmd,
-                'client_final'      => $client ? trim($client->nom . ' ' . $client->prenom) : '-',
+                'client_final'      => $client?->display_name ?? '-',
                 'montant_cmd_ttc'   => $cmdTotal,
                 'montant_encaisse'  => (float) $cmdEncaisse,
                 'taux_commission'   => (float) $taux,
@@ -102,7 +104,7 @@ class DetteApporteurController extends Controller
      */
     public function paiements(Request $request)
     {
-        $paiements = PaiementApporteur::with(['apporteur', 'apporteur.user', 'commission', 'commission.commande', 'modePaiement'])
+        $paiements = PaiementApporteur::with(['apporteur', 'apporteur.user', 'commission', 'commission.commande', 'modePaiement', 'initiateur', 'validateur'])
             ->whereIn('statut', [1, 2])
             ->orderByDesc('date_paiement')
             ->get();
@@ -122,6 +124,9 @@ class DetteApporteurController extends Controller
 
             return (object) [
                 'paiement_id'      => $p->id,
+                // Traçabilité : qui a saisi l'enregistrement, qui l'a contrôlé.
+                'initie_par'      => $p->initie_par,
+                'valide_par'      => $p->valide_par,
                 'date_paiement'    => $p->date_paiement,
                 'numero_com'       => $codeCom,
                 'numero_commande'  => $p->commission?->commande?->numero ?? '-',
@@ -138,7 +143,10 @@ class DetteApporteurController extends Controller
 
         $totalPaye = $lignes->where('en_attente', false)->sum('montant');
 
-        $modesPaiement = ModePaiement::liste();
+        // L'agent qui enregistre ce paiement EST en agence : « Paiement en agence »
+        // n'est pas un instrument de paiement. On propose Espèces, Chèque,
+        // Virement, mobile money… comme sur les écrans d'encaissement.
+        $modesPaiement = ModePaiement::listePourAgent();
         $commissionsDues = CommissionApporteur::with(['apporteur.user', 'commande'])
             ->orderByDesc('created_at')
             ->limit(300)
@@ -168,11 +176,107 @@ class DetteApporteurController extends Controller
             ->values();
 
         return view('admin.apporteur.paiements', [
-            'lignes'           => $lignes,
-            'totalPaye'        => $totalPaye,
-            'modesPaiement'    => $modesPaiement,
-            'commissionsDues'  => $commissionsDues,
+            'lignes'             => $lignes,
+            'totalPaye'          => $totalPaye,
+            'modesPaiement'      => $modesPaiement,
+            'commissionsDues'    => $commissionsDues,
+            'demandesApporteurs' => $this->demandesInitieesParLesApporteurs(),
         ]);
+    }
+
+    /**
+     * Les demandes de paiement que les APPORTEURS ont eux-mêmes initiées.
+     *
+     * Elles vivent dans `demande_paiement`, pas dans `paiement_apporteur` : un
+     * règlement porte sur une commission précise, une demande porte sur un
+     * montant. Elles n'apparaissaient donc nulle part sur cet écran, alors que
+     * c'est ici que l'administrateur suit ce qu'il doit aux apporteurs — il ne
+     * voyait que ce que l'entreprise avait initié de son côté, et devait
+     * changer d'écran pour valider.
+     *
+     * Le montant est déjà retenu sur le solde de l'apporteur dès l'envoi de la
+     * demande : elle est réservée, pas encore versée.
+     *
+     * La double validation se fait ici comme sur l'écran dédié : les deux
+     * pointent la même route, et c'est le contrôleur qui garde la règle — une
+     * demande finalisée est refusée, et le 1er validateur ne peut pas être le
+     * 2e. Deux portes d'entrée ne peuvent donc pas valider deux fois.
+     */
+    private function demandesInitieesParLesApporteurs()
+    {
+        $moi = Auth::id();
+
+        // La validation est réservée aux administrateurs, comme sur l'écran
+        // dédié : le gestionnaire consulte, il ne décide pas.
+        $jeSuisAdmin = in_array((int) (Auth::user()?->type_user_id ?? 0), [\Help::$USER_SA, \Help::$USER_ADMIN], true);
+
+        return \App\Models\DemandePaiement::query()
+            ->join('users', 'users.id', '=', 'demande_paiement.user_id')
+            ->where('users.type_user_id', \Help::$USER_APPORTEUR)
+            ->whereNull('demande_paiement.deleted_at')
+            ->orderByDesc('demande_paiement.created_at')
+            ->select('demande_paiement.*')
+            ->with(['modePaiement', 'user'])
+            ->limit(200)
+            ->get()
+            ->map(function ($d) use ($moi, $jeSuisAdmin) {
+                $apporteur = Apporteur::where('user_id', $d->user_id)->first();
+
+                // 0 ou NULL = en attente, 1 = acceptée, 2 = refusée.
+                $etat = match ((int) ($d->paye ?? 0)) {
+                    1       => ['libelle' => 'Acceptée', 'couleur' => 'success'],
+                    2       => ['libelle' => 'Refusée',  'couleur' => 'danger'],
+                    default => ['libelle' => 'En attente', 'couleur' => 'warning'],
+                };
+
+                $codeApp = preg_match('/^APP-/', (string) $apporteur?->code)
+                    ? $apporteur->code
+                    : ($apporteur ? 'APP-' . str_pad($apporteur->id, 3, '0', STR_PAD_LEFT) : '-');
+
+                return (object) [
+                    'id'             => $d->id,
+                    'date'           => $d->created_at,
+                    'code_apporteur' => $codeApp,
+                    'apporteur_nom'  => $d->user?->nom_prenoms ?? '-',
+                    'montant'        => (float) $d->montant,
+                    'mode_paiement'  => $d->modePaiement?->libelle ?? '-',
+                    'numero_compte'  => $d->numero_compte,
+                    // Ce qui distingue ces lignes des règlements : la demande
+                    // vient de l'apporteur, pas d'un agent de l'entreprise.
+                    'initie_par'     => trim(($d->user?->nom_prenoms ?? '-')
+                        . ' (' . ($d->user?->login ?? $d->user?->id ?? '-') . ')'),
+                    'valide_par_1'   => $this->nomEtLogin($d->user_valide_id),
+                    'valide_par_2'   => $this->nomEtLogin($d->user_valide2_id),
+                    'etat'           => $etat['libelle'],
+                    'couleur_etat'   => $etat['couleur'],
+                    'finalisee'      => (bool) ($d->user_valide_id && $d->user_valide2_id),
+                    'attend_1re'     => is_null($d->user_valide_id),
+                    'attend_2e'      => (bool) ($d->user_valide_id && !$d->user_valide2_id),
+                    'est_initiateur' => (int) $d->user_valide_id === (int) $moi,
+                    'peut_valider'   => $jeSuisAdmin,
+                ];
+            });
+    }
+
+    /**
+     * « NOM (identifiant) » d'un compte, ou « — » s'il n'y en a pas.
+     *
+     * Même présentation que les colonnes « Initié par » / « Validé par » des
+     * règlements, pour que les deux tableaux se lisent de la même façon.
+     */
+    private function nomEtLogin($userId): string
+    {
+        if (!$userId) {
+            return '—';
+        }
+
+        $user = \App\Models\User::find($userId);
+
+        if (!$user) {
+            return '—';
+        }
+
+        return trim(($user->nom_prenoms ?: '-') . ' (' . ($user->login ?: $user->id) . ')');
     }
 
     public function commissionHistorique(Request $request, $id)
@@ -230,6 +334,14 @@ class DetteApporteurController extends Controller
             'reference'        => 'nullable|string|max:80',
             'notes'            => 'nullable|string|max:500',
         ]);
+        // L'agence vient de la personne connectée, jamais d'un choix : un
+        // décaissement doit sortir de la caisse où il a réellement été fait.
+        $agenceId = Auth::user()?->agence_id;
+        if (!$agenceId) {
+            return back()->withInput()->with('error',
+                "Vous n'êtes rattaché à aucune agence : un administrateur doit vous affecter à un guichet avant que vous puissiez régler une dette.");
+        }
+
 
         $commissions = CommissionApporteur::whereIn('id', $validated['commission_ids'])->get();
 
@@ -282,6 +394,7 @@ class DetteApporteurController extends Controller
                     'reference'        => $validated['reference'] ?? null,
                     'notes'            => $validated['notes'] ?? null,
                     'user_id'          => $user?->id,
+                'agence_id'        => $agenceId,
                     // statut=2 = en attente de la 2e validation
                     'statut'           => 2,
                 ], $this->initierValidation()));
@@ -314,12 +427,23 @@ class DetteApporteurController extends Controller
 
         $p->update(['statut' => 1]);
 
+        // Le solde de l'apporteur est CRÉDITÉ à la création de chaque commission :
+        // il représente ce que l'entreprise lui doit. Le régler doit donc le
+        // débiter d'autant. Sans cela, l'apporteur voyait son solde inchangé dans
+        // l'application après avoir été payé, et pouvait redemander la même somme.
+        $apporteur = Apporteur::find($p->apporteur_id);
+        if ($apporteur) {
+            $apporteur->update([
+                'solde' => max(0, (float) $apporteur->solde - (float) $p->montant),
+            ]);
+        }
+
         return back()->with('success', "Paiement commission validé.");
     }
 
     public function recu($id)
     {
-        $p = PaiementApporteur::with(['apporteur', 'apporteur.user', 'commission', 'commission.commande', 'modePaiement', 'user'])
+        $p = PaiementApporteur::with(['apporteur', 'apporteur.user', 'commission', 'commission.commande', 'modePaiement', 'user', 'agence'])
             ->findOrFail($id);
         $data = $this->buildRecuData($p);
         return view('admin.shared.recu-paiement', $data);
@@ -327,7 +451,7 @@ class DetteApporteurController extends Controller
 
     public function recuPdf($id)
     {
-        $p = PaiementApporteur::with(['apporteur', 'apporteur.user', 'commission', 'commission.commande', 'modePaiement', 'user'])
+        $p = PaiementApporteur::with(['apporteur', 'apporteur.user', 'commission', 'commission.commande', 'modePaiement', 'user', 'agence'])
             ->findOrFail($id);
         $data = $this->buildRecuData($p);
         $data['pdfMode'] = true;
@@ -375,6 +499,10 @@ class DetteApporteurController extends Controller
             'modePaiement'       => $p->modePaiement?->libelle ?? '-',
             'reference'          => $p->reference,
             'caissier'           => $p->user?->nom_prenoms ?? '-',
+            // Le gabarit du reçu prévoyait déjà cette ligne ; la valeur ne lui
+            // était jamais fournie. Le bénéficiaire repart maintenant avec un
+            // reçu qui indique de quelle caisse le règlement est sorti.
+            'agenceLabel'        => $p->agence?->nom,
             'libelle'            => $p->notes,
             'montant'            => (float) $p->montant,
             'montantLabel'       => 'Montant payé',

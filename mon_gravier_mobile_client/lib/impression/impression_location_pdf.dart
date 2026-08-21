@@ -147,6 +147,7 @@ class ImpressionLocationPdf extends StatelessWidget {
       totalTva: montantTvaCalc,
       totalTtc: totalTtc,
       totalAPayer: totalAPayer,
+      remise: remise,
       resumeFiscal: resumeFiscal,
       modePaiement: location.modePaiement,
       adresseLivraison: location.adresse,

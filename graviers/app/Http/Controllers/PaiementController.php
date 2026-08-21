@@ -32,164 +32,17 @@ class PaiementController extends Controller
 {
     //
 
-    public function paiementPage($numero){
+    // [RETIRÉS] paiementPage() / paiement() — écran de règlement d'une VENTE
+    // (/paiement/create/{commande}). Le paiement y naissait DÉJÀ VALIDÉ, sans
+    // agence, sans reçu et sans seconde signature, et sa ligne de paiement ne
+    // portait ni service ni service_id — Commande::montantPayeComptant() ne la
+    // voyait donc pas. Le guichet /comptant/encaissements le remplace :
+    // double validation, agence, reçu, et reprise de la commission de
+    // l'apporteur ainsi que des points de fidélité, qui étaient calculés ici.
 
-
-        $info = Commande::where('id','=',$numero)->first();
-        // dd($info->devis_id);
-        $data['devis'] = Devis::where('id', $info->devis_id)->first();
-        // dd($data['devis']->paiements);
-        if($info->devis->paiements->isEmpty()){
-            $montant_restant = $info->devis->montant;
-
-        }else{
-            $montant = $info->devis->paiements->sortByDESC('created_at')->first();
-            $montant_restant = $montant->montant_restant;
-        }
-        // dd($montant_restant);
-        $data['montant_restant'] = $montant_restant;
-        $data['commande'] = Commande::where('id','=',$numero)->first();
-        $data['modePaiement'] = ModePaiement::liste();
-
-        return view('paiement.createPaiement',$data);
-    }
-
-    public function paiement($id, Request $request){
-
-        try {
-            //code...
-
-
-            $info = Commande::where('id','=',$id)->first();
-
-            if($info->devis->paiements->isEmpty()){
-                // $montant_total = $info->devis->montant;
-                // Total NET dû (HT + TVA + livraison − remise) : montant_total ne
-                // contient que le HT côté web -> régler le HT soldait la commande à
-                // tort alors que TVA et livraison restaient dues.
-                $montant_total = $info->montantAPayer();
-                $montant_restant = $montant_total - $request->montant;
-                // d('dans if');
-
-            }else{
-                $montant = $info->devis->paiements->sortByDESC('created_at')->first();
-                $montant_total = $montant->montant_total;
-
-                $montant_restant = $montant->montant_restant - $request->montant;
-            }
-
-            // dd($montant_total);
-
-            // recuperer le client_id lié à la commande
-            // $client = Commande::where('id','=',$id)->value('client_id');
-            $client = $info->client_id;
-
-
-            // recuperer le devis_id
-            $devis = Devis::where('numero','=',$info->numero)->value('id');
-            // dd($devis);
-            $code = uniqid(5);
-
-            $dataPaiement = [
-                'client_id' => $client,
-                'devis_id' => $devis,
-                'code' => $code,
-                'libelle' => $request->libelle,
-                'montant_total' => $montant_total,
-                'montant_restant' => $montant_restant,
-
-            ];
-            $reference = 'ref_hsd8frre'.rand(10,100);
-
-            if($montant_restant>0){
-                $info->update([
-                    'statut' => 2
-                ]);
-            }elseif($montant_restant==0){
-                $info->update([
-                    'statut' => 3
-                ]);
-
-                // Colonne réelle = 'point' (singulier) : l'ancien 'points' écrivait
-                // dans une colonne inexistante -> les points gagnés étaient perdus.
-                $info->client->update([
-                    'point' => $info->client->point + 200
-                ]);
-            }
-            if($montant_restant<0 ){
-                return redirect()->route('paye.create',$id)->with('fail','Le montant entré est supérieur au montant dû');
-            }
-            $paiement = Paiement::create($dataPaiement);
-            $paiementId = $paiement->id;
-
-            $dataLignePaiement = [
-                'paiement_id' => $paiementId,
-                'mode_paiement_id' => $request->mode,
-                'reference' => $request->libelle,
-                'moyen_paiement' => $request->moyen.''.rand(10,100),
-                'montant' => $request->montant,
-                'user_paie_id' => Auth::user()->id
-            ];
-            $data['ligne'] = LignePaiement::create($dataLignePaiement);
-            $data['user'] = Auth::user();
-
-            // dd('ok');
-            // $montant = $info->montant_total;
-            $montant = $request->montant;
-            $client = Client::where('id',$info->client_id)->first();
-            if($client->code_parrain){
-
-                $apporteur = Apporteur::where('code',$client->code_parrain)->first();
-                $solde = $apporteur->solde;
-
-
-                    $tauxApp = $this->resolveTauxCommission($apporteur);
-                    $commission = [
-                        'commande_id' => $info->id,
-                        'apporteur_id' => $apporteur->id,
-                        'montant' => $montant * $tauxApp / 100,
-                        'type_affaire' => $info->detailCommande->first()->produit->type_affaire,
-                        'montantPaye' => $montant,
-                        'statut' => 1
-                    ];
-
-                    $commission = CommissionApporteur::create($commission);
-
-                    // Incrémente le solde (ne l'écrase pas) pour cumuler les commissions.
-                    $apporteur->update([
-                        'solde' => $apporteur->solde + $commission->montant
-                    ]);
-                }
-
-
-            $config = Configuration::first();
-
-            $data['image'] = 'frontend/assets/imgs/logo/logooBlanc.svg';
-            $data['client'] = $client;
-
-            // dd($client,$data['client']);
-
-
-            Mail::send(new emailPaiement(Auth::user(),$info, $request->montant,$config->email_tresorier,$data));
-            Mail::send(new emailPaiementClient($info,$request->montant,$data));
-            // dd(Auth::user(),$info, $request->montant,$config->email_tresorier,$request->montant);
-
-            $fneData = FneService::getDonneesFne(null, $client);
-            $data = array_merge($data, $fneData);
-
-            $pdf = PDF::loadView('document.facture',$data);
-
-            return $pdf->stream('Paiement '.$data['ligne']->created_at.'.pdf');
-
-        } catch (\Throwable $th) {
-            // dd($th);
-            return view('layout.errorCatchBack');
-        }
-
-    }
 
     public function paiementaprescommande(){
-        $data['image'] = 'frontend/assets/imgs/logo/logooBlanc.svg';
+        $data['image'] = config('constantes.logo_pdf');
         $data['paiement'] = Paiement::find(1);
         $client = $data['paiement']->client ?? null;
         $fneData = FneService::getDonneesFne(null, $client);
@@ -199,130 +52,12 @@ class PaiementController extends Controller
 
 
 
-    public function paiementLocation(Location $location){
-        //dd($location);
-        return view('paiement.paiementLocation',[
-            'location' => $location,
-            'modePaiement' => ModePaiement::liste(),
-        ]);
-    }
-
-    public function paiementLocationTraitement( Request $request, Location $location){
-
-        try{
-        // dd($request, $location);
-
-            if($location->paiements->isEmpty()){
-                // $montant_total = $info->devis->montant;
-                $montant_total = $location->montant_total;
-                $montant_restant = $montant_total - $request->montant;
-                // d('dans if');
-
-            }else{
-                $montant = $location->paiements->sortByDESC('created_at')->first();
-                $montant_total = $montant->montant_total;
-
-                $montant_restant = $montant->montant_restant - $request->montant;
-            }
-
-
-            $code = uniqid(5);
-
-            $dataPaiement = [
-                'client_id' => $location->client_id,
-                // La table paiement n'a pas de location_id : on lie via service/service_id.
-                'service' => Help::$LOCATION,
-                'service_id' => $location->id,
-                'code' => $code,
-                'libelle' => $request->libelle,
-                'montant_total' => $montant_total,
-                'montant_restant' => $montant_restant
-            ];
-            $reference = 'ref_hsd8frre'.rand(10,100);
-
-            if($montant_restant>0){
-                $location->update([
-                    'statut' => 2
-                ]);
-            }elseif($montant_restant==0){
-                $location->update([
-                    'statut' => 3
-                ]);
-
-                // Colonne réelle = 'point' (singulier) : cf. paiement().
-                $location->client->update([
-                    'point' => $location->client->point + 200
-                ]);
-            }
-
-            if($montant_restant<0 ){
-                return redirect()->route('paye.paiementLocationTraitement',$location)->with('fail','Le montant entré est supérieur au montant dû');
-            }
-            $paiement = Paiement::create($dataPaiement);
-
-
-            $dataLignePaiement = [
-                'paiement_id' => $paiement->id,
-                'mode_paiement_id' => $request->mode,
-                'reference' => $request->libelle,
-                'moyen_paiement' => $request->moyen,
-                'montant' => $request->montant
-            ];
-            $data['ligne'] = LignePaiement::create($dataLignePaiement);
-            $data['user'] = Auth::user();
-
-            // dd('ok');
-            // Le TAUX de commission dépend de la taille de l'affaire (montant total
-            // de la location), mais la commission ne porte que sur la TRANCHE payée
-            // maintenant. L'ancien code appliquait le taux au montant total à CHAQUE
-            // versement -> une location réglée en 3 fois payait la commission 3×.
-            $montantTotalLoc = (float) $location->montant_total;
-            $montantTranche  = (float) $request->montant;
-            $client = Client::find($location->client_id);
-            if($client && $client->code_parrain){
-
-                $apporteur = Apporteur::where('code',$client->code_parrain)->first();
-                // $solde n'est lu qu'APRÈS avoir vérifié que l'apporteur existe :
-                // un code_parrain orphelin provoquait un null deref (page d'erreur
-                // caissier) alors que le Paiement venait d'être créé.
-                if($apporteur){
-                    if ($montantTotalLoc < 5000000) {
-                        $taux = 2.5;
-                    } elseif ($montantTotalLoc <= 20000000) {
-                        $taux = 5;
-                    } else {
-                        $taux = 7;
-                    }
-                    $apporteur->update([
-                        'solde' => (float) $apporteur->solde + ($montantTranche * $taux / 100)
-                    ]);
-                }
-            }
-
-
-            // dd($apporteur)
-
-            $config = Configuration::first();
-
-
-            $email = Mail::send(new emailPaiementLocation(Auth::user(),$location, $request->montant,$config->email_tresorier));
-
-            // dd($email);
-            Mail::send(new emailPaiementLocationClient($location,$request->montant));
-            // dd(Auth::user(),$info, $request->montant,$config->email_tresorier,$request->montant);
-
-            $clientLoc = $location->client ?? null;
-            $fneDataLoc = FneService::getDonneesFne(null, $clientLoc);
-            $data = array_merge($data, $fneDataLoc);
-
-            $pdf = PDF::loadView('document.facture',$data);
-
-            return $pdf->stream('Paiement '.$data['ligne']->created_at.'.pdf');
-        } catch (\Throwable $th) {
-            // dd($th);
-            return view('layout.errorCatchBack');
-        }
-    }
+    // [RETIRÉES] paiementLocation() / paiementLocationTraitement() — écran de
+    // règlement d'une location. Le paiement y naissait DÉJÀ VALIDÉ, sans agence,
+    // sans reçu et sans seconde signature. Le guichet
+    // /encaissements/locations (LocationComptantController) le remplace :
+    // il applique la double validation et reprend la commission de l'apporteur
+    // ainsi que les points de fidélité, qui étaient calculés ici.
 
     public function paiementList(){
 
@@ -412,9 +147,13 @@ class PaiementController extends Controller
                 ";
         }else{
             // liste de paiement en attente pour les clients non à terme
+            // HT recalculé depuis les lignes : cde.montant_total contient le HT pour une
+            // commande créée sur le site et le NET pour une commande créée depuis le
+            // mobile. L'ancien calcul ajoutait TVA et livraison par-dessus un montant qui
+            // les contenait déjà -> commande mobile affichée à tort comme non soldée.
             $req = "SELECT IFNULL(li_tot.paye, 0) AS paye,
-                            (cde.montant_total + cde.cout_livraison_client + IFNULL(tva.montant, 0) - cde.remise) AS montant_a_payer,
-                            ((cde.montant_total + cde.cout_livraison_client + IFNULL(tva.montant, 0) - cde.remise) - IFNULL(li_tot.paye, 0)) AS montant_restant,
+                            (COALESCE(NULLIF(ht.montant_ht, 0), cde.montant_total, 0) + cde.cout_livraison_client + IFNULL(tva.montant, 0) - cde.remise) AS montant_a_payer,
+                            ((COALESCE(NULLIF(ht.montant_ht, 0), cde.montant_total, 0) + cde.cout_livraison_client + IFNULL(tva.montant, 0) - cde.remise) - IFNULL(li_tot.paye, 0)) AS montant_restant,
                             cde.numero AS num_commande,
                             cde.created_at AS date_commande,
                             cde.id as commande_id
@@ -426,6 +165,12 @@ class PaiementController extends Controller
                         GROUP BY service_id
                     ) li_tot ON li_tot.service_id = cde.id
                     LEFT JOIN tva_commande tva ON tva.commande_id = cde.id
+                    LEFT JOIN (
+                        SELECT d.commande_id, SUM(d.prix * d.qte) AS montant_ht
+                        FROM detail_commande d
+                        WHERE d.deleted_at IS NULL
+                        GROUP BY d.commande_id
+                    ) ht ON ht.commande_id = cde.id
                     WHERE cde.client_id = $client->id
                     HAVING montant_restant > 0";
         }
@@ -451,7 +196,10 @@ class PaiementController extends Controller
         return view('paiement.effectuerPaiement',[
             'paiements' => $paiements,
             'client' => $client,
-            'moyens' => ModePaiement::liste(),
+            // Encaissement par un agent : instrument réel, pas « en agence ».
+            // (Écran désormais remplacé par « Encaissements Agence », mais la route
+            // reste accessible : on garde la même règle pour éviter toute divergence.)
+            'moyens' => ModePaiement::listePourAgent(),
         ]);
     }
 
@@ -524,7 +272,7 @@ class PaiementController extends Controller
 
         }
 
-        $data['image'] = 'frontend/assets/imgs/logo/logooBlanc.svg';
+        $data['image'] = config('constantes.logo_pdf');
         $data['ligne'] = DB::select("SELECT li.reference,
                                             li.created_at AS date_paiement,
                                             li.service,
@@ -621,10 +369,10 @@ class PaiementController extends Controller
                             'prenom_usager' => $client->prenom ?: $client->nom,
                             'telephone' => $client->contact1,
                             'email' => $client->user->email,
-                            'libelle_article' => "Paiement IMLOD",
+                            'libelle_article' => "Paiement DALAKOUN",
                             'quantite' => 1,
                             'montant' => intVal($request->montant),//ceil($commande->montant_total),
-                            'lib_order' => "Paiement commande de produit IMLOD",
+                            'lib_order' => "Paiement commande de produit DALAKOUN",
                             'Url_Retour' => route('client.verifiePaiement', ['codePaiement' => $codePaiement]), //route("ouvreApp", ['codePaiement' => $codePaiement]),
                             'Url_Callback' => route('callBackPaiement'),
                         ],
@@ -643,47 +391,84 @@ class PaiementController extends Controller
 
                     } else {
 
-                        $retour->code = $ret['code'];
-                        $retour->message = $ret['message'];
-                        // $retour->code = $ret['code'];
-                        // $retour->message = $ret['message'];
+                        // $retour n'a jamais été défini dans cette méthode : l'ancien
+                        // « $retour->code = ... » fatalisait au lieu d'afficher l'échec.
+                        return back()->with('fail', 'Le paiement en ligne a échoué : '
+                            . ($ret['message'] ?? 'erreur inconnue'));
                     }
         }else{
 
             // dd($client->client_a_terme);
             if($client->client_a_terme == 0){
 
+                // Aucune validation n'existait sur cette branche : sans case cochée,
+                // Commande::find(null) renvoyait null, le foreach fatalisait, puis
+                // $ligne restait indéfinie plus bas -> erreur après écritures.
+                $request->validate([
+                    'commande_id' => 'required|array|min:1',
+                    'mode'        => 'required',
+                    'montant'     => 'required|numeric|min:1',
+                ],[
+                    'commande_id.required' => 'Veuillez sélectionner au moins une commande à régler',
+                    'mode.required'        => 'Veuillez sélectionner un mode de paiement',
+                    'montant.required'     => 'Veuillez saisir le montant encaissé',
+                ]);
+
                 $commande = Commande::find($request->commande_id);
 
-
-
-
-                // initialisation du montant payé pour calculer la commission de l'apporteur d'affaire
-                $montantAvantCommission = 0;
+                // Paiements réellement dus pour les commandes cochées. On les collecte
+                // AVANT d'écrire quoi que ce soit : l'ancien code écrivait commande par
+                // commande et pouvait s'arrêter en cours de route, laissant des
+                // encaissements partiels enregistrés.
+                $aRegler = [];
+                $totalDu = 0;
                 foreach($commande as $cde){
-                    // Récupérer le paiement lié à la commande
-                     $p = Paiement::where('service_id', $cde->id)->where('statut', '<>', 3)->where('montant_restant', '>', 0)->latest()->first();
-                    // dd($cde->id, $p);
-                    // dd($apporteur);
-                    $montantDonne = $request->montant;
+                    // Le filtre sur le SERVICE manquait : un paiement de LOCATION portant
+                    // le même service_id qu'une commande pouvait être soldé à sa place.
+                    // orWhereNull conserve les anciennes lignes sans service renseigné.
+                    $p = Paiement::where('service_id', $cde->id)
+                        ->where(function ($q) { $q->where('service', Help::$COMMANDE)->orWhereNull('service'); })
+                        ->where('statut', '<>', 3)->where('montant_restant', '>', 0)->latest()->first();
+                    if (!$p) {
+                        // Commande sans paiement en attente (déjà soldée, ou paiement
+                        // jamais créé) : on l'ignore au lieu de fataliser sur $p->...
+                        continue;
+                    }
+                    $aRegler[] = $p;
+                    $totalDu += (float) $p->montant_restant;
+                }
 
-                    // apporteur_id, commande_id, montant
+                if (empty($aRegler)) {
+                    return back()->with('fail', "Aucun montant restant à encaisser sur la sélection.");
+                }
 
-                    $montantPaiement = $p->montant_restant;
+                $montantDonne = (float) $request->montant;
+                if ($montantDonne < $totalDu) {
+                    // Le montant saisi vaut pour l'ENSEMBLE de la sélection : l'ancien code
+                    // le remettait à sa valeur initiale à chaque tour de boucle, si bien que
+                    // 10 000 F soldaient deux commandes de 10 000 F.
+                    return back()->with('fail', 'Le client doit payer la totalité des commandes sélectionnées ('
+                        . number_format($totalDu, 0, ',', ' ') . ' fcfa).');
+                }
 
-                    if($montantDonne >= $montantPaiement ){
+                $ligne = null;
+                DB::transaction(function () use ($aRegler, $request, $apporteur, &$ligne, &$montantDonne) {
+                    foreach ($aRegler as $p) {
+                        $montantPaiement = (float) $p->montant_restant;
 
                         $p->montant_restant = 0;
                         $p->statut = 1;
                         $p->update();
-                        $montantLigne = $montantDonne - $montantPaiement;
-                        // dd($montantDonne,$montantPaiement,$request->mode);
 
                         $ligne = new LignePaiement;
                         $ligne->paiement_id = $p->id;
                         $ligne->mode_paiement_id = $request->mode;
                         $ligne->reference = $p->code;
-                        $ligne->montant = $p->montant_total;
+                        // Montant RÉELLEMENT encaissé sur cette commande. L'ancien code
+                        // enregistrait $p->montant_total (le total de la commande) : une
+                        // commande déjà payée pour moitié générait une ligne au montant
+                        // plein -> caisse et grand livre surévalués.
+                        $ligne->montant = $montantPaiement;
                         $ligne->user_id = Auth::user()->id;
                         $ligne->statut = 1;
                         $ligne->service_id = $p->service_id;
@@ -691,14 +476,11 @@ class PaiementController extends Controller
                         $ligne->code_paiement = $p->code;
                         $ligne->save();
 
-                        // $montantAvantCommission += $ligne->montant;
-                        $this->addCommission($apporteur, $ligne);
-                    }else{
-                        // le client doit payer la totalité de la facture
-                        return back()->with('fail','Le client doit payer la totalité de la facture');
+                        $montantDonne -= $montantPaiement;
 
+                        $this->addCommission($apporteur, $ligne);
                     }
-                }
+                });
 
                 // paiement de la commisison de l'apporteur
                 // $this->addCommission($apporteur, $montantAvantCommission);
@@ -864,6 +646,13 @@ class PaiementController extends Controller
         }
 
 
+        // Aucune ligne de paiement écrite (sélection vide côté « à terme », ou aucun
+        // reste à encaisser) : le reçu ne peut pas être produit et l'ancien code
+        // fatalisait sur $ligne->id. On revient à l'écran avec un message.
+        if (!isset($ligne) || !$ligne) {
+            return back()->with('fail', "Aucun encaissement n'a été enregistré : vérifiez votre sélection.");
+        }
+
         $data['image'] = config('constantes.logo');
         $data['ligne'] = DB::select("SELECT li.reference,
                                             li.created_at AS date_paiement,
@@ -917,7 +706,9 @@ class PaiementController extends Controller
             $commission = new CommissionApporteur;
             $commission->commande_id = $l->paiement->service_id;
             $commission->apporteur_id = $apporteur->id;
-            $commission->montant = $l->montant * $taux / 100;
+            // Arrondi au franc entier : le FCFA n'a pas de decimales (meme
+            // convention que PaiementEnLigne).
+            $commission->montant = round($l->montant * $taux / 100);
             $commission->save();
 
             $apporteur->solde += $commission->montant;

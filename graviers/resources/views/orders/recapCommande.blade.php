@@ -16,7 +16,7 @@
 @section('type_document', isset($commande) ? 'Facture de vente' : 'Proforma')
 
 @if(isset($commande) && $commande->modePaiement)
-    @section('mode_paiement', ucwords($commande->modePaiement->libelle))
+    @section('mode_paiement', ucwords($commande->modePaiement?->libelle))
 @elseif(isset($mode) && $mode)
     @section('mode_paiement', ucwords($mode->libelle))
 @endif
@@ -52,17 +52,17 @@
             @if(isset($commande))
                 @foreach($commande->detailCommande as $detail)
                     @php
-                        $pu = $detail->prix ?? $detail->produit->prix_moyen;
+                        $pu = $detail->prix ?? $detail->produit?->prix_moyen;
                         $montant = $pu * $detail->qte;
                         $totalHT += $montant;
                         $index++;
                     @endphp
                     <tr>
                         <td class="col-ref">{{ str_pad($index, 2, '0', STR_PAD_LEFT) }}</td>
-                        <td class="col-designation">{{ ucwords($detail->produit->nom) }}</td>
+                        <td class="col-designation">{{ ucwords($detail->produit?->nom) }}</td>
                         <td class="col-pu">{{ number_format($pu, 0, '', ' ') }}</td>
                         <td class="col-qte">{{ $detail->qte }}</td>
-                        <td class="col-unite">{{ $detail->produit->uniteProduit->abreviation ?? 'U' }}</td>
+                        <td class="col-unite">{{ $detail->produit?->uniteProduit->abreviation ?? 'U' }}</td>
                         <td class="col-taxes">TVA ({{ $config->tva ?? 0 }}%)</td>
                         <td class="col-rem">0</td>
                         <td class="col-montant">{{ number_format($montant, 0, '', ' ') }}</td>
@@ -90,17 +90,17 @@
             @elseif(session('type') == 'devis' && isset($devis))
                 @foreach($devis->detailDevis as $detail)
                     @php
-                        $pu = $detail->prix ?? $detail->produit->prix_moyen;
+                        $pu = $detail->prix ?? $detail->produit?->prix_moyen;
                         $montant = $pu * $detail->qte;
                         $totalHT += $montant;
                         $index++;
                     @endphp
                     <tr>
                         <td class="col-ref">{{ str_pad($index, 2, '0', STR_PAD_LEFT) }}</td>
-                        <td class="col-designation">{{ ucwords($detail->produit->nom) }}</td>
+                        <td class="col-designation">{{ ucwords($detail->produit?->nom) }}</td>
                         <td class="col-pu">{{ number_format($pu, 0, '', ' ') }}</td>
                         <td class="col-qte">{{ $detail->qte }}</td>
-                        <td class="col-unite">{{ $detail->produit->uniteProduit->abreviation ?? 'U' }}</td>
+                        <td class="col-unite">{{ $detail->produit?->uniteProduit->abreviation ?? 'U' }}</td>
                         <td class="col-taxes">TVA ({{ $config->tva ?? 0 }}%)</td>
                         <td class="col-rem">0</td>
                         <td class="col-montant">{{ number_format($montant, 0, '', ' ') }}</td>
@@ -114,8 +114,8 @@
 @section('totaux')
     @php
         if(isset($commande)) {
-            $totalTVA = $commande->TvaCommande->montant ?? 0;
-            $totalAPayer = $commande->montant_total;
+            $totalTVA = $commande->TvaCommande?->montant ?? 0;
+            $totalAPayer = $commande->montantAPayer();
         } elseif(session('type') == 'devis' && isset($devis)) {
             $totalTVA = $devis->tva;
             $totalAPayer = $devis->montant + $devis->tva;

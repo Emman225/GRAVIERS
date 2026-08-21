@@ -5,21 +5,28 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+use App\Models\Concerns\TraceLesValidations;
+
 class PaiementLivreur extends Model
 {
-    use SoftDeletes;
+    use SoftDeletes, TraceLesValidations;
 
     protected $table = 'paiement_livreur';
 
     protected $fillable = [
         'date_paiement',
         'livraison_id',
+        // Renseigne quand le reglement decoule d'une demande de paiement
+        // du livreur : ce lien evite de retrancher deux fois le meme
+        // montant du solde (cf. Livreur::soldeCalcule).
+        'demande_paiement_id',
         'livreur_id',
         'montant',
         'mode_paiement_id',
         'reference',
         'notes',
         'user_id',
+        'agence_id',
         'statut',
         // Double validation (cf. trait DoubleValidationPaiement)
         'user_valide_id',
@@ -50,5 +57,15 @@ class PaiementLivreur extends Model
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    /**
+     * Agence d'où le règlement est sorti — celle de l'utilisateur qui l'a
+     * enregistré. Un décaissement sans agence rendait le rapprochement de
+     * caisse faux par construction : il ne voyait que les entrées.
+     */
+    public function agence()
+    {
+        return $this->belongsTo(\App\Models\Agence::class, 'agence_id');
     }
 }

@@ -62,6 +62,16 @@ class ProfileScreen extends StatelessWidget {
                           Get.offAllNamed(SignInScreen.routeName);
                         },
                       ),
+                      // Version affichée : sans repère visible, deux APK
+                      // successifs sont indiscernables une fois installés.
+                      const Padding(
+                        padding: EdgeInsets.only(top: 24, bottom: 12),
+                        child: Text(
+                          "Version $versionApplication",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey, fontSize: 12),
+                        ),
+                      ),
                     ],
                   ),
                 ),

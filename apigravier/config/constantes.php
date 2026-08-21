@@ -1,7 +1,7 @@
 <?php
 
 return [
-    "userName" => "Moblier - Location - Distribution",
+    "userName" => "DALAKOUN SARL",
     "userMailSortant" =>  "test.reply@numerisk.net",
     "passwordMailSortant" => "6bnE5Uy6zvPu",
     "IMAP_Port" => 993,

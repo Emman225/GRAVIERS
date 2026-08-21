@@ -56,7 +56,7 @@
                                             @endphp
                                             @foreach ($commande->factures as $key => $facture)
                                                 @php
-                                                    $supplement = $facture->commande->cout_livraison_client + $facture->commande->TvaCommande->montant - $commande->remise;
+                                                    $supplement = $facture->commande?->cout_livraison_client + ($facture->commande?->TvaCommande?->montant ?? 0) - $commande->remise;
                                                 @endphp
                                                 @if($key > 0)
                                                     @php

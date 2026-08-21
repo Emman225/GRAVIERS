@@ -88,7 +88,7 @@ class _DetailsDevisScreenState extends State<DetailsDevisScreen> {
               ),
             );
           }else{
-            EasyLoading.showError("Impossible de récupérer les détails de cette opération");
+            afficherErreur("Impossible de récupérer les détails de cette opération");
           }
         },
         backgroundColor: greenColor,
@@ -197,6 +197,10 @@ class _DetailsDevisScreenState extends State<DetailsDevisScreen> {
 
   _chargerPanier() {
     paniers.clear();
+    // On retient de quel devis ce panier provient : la commande le signalera au
+    // serveur, qui pourra alors clore le devis au lieu de le laisser « en
+    // attente » à vie.
+    devisRepris = unDevis.id;
     for (var dd in lignes) {
       final double prixDevis = (dd.prix ?? 0) > 0
           ? dd.prix!.toDouble()
@@ -213,14 +217,26 @@ class _DetailsDevisScreenState extends State<DetailsDevisScreen> {
             description: dd.description,
             prixMoyen: prixDevis.toInt(),
             prixPersonnalise: prixDevis,
-            id: dd.id,
+            // L'identifiant du PRODUIT, pas celui de la ligne de devis.
+            //
+            // dd.id est l'id de la ligne detail_devis. Le panier le portait comme
+            // s'il s'agissait du produit, et la commande partait ensuite avec
+            // 'produit_id' = id de ligne : le serveur ne trouvait évidemment aucun
+            // produit correspondant et refusait tout, avec « Un ou plusieurs
+            // produits de votre panier ne sont plus disponibles » — un message
+            // trompeur, puisque les produits étaient bien là.
+            //
+            // Sans ce contrôle serveur, la commande serait partie avec un
+            // produit_id faux : lignes rattachées au mauvais article, ou rejet
+            // brut de la clé étrangère.
+            id: dd.produitId,
             image: dd.image,
             type_affaire: unDevis.service == LOCATION ? LOCATION : VENTE,
           ),
           numOfItem: dd.qte ?? 0,
           type: 1));
     }
-    EasyLoading.showSuccess("Panier chargé avec succès");
+    afficherSucces("Panier chargé avec succès");
     Get.toNamed(CartScreen.routeName);
   }
 
@@ -250,7 +266,9 @@ class _DetailsDevisScreenState extends State<DetailsDevisScreen> {
         if (retourHttp.statusCode == 200) {
           retDetDev = RetourDetailDevis.fromJson(datas);
           if (retDetDev.code == 200) {
-            setState(() {
+            // Écran quitté pendant le chargement : la réponse revient sur un écran
+            // détruit et le rafraîchissement échoue (voir devis_screen.dart).
+            if (mounted) setState(() {
               lignes = retDetDev.data ?? [];
               montantTotal = lignes.fold(0, (sum, l) {
                 double lePrix = l.prix ?? 0;
@@ -259,19 +277,22 @@ class _DetailsDevisScreenState extends State<DetailsDevisScreen> {
               });
             });
           } else {
-            EasyLoading.showError(retDetDev.message ?? '');
+            afficherErreur(retDetDev.message ?? '');
           }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
-        EasyLoading.showError(
-            "Une erreur s'est produite veuillez reesayer plus tard");
+        afficherErreur(messageErreurTechnique(e));
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -300,23 +321,26 @@ class _DetailsDevisScreenState extends State<DetailsDevisScreen> {
         }
         if (retourHttp.statusCode == 200) {
           if (datas['code'] == 200) {
-            EasyLoading.showSuccess(datas['message'] ?? '');
+            afficherSucces(datas['message'] ?? '');
             Get.back();
             //Get.back();
           } else {
-            EasyLoading.showError(datas['message'] ?? '');
+            afficherErreur(datas['message'] ?? '');
           }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
-        EasyLoading.showError(
-            "Une erreur s'est produite veuillez reesayer plus tard");
+        afficherErreur(messageErreurTechnique(e));
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 }

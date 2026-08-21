@@ -46,12 +46,12 @@
                             @php $docs = is_array($demande->documents_path) ? $demande->documents_path : []; @endphp
                             <tr>
                                 <td>
-                                    <strong>{{ $demande->client->nom }} {{ $demande->client->prenom }}</strong>
-                                    @if($demande->client->user)
-                                        <br><small class="text-muted">{{ $demande->client->user->email }}</small>
+                                    <strong>{{ $demande->client?->display_name }}</strong>
+                                    @if($demande->client?->user)
+                                        <br><small class="text-muted">{{ $demande->client?->user?->email }}</small>
                                     @endif
                                 </td>
-                                <td class="text-center">{{ $demande->client->created_at ? Carbon::parse($demande->client->created_at)->format('d-m-Y') : '-' }}</td>
+                                <td class="text-center">{{ $demande->client?->created_at ? Carbon::parse($demande->client?->created_at)->format('d-m-Y') : '-' }}</td>
                                 <td>
                                     <strong>{{ $demande->objet }}</strong>
                                     <br><small class="text-muted">{{ \Illuminate\Support\Str::limit($demande->description, 120) }}</small>
@@ -123,7 +123,7 @@
                     <form method="post" action="{{ route('show.validationDemande', ['demande' => $demande->id, 'rep' => 1]) }}">
                         @csrf
                         <div class="modal-header bg-success text-white">
-                            <h5 class="modal-title text-white">Approuver la demande de {{ $demande->client->nom }} {{ $demande->client->prenom }}</h5>
+                            <h5 class="modal-title text-white">Approuver la demande de {{ $demande->client?->display_name }}</h5>
                             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                         </div>
                         <div class="modal-body">
@@ -201,7 +201,7 @@
                             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                         </div>
                         <div class="modal-body">
-                            <p>Refuser la demande de <strong>{{ $demande->client->nom }} {{ $demande->client->prenom }}</strong> ?</p>
+                            <p>Refuser la demande de <strong>{{ $demande->client?->display_name }}</strong> ?</p>
                             <div class="mb-3">
                                 <label class="form-label fw-bold">Motif du refus <span class="text-danger">*</span></label>
                                 <textarea name="motif_refus" class="form-control" rows="4" minlength="5" maxlength="1000" required

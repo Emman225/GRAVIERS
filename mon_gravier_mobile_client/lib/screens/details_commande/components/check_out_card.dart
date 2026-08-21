@@ -139,15 +139,19 @@ class _CheckoutCardState extends State<CheckoutCard> {
                           if (retourHttp.statusCode == 200) {
                             if (datas['code'] == 200) {
                               Get.back();
-                              EasyLoading.showSuccess(datas['message']);
+                              afficherSucces(datas['message']);
                             }else{
-                              EasyLoading.showError(datas['message']);
+                              afficherErreur(datas['message']);
                             }
+                          } else {
+                            // Sans cette branche, une réponse serveur en erreur ne produisait
+                            // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+                            afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
                           }
                         } catch (e) {
                           user.code = 500;
                           user.message =
-                          "Une erreur s'est produite veuillez reesayer plus tard";
+                          messageErreurTechnique(e);
                           if (kDebugMode) {
                             print(e.toString());
                           }
@@ -155,7 +159,7 @@ class _CheckoutCardState extends State<CheckoutCard> {
 
                         fermerChargement();
                       }else{
-                        EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+                        afficherInfo("Veuillez vérifier votre connexion internet");
                       }
                     }
                   },
@@ -180,7 +184,7 @@ class _CheckoutCardState extends State<CheckoutCard> {
                         if (paniers.isNotEmpty) {
                           Get.toNamed(ChoixAdresseScreen.routeName);
                         }  else{
-                          EasyLoading.showError("Votre panier est vide");
+                          afficherErreur("Votre panier est vide");
                         }
                         break;
                       case 2:
@@ -208,6 +212,11 @@ class _CheckoutCardState extends State<CheckoutCard> {
                               'note' : widget.data[2],
                               'total': getTotalAmount(),
                               "lignes": lignes,
+                              // Devis d'origine, s'il y en a un : le serveur le
+                              // clôturera. Sans lui, le devis restait « en attente »
+                              // dans « Mes devis enregistrés » après avoir pourtant
+                              // été transformé en commande.
+                              'devis_id': devisRepris,
                             };
 
                             if (kDebugMode) {
@@ -229,15 +238,20 @@ class _CheckoutCardState extends State<CheckoutCard> {
                             if (retourHttp.statusCode == 200) {
                               if (datas['code'] == 200) {
                                 paniers.clear();
+                                devisRepris = null;
                                 Get.toNamed(CommandeSuccessScreen.routeName, arguments: datas['message']);
                               }else{
-                                EasyLoading.showError(datas['message']);
+                                afficherErreur(datas['message']);
                               }
+                            } else {
+                              // Sans cette branche, une réponse serveur en erreur ne produisait
+                              // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+                              afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
                             }
                           } catch (e) {
                             user.code = 500;
                             user.message =
-                            "Une erreur s'est produite veuillez reesayer plus tard";
+                            messageErreurTechnique(e);
                             if (kDebugMode) {
                               print(e.toString());
                             }
@@ -245,7 +259,7 @@ class _CheckoutCardState extends State<CheckoutCard> {
 
                           fermerChargement();
                         }else{
-                          EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+                          afficherInfo("Veuillez vérifier votre connexion internet");
                         }
                         break;
                       default:
@@ -330,15 +344,19 @@ class _CheckoutCardState extends State<CheckoutCard> {
                           if (retourHttp.statusCode == 200) {
                             if (datas['code'] == 200) {
                               Get.back();
-                              EasyLoading.showSuccess(datas['message']);
+                              afficherSucces(datas['message']);
                             }else{
-                              EasyLoading.showError(datas['message']);
+                              afficherErreur(datas['message']);
                             }
+                          } else {
+                            // Sans cette branche, une réponse serveur en erreur ne produisait
+                            // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+                            afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
                           }
                         } catch (e) {
                           user.code = 500;
                           user.message =
-                          "Une erreur s'est produite veuillez reesayer plus tard";
+                          messageErreurTechnique(e);
                           if (kDebugMode) {
                             print(e.toString());
                           }
@@ -346,11 +364,11 @@ class _CheckoutCardState extends State<CheckoutCard> {
 
                         fermerChargement();
                       }else{
-                        EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+                        afficherInfo("Veuillez vérifier votre connexion internet");
                       }
                       Get.back();
                     }else{
-                      EasyLoading.showError("Veuillez saisir le motif de l'annulation de votre commande");
+                      afficherErreur("Veuillez saisir le motif de l'annulation de votre commande");
                     }
                   },
                   child: const Text(

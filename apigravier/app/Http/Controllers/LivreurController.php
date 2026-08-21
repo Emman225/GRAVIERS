@@ -21,8 +21,11 @@ use App\Models\TypeLivraison;
 use App\Models\DetailCommande;
 use App\Models\DetailLocation;
 use App\Models\DemandePaiement;
+use App\Models\DemandeLivraison;
+use App\Models\DetailsLivraison;
 use App\Mail\CodeInscriptionMail;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\RateLimiter;
@@ -466,6 +469,66 @@ class LivreurController extends Controller
                 $livraison->accepte = 3;
                 $livraison->save();
 
+                // REFUS : LIBERER CE QUE L'AFFECTATION AVAIT RESERVE.
+                //
+                // Le refus ne faisait qu'ecrire `accepte = 3`. Le camion, mis
+                // indisponible a l'affectation, le restait pour toujours : il
+                // sortait du parc sans avoir rien transporte.
+                //
+                // La ligne de la demande, elle, repasse « EN ATTENTE » des lors
+                // qu'aucune course active ne la couvre plus — c'est cet etat que
+                // le back-office lit pour proposer une nouvelle affectation.
+                if ($livraison->vehicule_id) {
+                    DB::table('vehicule')
+                        ->where('id', $livraison->vehicule_id)
+                        ->update(['disponible' => 1]);
+                }
+
+                // PROVENANCE COMMANDE : la ligne de commande repasse « EN
+                // ATTENTE » des lors qu'aucune course active ne la couvre plus.
+                // Sans quoi elle restait « EN TRAITEMENT », et les ecrans qui
+                // s'appuient sur cet etat la croyaient prise en charge.
+                //
+                // On ne touche a detail_commande QUE pour une vente : sur une
+                // location, `detail_commande_id` porte l'id d'un detail_location,
+                // et ecrire dedans corromprait une ligne de commande etrangere.
+                if ($livraison->provenance === 'COMMANDE' && $livraison->detail_commande_id) {
+                    $encoreCouverte = DB::table('livraison')
+                        ->where('detail_commande_id', $livraison->detail_commande_id)
+                        ->where('provenance', 'COMMANDE')
+                        ->where('accepte', '!=', 3)
+                        ->whereNull('deleted_at')
+                        ->exists();
+
+                    if (!$encoreCouverte) {
+                        DB::table('detail_commande')
+                            ->where('id', $livraison->detail_commande_id)
+                            ->update(['etat_livraison' => Help::$LIVRAISON_EN_ATTENTE]);
+                    }
+                }
+
+                if ($livraison->detail_livraison_id) {
+                    $detail = DB::table('detail_livraison')
+                        ->where('id', $livraison->detail_livraison_id)
+                        ->first();
+
+                    if ($detail) {
+                        // Les courses REFUSEES ne comptent pas : elles n'ont
+                        // rien transporte, elles ne consomment donc rien.
+                        $affectee = (float) DB::table('livraison')
+                            ->where('detail_livraison_id', $detail->id)
+                            ->where('accepte', '!=', 3)
+                            ->whereNull('deleted_at')
+                            ->sum('qte');
+
+                        if ($affectee < (float) $detail->qte) {
+                            DB::table('detail_livraison')
+                                ->where('id', $detail->id)
+                                ->update(['etat_livraison' => Help::$LIVRAISON_EN_ATTENTE]);
+                        }
+                    }
+                }
+
                 DB::commit();
 
                 $retour->code = 200;
@@ -562,6 +625,24 @@ class LivreurController extends Controller
 
                         // Met à jour qte_livree de la ligne courante
                         $det->qte_livree = (float) ($det->qte_livree ?? 0) + (float) $livraison->qte;
+
+                        // L'ÉTAT de la ligne n'était pas mis à jour ici, alors que
+                        // le site le fait dans son propre écran de validation
+                        // (LivreurController::validationLivraison). Une commande
+                        // clôturée depuis l'application du livreur restait donc en
+                        // « EN COURS LIVRAISON » au niveau de ses lignes, même
+                        // affichée TERMINEE au niveau de la commande.
+                        //
+                        // Conséquence visible : la page « Retour de produit » du
+                        // client ne liste que les lignes en LIVREE. Une commande
+                        // pourtant livrée n'y apparaissait jamais, et le client ne
+                        // pouvait pas demander de retour. Seules les commandes
+                        // retirées sur place y figuraient, celles-là étant passées
+                        // en LIVREE par SellerController.
+                        $det->etat_livraison = ((float) $det->qte_livree >= (float) $det->qte)
+                            ? Help::$LIVRAISON_LIVREE
+                            : Help::$LIVRAISON_EN_COURS;
+
                         $det->save();
 
                         $details = DetailCommande::where('commande_id', $com->id)->get();
@@ -587,7 +668,62 @@ class LivreurController extends Controller
                         $loc->etat_location = Help::$LOCATION_EN_COURS;
                         $loc->save();
                         break;
+
+                    case 'LIVRAISON':
+                        // DEMANDE DE LIVRAISON — ce cas MANQUAIT.
+                        //
+                        // La livraison passait bien à LIVREE, mais rien ne
+                        // remontait ensuite : la ligne de la demande restait
+                        // « EN TRAITEMENT » et la demande elle-même n'était
+                        // jamais close. Le gestionnaire la voyait indéfiniment
+                        // dans « Demande en attente », et le client dans son
+                        // compte, alors que la marchandise était livrée.
+                        //
+                        // Même règle que le site : une demande est TERMINEE quand
+                        // la totalité des quantités demandées a été livrée, et
+                        // reste EN TRAITEMENT tant qu'il subsiste un reliquat.
+                        $ligne = DetailsLivraison::find($livraison->detail_livraison_id);
+
+                        if ($ligne) {
+                            $idsLignes = DetailsLivraison::where('demande_livraison_id', $ligne->demande_livraison_id)
+                                ->pluck('id');
+
+                            // Cette ligne-ci est-elle entièrement servie ?
+                            $livreePourLaLigne = (float) Livraison::where('detail_livraison_id', $ligne->id)
+                                ->where('etat_livraison', Help::$LIVRAISON_LIVREE)
+                                ->sum('qte');
+
+                            if ($livreePourLaLigne >= (float) $ligne->qte) {
+                                $ligne->etat_livraison = Help::$LIVRAISON_LIVREE;
+                                $ligne->save();
+                            }
+
+                            // Et la demande entière ?
+                            $qteADemander = (float) DetailsLivraison::whereIn('id', $idsLignes)->sum('qte');
+                            $qteLivree    = (float) Livraison::whereIn('detail_livraison_id', $idsLignes)
+                                ->where('etat_livraison', Help::$LIVRAISON_LIVREE)
+                                ->sum('qte');
+
+                            $demande = DemandeLivraison::find($ligne->demande_livraison_id);
+                            if ($demande) {
+                                // « >= » et non « == » : un arrondi sur des
+                                // quantités décimales ne doit pas empêcher la
+                                // clôture d'une demande pourtant servie.
+                                $demande->etat_commande = ($qteLivree >= $qteADemander)
+                                    ? Help::$COMMANDE_TERMINE
+                                    : Help::$COMMANDE_EN_TRAITEMENT;
+                                $demande->save();
+                            }
+                        }
+                        break;
                 }
+
+                // Le véhicule redevient disponible dès qu'il n'a plus aucune
+                // course en cours. Il était mis à 0 à l'affectation sans jamais
+                // être libéré : après sa première course, il disparaissait
+                // définitivement de la liste proposée au gestionnaire, qui se
+                // retrouvait sans véhicule alors que les livreurs avaient fini.
+                Vehicule::libererSiPlusAucuneCourse($livraison->vehicule_id);
 
                 DB::commit();
 
@@ -610,6 +746,79 @@ class LivreurController extends Controller
         return response()->json($retour);
     }
 
+    /**
+     * Ajoute à la liste des demandes les RÈGLEMENTS saisis au back-office.
+     *
+     * L'entreprise paie le livreur par deux chemins : la demande qu'il envoie
+     * depuis l'application, et le règlement qu'un administrateur enregistre
+     * sur une de ses courses. Seul le premier remontait ici : son historique
+     * ne retombait pas sur ce qu'il avait réellement reçu.
+     *
+     * Les règlements issus d'une demande sont EXCLUS : ils sont déjà dans la
+     * liste, sous leur demande. Les garder ferait apparaître le même versement
+     * deux fois.
+     *
+     * Les lignes prennent la forme d'une demande déjà payée : l'application
+     * les affiche sans modification, et aucune nouvelle version n'est requise.
+     */
+    private function ajouterReglementsBackOffice($demandes, $livreur, $user)
+    {
+        if (!$livreur || $livreur->id <= 0) {
+            return $demandes;
+        }
+
+        $regles = DB::table('paiement_livreur')
+            ->leftJoin('mode_paiement', 'mode_paiement.id', '=', 'paiement_livreur.mode_paiement_id')
+            ->where('paiement_livreur.livreur_id', $livreur->id)
+            ->where('paiement_livreur.statut', 1)   // validés uniquement
+            ->whereNull('paiement_livreur.deleted_at')
+            // La colonne vient d'une migration du back-office : si elle manque,
+            // on s'en passe plutôt que de casser l'écran du livreur.
+            ->when(
+                Schema::hasColumn('paiement_livreur', 'demande_paiement_id'),
+                fn ($q) => $q->whereNull('paiement_livreur.demande_paiement_id')
+            )
+            ->orderByDesc('paiement_livreur.date_paiement')
+            ->select([
+                'paiement_livreur.id',
+                'paiement_livreur.montant',
+                'paiement_livreur.mode_paiement_id',
+                'paiement_livreur.date_paiement',
+                'paiement_livreur.reference',
+                'paiement_livreur.created_at',
+                'mode_paiement.libelle as mode_paiement',
+            ])
+            ->get();
+
+        foreach ($regles as $r) {
+            $demandes->push((object) [
+                'id'               => $r->id,
+                'montant'          => (float) $r->montant,
+                'mode_paiement_id' => $r->mode_paiement_id,
+                'mode_paiement'    => $r->mode_paiement ?? 'Paiement en agence',
+                // Un règlement saisi au back-office n'a pas de numéro de
+                // compte : on envoie la référence de la transaction si l'agent
+                // l'a saisie, sinon RIEN — l'application masque alors la ligne
+                // au lieu d'afficher « Compte: null ».
+                'numero_compte'    => $r->reference ?: '',
+                'user_id'          => $user->id,
+                'user_valide_id'   => null,
+                'user_valide2_id'  => null,
+                'date_validation'  => $r->date_paiement,
+                'paye'             => 1,
+                'statut'           => Help::$STATUT_ACTIF,
+                'deleted_at'       => null,
+                'created_at'       => $r->created_at,
+                'updated_at'       => $r->created_at,
+                'date_demande'     => $r->date_paiement
+                    ? date('d/m/Y', strtotime($r->date_paiement))
+                    : '',
+            ]);
+        }
+
+        return $demandes;
+    }
+
     public function listerDemandePaiement(Request $request)
     {
         Request()->validate([
@@ -629,6 +838,11 @@ class LivreurController extends Controller
                 foreach ($dems as $d) {
                     $d->date_demande = $d->created_at->format('d/m/Y H:i:s');
                 }
+
+                // Les courses réglées depuis le back-office ne sont pas dans
+                // demande_paiement : on les ajoute (voir ajouterReglementsBackOffice).
+                $dems = $this->ajouterReglementsBackOffice($dems, Livreur::lireSurUser($user->id), $user);
+
                 $retour->data = $dems;
             } else {
                 $retour->code = 404;
@@ -743,6 +957,8 @@ class LivreurController extends Controller
                 foreach ($dems as $d) {
                     $d->date_demande = $d->created_at->format('d/m/Y H:i:s');
                 }
+
+                $dems = $this->ajouterReglementsBackOffice($dems, $livreur, $user);
 
                 $retour->data = [
                     "livreur" => $livreur,

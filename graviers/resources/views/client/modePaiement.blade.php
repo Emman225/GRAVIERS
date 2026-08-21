@@ -169,26 +169,26 @@
                                             @foreach ($devis->detailDevis as $detail)
                                                 <tr>
                                                     <td class="image product-thumbnail">
-                                                        <img src="{{ asset("storage/".$detail->produit->image->first()->image) }}" alt="{{ $detail->produit->nom }}">
+                                                        <img src="{{ asset("storage/".$detail->produit?->image->first()->image) }}" alt="{{ $detail->produit?->nom }}">
                                                     </td>
                                                     <td>
-                                                        <h6 class="w-160 mb-5 paiement-product-name">{{ $detail->produit->nom }}</h6>
-                                                        @if(($detail->produit->meilleur_note ?? 0) > 0)
+                                                        <h6 class="w-160 mb-5 paiement-product-name">{{ $detail->produit?->nom }}</h6>
+                                                        @if(($detail->produit?->meilleur_note ?? 0) > 0)
                                                             <div class="product-rate-cover">
                                                                 <div class="product-rate d-inline-block">
-                                                                    <div class="product-rating" style="width :{{ $detail->produit->meilleur_note }}%"></div>
+                                                                    <div class="product-rating" style="width :{{ $detail->produit?->meilleur_note }}%"></div>
                                                                 </div>
-                                                                <span class="font-small ml-5 text-muted">({{ round(($detail->produit->meilleur_note * 5) / 100, 1) }})</span>
+                                                                <span class="font-small ml-5 text-muted">({{ round(($detail->produit?->meilleur_note * 5) / 100, 1) }})</span>
                                                             </div>
                                                         @endif
                                                     </td>
                                                     <td><h6 class="text-muted pl-20 pr-20">x {{ $detail->qte }}</h6></td>
                                                     <td>
                                                         <h4 class="text-brand">
-                                                            @if(isset($prixPerso[$detail->produit->id]))
-                                                                {{ Help::formatNombre($prixPerso[$detail->produit->id],true) }}
+                                                            @if(isset($prixPerso[$detail->produit?->id]))
+                                                                {{ Help::formatNombre($prixPerso[$detail->produit?->id],true) }}
                                                             @else
-                                                                {{ Help::formatNombre($detail->produit->prix_moyen,true) }}
+                                                                {{ Help::formatNombre($detail->produit?->prix_moyen,true) }}
                                                             @endif
                                                         </h4>
                                                     </td>
@@ -234,20 +234,20 @@
                                                 <th class="cart_total_label"><h6 class="text-muted text-start">Montant TTC</h6></th>
                                                 <th></th>
                                                 <th class="cart_total_amount">
-                                                    <h6 class="text-brand text-end paiement-total-final"> <span>{{ Help::formatNombre($devis->montant + $devis->tva + $devis->cout_livraison, true) }}</span></h6>
+                                                    <h6 class="text-brand text-end paiement-total-final"> <span>{{ Help::formatNombre($devis->montantAPayer(), true) }}</span></h6>
                                                 </th>
                                             </tr>
                                             <tr id="mpMontantTotal">
                                                 <th class="cart_total_label"><h6 class="">Montant Total</h6></th>
                                                 <th></th>
                                                 <th class="cart_total_amount">
-                                                    <h6 class="text-brand text-end"><span id="leMontantTotal" class="js-montant-net">{{ Help::formatNombre($devis->montant + $devis->tva + $devis->cout_livraison, true) }}</span> fcfa</h6>
+                                                    <h6 class="text-brand text-end"><span id="leMontantTotal" class="js-montant-net">{{ Help::formatNombre($devis->montantAPayer(), true) }}</span> fcfa</h6>
                                                 </th>
                                             </tr>
                                             <tr>
                                                 <th colspan="3">
                                                     <span class="text-danger" id="messageAlert">
-                                                        @if($devis->montant + $devis->tva + $devis->cout_livraison > 2000000)
+                                                        @if($devis->montantAPayer() > 2000000)
                                                             Pour tout montant supérieur à 2 000 000 fcfa le paiement doit se faire par virement bancaire, en agence ou en plusieurs commandes.
                                                         @endif
                                                     </span>

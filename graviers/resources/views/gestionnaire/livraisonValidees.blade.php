@@ -52,9 +52,9 @@
 
                                     <tr>
                                         <td class="texte-center" > {{ $livraison->numero }}</td>
-                                        <td class="texte-center"><b> {{$livraison->client?->nom.' '.$livraison->client?->prenom}} </b></td>
+                                        <td class="texte-center"><b> {{$livraison->client?->display_name}} </b></td>
                                         <td class="texte-center">
-                                            <b> {{$livraison->livre_par == 1 ? $livraison->livreur?->user?->nom_prenoms : $livraison->client?->nom.' '.$livraison->client?->prenom }} </b>
+                                            <b> {{$livraison->livre_par == 1 ? $livraison->livreur?->user?->nom_prenoms : $livraison->client?->display_name }} </b>
                                         </td>
                                         <td class="texte-center"> {{$livraison->AdresseLivraison?->affichage}}</td>
                                         @if ($livraison->provenance == 'COMMANDE')
@@ -70,9 +70,9 @@
                                             <td class="texte-center">{{$livraison->detailLivraison?->qte}}</td>
                                         @endif
                                         {{-- <td class="text-center">{{$livraison->qte }}</td> --}}
-                                        <td class="text-center">{{$livraison->vehicule->marque ?? '' }}</td>
-                                        <td class="text-center">{{$livraison->vehicule->immatriculation ?? '' }}</td>
-                                        <td class="text-center">{{$livraison->vehicule->capacite ?? '' }}</td>
+                                        <td class="text-center">{{$livraison->vehicule?->marque ?? '' }}</td>
+                                        <td class="text-center">{{$livraison->vehicule?->immatriculation ?? '' }}</td>
+                                        <td class="text-center">{{$livraison->vehicule?->capacite ?? '' }}</td>
                                         <td class="texte-center"> {{$livraison->date_livraison}} </td>
                                         <td class="texte-center"> {{$livraison->updated_at}} </td>
                                     </tr>

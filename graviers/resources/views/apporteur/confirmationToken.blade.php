@@ -14,7 +14,7 @@
         @endif
         <div class="card-body">
             <div class="img" style="display:flex; align-item:center; justify-content: center">
-                <img class="img-lg center" src="{{ asset('backend/assets/imgs/theme/logooBlanc.svg') }}" alt="User" />
+                <img class="img-lg center" src="{{ asset('frontend/assets/imgs/logo/dalakoun-carre.png') }}" alt="User" />
             </div>
             <h4 class="card-title text-center mb-4">Confirmer votre compte !</h4>
 

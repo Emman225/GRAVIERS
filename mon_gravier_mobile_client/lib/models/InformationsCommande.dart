@@ -253,12 +253,12 @@ class UneLocation {
     modePaiementId = json['mode_paiement_id'];
     adresseLivraisonId = json['adresse_livraison_id'];
     dateLocation = json['date_location'];
-    montantTotal = double.parse(json['montant_total'].toString());
+    montantTotal = double.parse(json['montant_total'] == null ? '0' : json['montant_total'].toString());
     etatLocation = json['etat_location'];
     note = json['note'];
-    remise = double.parse(json['remise'].toString());
-    montant_tva = double.parse(json['montant_tva'].toString());
-    cout_livraison_client = double.parse(json['cout_livraison_client'].toString());
+    remise = double.parse(json['remise'] == null ? '0' : json['remise'].toString());
+    montant_tva = double.parse(json['montant_tva'] == null ? '0' : json['montant_tva'].toString());
+    cout_livraison_client = double.parse(json['cout_livraison_client'] == null ? '0' : json['cout_livraison_client'].toString());
     statut = json['statut'];
     deletedAt = json['deleted_at'];
     createdAt = json['created_at'];
@@ -341,10 +341,10 @@ class LigneLocation {
     id = json['id'];
     produitId = json['produit_id'];
     locationId = json['location_id'];
-    qte = double.parse(json['qte'].toString());
+    qte = double.parse(json['qte'] == null ? '0' : json['qte'].toString());
     debut = json['debut'];
     fin = json['fin'];
-    prix = double.parse(json['prix'].toString());
+    prix = double.parse(json['prix'] == null ? '0' : json['prix'].toString());
     etatLocation = json['etat_location'];
     statut = json['statut'];
     deletedAt = json['deleted_at'];
@@ -355,8 +355,8 @@ class LigneLocation {
     nom = json['nom'];
     unite = json['unite'];
     description = json['description'];
-    prixMoyen = double.parse(json['prix_moyen'].toString());
-    prixReduction = double.parse(json['prix_reduction'].toString());
+    prixMoyen = double.parse(json['prix_moyen'] == null ? '0' : json['prix_moyen'].toString());
+    prixReduction = double.parse(json['prix_reduction'] == null ? '0' : json['prix_reduction'].toString());
     image = json['image'];
   }
 

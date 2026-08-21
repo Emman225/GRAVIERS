@@ -32,12 +32,32 @@
                         @endif
 
                         <div class="mb-4">
-                            <select name="agent" id="" class="form-control">
-                                <option value="">Selectionner un agent</option>
-                                @foreach ($agents as $agent)
-                                    <option value="{{$agent->id}}"> {{$agent->nom_prenoms}} </option>
+                            <label for="agent" class="form-label">Confier ce ticket à</label>
+                            {{-- Groupé par rôle : la liste ne contenait que les agents SAV
+                                 et se retrouvait vide dès qu'aucun n'était enregistré — le
+                                 ticket restait alors bloqué sans explication. Elle comprend
+                                 maintenant les administrateurs et les gestionnaires, qui ont
+                                 déjà accès à l'espace de traitement. Le rôle est affiché pour
+                                 que l'on sache à qui l'on confie le ticket. --}}
+                            <select name="agent" id="agent" class="form-control" required>
+                                <option value="">Sélectionner une personne…</option>
+                                @foreach ($agents as $typeId => $personnes)
+                                    <optgroup label="{{ $roles[$typeId] ?? 'Autres' }}">
+                                        @foreach ($personnes as $agent)
+                                            <option value="{{ $agent->id }}"
+                                                {{ (int) $ticket->user_id === (int) $agent->id ? 'selected' : '' }}>
+                                                {{ $agent->nom_prenoms }}
+                                            </option>
+                                        @endforeach
+                                    </optgroup>
                                 @endforeach
                             </select>
+                            @if ($agents->isEmpty())
+                                <small class="text-danger">
+                                    Aucun agent, administrateur ni gestionnaire enregistré : créez d'abord un compte
+                                    dans Administrateurs ou Agent.
+                                </small>
+                            @endif
                         </div>
 
                         {{-- <div class="mb-4">

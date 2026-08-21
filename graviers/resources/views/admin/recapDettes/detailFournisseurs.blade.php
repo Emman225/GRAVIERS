@@ -21,7 +21,7 @@
                     @endphp
                     <p class="d-flex justify-content-between mb-0">
                         <span class="h5">Nombre d'enlèvements : <strong>{{ $lignes->count() }}</strong></span>
-                        <span class="h5">Total TTC : <strong class="text-primary">{{ Help::formatNombre($totalTtc, true) }}</strong></span>
+                        <span class="h5">Total dû : <strong class="text-primary">{{ Help::formatNombre($totalTtc, true) }}</strong></span>
                         <span class="h5">Reste à payer : <strong class="text-danger">{{ Help::formatNombre($totalReste, true) }}</strong></span>
                     </p>
                 </div>
@@ -39,7 +39,7 @@
                             <th class="text-center">Fournisseur</th>
                             <th class="text-center">N° Cmd Client liée</th>
                             <th class="text-center">Produit</th>
-                            <th class="text-end">Montant TTC</th>
+                            <th class="text-end">Montant dû</th>
                             <th class="text-end">Reste à Payer</th>
                             <th class="text-center">Statut</th>
                         </tr>

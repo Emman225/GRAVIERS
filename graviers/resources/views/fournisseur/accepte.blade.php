@@ -38,9 +38,9 @@
 
                                 @foreach ($enlevements as $enlevement)
                                     @php
-                                        $quiLivreur = $enlevement->livraison->livre_par == 1 ? $enlevement->livraison->livreur : $enlevement->livraison->clientLivreur;
+                                        $quiLivreur = $enlevement->livraison?->livre_par == 1 ? $enlevement->livraison?->livreur : $enlevement->livraison?->clientLivreur;
                                     @endphp
-                                    @if($enlevement->qte_servi != null && $enlevement->livraison->accepte == 1 && $quiLivreur != null)
+                                    @if($enlevement->qte_servi != null && $enlevement->livraison?->accepte == 1 && $quiLivreur != null)
                                             @php
                                                 $env->put($i,$enlevement);
                                             @endphp
@@ -48,14 +48,14 @@
                                             <td class="text-center"> {{ $enlevement->code_enleve }} </td>
                                             <td class="text-center">
                                                 <b>
-                                                     @if($enlevement->livraison->livre_par == 1)
-                                                        {{ $enlevement->livraison->livreur->user->nom_prenoms }}
+                                                     @if($enlevement->livraison?->livre_par == 1)
+                                                        {{ $enlevement->livraison?->livreur?->user?->nom_prenoms }}
                                                     @else
-                                                        {{$enlevement->livraison->clientLivreur->nom}}
+                                                        {{$enlevement->livraison?->clientLivreur->nom}}
                                                     @endif
                                                 </b>
                                             </td>
-                                            <td class="text-center">{{ $enlevement->produit->nom }}</td>
+                                            <td class="text-center">{{ $enlevement->produit?->nom }}</td>
                                             <td class="text-center">{{ $enlevement->qte_servi }}</td>
                                             <td class="text-center">{{ Carbon::parse($enlevement->fournisseur_validation)->format('d-m-Y') }} à {{ Carbon::parse($enlevement->updated_at)->format('H:i') }}</td>
                                             <td class="text-end">
@@ -71,7 +71,7 @@
                                 @php
                                     $statProduits = $env->groupBy('produit_id')->map(function ($items) {
                                         return [
-                                            'produit' => $items->first()->produit->nom,
+                                            'produit' => $items->first()->produit?->nom,
                                             'nbre_env' => $items->count(),
                                             'qte_total' => $items->sum('qte')
                                         ];

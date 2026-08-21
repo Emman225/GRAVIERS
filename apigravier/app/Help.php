@@ -48,6 +48,10 @@ class Help
     public static $LIVRAISON_EN_ATTENTE = "EN ATTENTE";
     public static $LIVRAISON_EN_TRAITEMENT = "EN TRAITEMENT";
     public static $LIVRAISON_LIVREE = "LIVREE";
+    // Quatrième valeur de l'ENUM detail_commande.etat_livraison, présente côté
+    // site (Help::$LIVRAISON_EN_COURS) mais qui manquait ici : la marchandise a
+    // quitté le fournisseur et voyage avec le livreur.
+    public static $LIVRAISON_EN_COURS = "EN COURS LIVRAISON";
 
     public static $BANNIERE_TOP = "TOP";
     public static $BANNIERE_FLASH = "FLASH";
@@ -143,6 +147,39 @@ class Help
         } while ($existe && $tentative < 20);
 
         return $candidat;
+    }
+
+    /**
+     * Numéro d'une commande — PORTÉ À L'IDENTIQUE depuis le site
+     * (graviers/app/Help.php).
+     *
+     * Le tirage est vérifié dans devis ET dans commande. Une commande issue d'un
+     * devis reprend le numéro de ce devis, et commande.numero porte un index
+     * UNIQUE : ne contrôler que la table commande — ce que faisait
+     * genererNumeroUnique('commande') — laissait une commande mobile prendre un
+     * numéro déjà réservé par un devis. La transformation ultérieure de ce devis
+     * échouait alors sur l'index, en page blanche, très loin de la cause.
+     */
+    public static function genererNumeroCommande(int $largeur = null): string
+    {
+        $largeur = $largeur ?? self::$NUMERO_FACTURE_WIDTH;
+        $max = (int) str_repeat('9', $largeur);
+        $min = max(100000, (int) ($max / 9));
+
+        for ($tentative = 0; $tentative < 50; $tentative++) {
+            $candidat = str_pad((string) random_int($min, $max), $largeur, '0', STR_PAD_LEFT);
+
+            $pris = DB::table('devis')->where('numero', $candidat)->exists()
+                || DB::table('commande')->where('numero', $candidat)->exists();
+
+            if (!$pris) {
+                return $candidat;
+            }
+        }
+
+        // Espace saturé : on élargit d'un chiffre plutôt que de rendre un numéro
+        // déjà pris, qui ferait échouer l'insertion.
+        return self::genererNumeroCommande($largeur + 1);
     }
 
     public static function getCodeParain() {

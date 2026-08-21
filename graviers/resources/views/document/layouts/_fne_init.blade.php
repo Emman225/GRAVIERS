@@ -22,11 +22,18 @@
     if (!isset($fne_client)) {
         $clientObj = $client ?? null;
         $fne_client = [
-            'nom' => ($clientObj ? ucfirst($clientObj->nom ?? '') . ' ' . ucfirst($clientObj->prenom ?? '') : ''),
+            'nom' => ($clientObj ? ucfirst($clientObj->display_name ?? '') : ''),
             'adresse' => $fne_adresse ?? '',
+            // Le régime d'imposition est porté par la fiche client, comme le NCC.
             'ncc' => ($clientObj->ncc_clt ?? ''),
-            'regime_imposition' => '',
+            'regime_imposition' => ($clientObj->regime_imposition ?? ''),
         ];
+    }
+
+    // Quand le document connaît l'adresse de SA commande, elle prime sur
+    // l'adresse par défaut du client : c'est celle du bon de livraison.
+    if (!empty($fne_adresse)) {
+        $fne_client['adresse'] = $fne_adresse;
     }
 
     // Génération du QR Code FNE

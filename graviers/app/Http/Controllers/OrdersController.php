@@ -52,7 +52,12 @@ class OrdersController extends Controller
 
         return view('orders.orders-list', [
             'commandes' => $commandes,
-            'gest' => $gest
+            'gest' => $gest,
+            // Réductions en attente de validation, indexées par commande. Chargées
+            // en UNE requête : appeler Commande::reductionEnAttente() dans la
+            // boucle d'affichage interrogerait la base à chaque ligne.
+            'reductionsEnAttente' => Reduction::reductionsEnAttentePour($commandes),
+            'tresorier' => $config->gestionnaire2,
         ]);
     }
 
@@ -100,47 +105,9 @@ class OrdersController extends Controller
 
     public function BECommande($numero)
     {
-        $commande = Commande::lireSurNumero($numero);
-        $details = DetailCommande::liste(null, $commande->id, $commande->client_id);
-
-
-        // Récuperer les livraison liées à la commande selon le type [avec_livraison, sans_livraison]
-
-        if($commande->est_livrable){
-            foreach ($details as $d) {
-                $d->livs = Livraison::liste(null, $commande->client_id, $d->id);
-            }
-
-            $montantPaye = LignePaiement::where('service_id', $commande->id)
-                ->where('service', Help::$COMMANDE)
-                ->where('statut', Help::$STATUT_ACTIF)
-                ->sum('montant');
-
-        }else{
-            foreach ($details as $d) {
-                $d->livs = Livraison::listeSansLivraison(null, $commande->client_id, $d->id);
-            }
-
-            $montantPaye = LignePaiement::where('service_id', $commande->id)
-                                    ->where('service', Help::$COMMANDE)
-                                    ->where('statut', Help::$STATUT_ACTIF)
-                                    ->sum('montant');
-        }
-
-        // Total net calculé depuis les LIGNES (cf. Commande::montantAPayer) :
-        // montant_total n'a pas la même sémantique web (HT) / mobile (net final),
-        // l'ancienne formule double-comptait TVA/livraison/remise pour les
-        // commandes passées depuis le mobile -> badge "Paiement en cours" à tort.
-        $montantAPayer = $commande->montantAPayer();
-
-        // dd($montantAPayer, $montantPaye, $montantAPayer - $montantPaye);
-
-        return view('orders.BECommande', [
-            'commande' => $commande,
-            'details' => $details,
-            'restant' => $montantAPayer - $montantPaye,
-            'montantAPayer' => $montantAPayer,
-        ]);
+        // L'écran, le PDF et le Word partagent la même préparation : c'est ce qui
+        // garantit qu'ils affichent les mêmes lignes et les mêmes montants.
+        return view('orders.BECommande', $this->donneesBonEnlevement($numero));
     }
 
     /**
@@ -151,35 +118,11 @@ class OrdersController extends Controller
         @ini_set('memory_limit', '512M');
         @set_time_limit(120);
 
-        $commande = Commande::lireSurNumero($numero);
-        $details = DetailCommande::liste(null, $commande->id, $commande->client_id);
-
-        if ($commande->est_livrable) {
-            foreach ($details as $d) {
-                $d->livs = Livraison::liste(null, $commande->client_id, $d->id);
-            }
-        } else {
-            foreach ($details as $d) {
-                $d->livs = Livraison::listeSansLivraison(null, $commande->client_id, $d->id);
-            }
-        }
-
-        $montantPaye = LignePaiement::where('service_id', $commande->id)
-            ->where('service', Help::$COMMANDE)
-            ->where('statut', Help::$STATUT_ACTIF)
-            ->sum('montant');
-
-        // Même convention que BECommande : total net depuis les lignes.
-        $montantAPayer = $commande->montantAPayer();
+        $donnees  = $this->donneesBonEnlevement($numero);
+        $commande = $donnees['commande'];
 
         try {
-            $pdf = \PDF::loadView('orders.BECommande-pdf', [
-                'commande'      => $commande,
-                'details'       => $details,
-                'restant'       => $montantAPayer - $montantPaye,
-                'montantAPayer' => $montantAPayer,
-                'config'        => Configuration::first(),
-            ])
+            $pdf = \PDF::loadView('orders.BECommande-pdf', $donnees)
                 ->setPaper('A4', 'landscape')
                 ->setOptions([
                     'isRemoteEnabled' => false,
@@ -197,6 +140,87 @@ class OrdersController extends Controller
         }
     }
 
+    /**
+     * Version Word téléchargeable du bon d'enlèvement.
+     *
+     * Word ouvre nativement un document HTML : on lui sert donc la MÊME vue que
+     * le PDF, avec le type de contenu qui lui indique de l'ouvrir. La mise en
+     * page, l'en-tête et le logo sont ainsi rigoureusement ceux du PDF — un
+     * document reconstitué depuis les tableaux de l'écran aurait divergé au
+     * premier changement de l'un des deux.
+     */
+    public function BECommandeWord($numero)
+    {
+        @ini_set('memory_limit', '512M');
+        @set_time_limit(120);
+
+        $donnees  = $this->donneesBonEnlevement($numero);
+        $commande = $donnees['commande'];
+        $nom      = 'bon-commande-' . $commande->numero . '.doc';
+
+        $html = view('orders.BECommande-pdf', $donnees)->render();
+
+        // Le BOM garantit les accents à l'ouverture ; sans lui, Word retombe sur
+        // son encodage régional et « enlèvement » devient illisible.
+        return response("\u{FEFF}" . $html, 200, [
+            'Content-Type'        => 'application/msword; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="' . $nom . '"',
+        ]);
+    }
+
+    /**
+     * Données communes du bon d'enlèvement, partagées par l'écran, le PDF et le
+     * Word — pour qu'aucun des trois ne se mette à afficher autre chose.
+     */
+    private function donneesBonEnlevement($numero): array
+    {
+        $commande = Commande::lireSurNumero($numero);
+        $details  = DetailCommande::liste(null, $commande->id, $commande->client_id);
+
+        foreach ($details as $d) {
+            $d->livs = $commande->est_livrable
+                ? Livraison::liste(null, $commande->client_id, $d->id)
+                : Livraison::listeSansLivraison(null, $commande->client_id, $d->id);
+        }
+
+        // On rattache à chaque ligne son bon d'enlèvement, chargé en UNE requête.
+        // L'écran a besoin de savoir si le bon est facturable et s'il a été servi
+        // partiellement : ces deux règles vivent sur le modèle, et non dans la
+        // vue, pour que le bouton affiché et l'action exécutée disent la même chose.
+        $identifiants = collect($details)
+            ->flatMap(fn ($d) => collect($d->livs)->pluck('id_enlevement'))
+            ->filter()->unique()->values()->all();
+
+        $bons = Enlevement::with('livraison.detailCommande.commande')
+            ->whereIn('id', $identifiants)->get()->keyBy('id');
+
+        foreach ($details as $d) {
+            foreach ($d->livs as $liv) {
+                $liv->bon = $bons->get($liv->id_enlevement);
+            }
+        }
+
+        $montantPaye = LignePaiement::where('service_id', $commande->id)
+            ->where('service', Help::$COMMANDE)
+            ->where('statut', Help::$STATUT_ACTIF)
+            ->sum('montant');
+
+        // Total net depuis les LIGNES (cf. Commande::montantAPayer) : montant_total
+        // porte le HT côté web et le net final côté mobile.
+        $montantAPayer = $commande->montantAPayer();
+
+        return [
+            'commande'      => $commande,
+            'details'       => $details,
+            'restant'       => $montantAPayer - $montantPaye,
+            'montantAPayer' => $montantAPayer,
+            'config'        => Configuration::first(),
+            // Combien de bons le bouton « tout facturer » emporterait. Compté ici
+            // pour que le libellé annonce à l'avance ce qui va être facturé.
+            'nbFacturables' => $bons->filter(fn (Enlevement $e) => $e->estFacturable())->count(),
+        ];
+    }
+
     public function genererFacture(Commande $commande, Request $request){
 
 
@@ -207,14 +231,125 @@ class OrdersController extends Controller
             'enlevements.required' => 'Veuillez selectionner au moins un enlèvement.',
         ]);
 
+        $this->creerFacturePourEnlevements($commande, $request->enlevements);
+
+        // La certification FNE n'est PLUS déclenchée automatiquement ici.
+        // La facture est créée avec fne_status = 'pending' et apparaît dans
+        // la sidebar "Factures & Bons d'enlèvement" → "Factures non validées".
+        // Le gestionnaire la valide manuellement (bouton « Valider ») qui
+        // déclenchera alors FneService::signInvoice() et la fera basculer
+        // dans "Factures validées".
+        return redirect()->route('orders.BECommande', ['numero' => $commande->numero])
+            ->with('success', 'Facture générée. Elle apparaîtra dans « Factures non validées » jusqu\'à validation auprès de la DGI.');
+    }
+
+    /**
+     * Facture DGI d'UN SEUL bon d'enlèvement.
+     *
+     * Le formulaire de la page permet déjà de facturer plusieurs bons d'un coup.
+     * Il ne convient pas au bon servi PARTIELLEMENT : celui-là se facture pour
+     * ce qu'il a réellement livré, sans attendre ni le reliquat ni les autres
+     * lignes de la commande. D'où cette action, ligne par ligne.
+     *
+     * Le chemin de création est rigoureusement le même — même numérotation,
+     * même calcul, même statut « en attente de certification ». Seule la
+     * sélection change.
+     */
+    public function genererFactureEnlevement(Enlevement $enlevement)
+    {
+        $commande = $enlevement->livraison?->detailCommande?->commande;
+
+        if (!$commande || !$commande->id) {
+            return back()->with('error', "Ce bon n'est rattaché à aucune commande : il ne peut pas être facturé.");
+        }
+
+        // La règle d'éligibilité vit sur le modèle : l'écran et l'action la
+        // partagent, sinon un bouton masqué resterait atteignable par l'URL.
+        if (!$enlevement->estFacturable()) {
+            $motif = $enlevement->facture_id !== null
+                ? 'Ce bon est déjà rattaché à une facture.'
+                : "Ce bon n'est pas encore facturable : la livraison doit être clôturée, "
+                  . "ou le fournisseur doit avoir validé le retrait sur place.";
+
+            return back()->with('error', $motif);
+        }
+
+        $facture = $this->creerFacturePourEnlevements($commande, [$enlevement->id]);
+
+        return redirect()->route('orders.BECommande', ['numero' => $commande->numero])
+            ->with('success', sprintf(
+                'Facture %s générée pour le bon %s (%s servie). Elle apparaîtra dans '
+                . '« Factures non validées » jusqu\'à validation auprès de la DGI.',
+                $facture->numero,
+                $enlevement->code_enleve ?? ('n° ' . $enlevement->id),
+                rtrim(rtrim(number_format($enlevement->quantiteAPayer(), 2, ',', ' '), '0'), ',')
+            ));
+    }
+
+    /**
+     * Facture DGI de TOUS les bons facturables de la commande, en une fois.
+     *
+     * Le formulaire à cases oblige à cocher ligne par ligne : sur une commande
+     * livrée en plusieurs fois, c'est long et l'on finit par en oublier un.
+     * Cette action prend tout ce qui est facturable à l'instant, et rien
+     * d'autre — un bon déjà facturé ou dont la livraison n'est pas close reste
+     * de côté, exactement comme il resterait décoché.
+     *
+     * Le tout part dans UNE SEULE facture : c'est le sens de « d'un coup », et
+     * cela évite d'émettre dix documents fiscaux là où un suffit.
+     */
+    public function genererFactureTotale(Commande $commande)
+    {
+        $facturables = $this->bonsFacturables($commande);
+
+        if ($facturables->isEmpty()) {
+            return back()->with('error', "Aucun bon d'enlèvement facturable sur cette commande.");
+        }
+
+        $facture = $this->creerFacturePourEnlevements($commande, $facturables->pluck('id')->all());
+
+        return redirect()->route('orders.BECommande', ['numero' => $commande->numero])
+            ->with('success', sprintf(
+                'Facture %s générée pour %d bon(s) d\'enlèvement. Elle apparaîtra dans '
+                . '« Factures non validées » jusqu\'à validation auprès de la DGI.',
+                $facture->numero,
+                $facturables->count()
+            ));
+    }
+
+    /**
+     * Les bons de la commande qui peuvent être facturés à cet instant.
+     *
+     * La règle d'éligibilité vit sur le modèle (Enlevement::estFacturable) : on
+     * la lit, on ne la redit pas — sinon l'écran, le bouton unitaire et le
+     * bouton global finiraient par ne plus s'accorder.
+     */
+    private function bonsFacturables(Commande $commande)
+    {
+        return Enlevement::with('livraison.detailCommande.commande')
+            ->whereNull('deleted_at')
+            ->whereHas('livraison.detailCommande', fn ($q) => $q->where('commande_id', $commande->id))
+            ->get()
+            ->filter(fn (Enlevement $e) => $e->estFacturable())
+            ->values();
+    }
+
+    /**
+     * Crée la facture couvrant les bons d'enlèvement désignés.
+     *
+     * Toute la génération (création, liaison des bons, calcul du montant) tient
+     * dans UNE transaction : si une étape échoue, rien n'est persisté — on ne
+     * laisse plus de facture « fantôme » à 0.
+     *
+     * @param  array<int|string>  $enlevementIds
+     */
+    private function creerFacturePourEnlevements(Commande $commande, array $enlevementIds): Facture
+    {
         $config = Configuration::first();
         // Taux TVA appliqué à TOUTES les factures (point 9). Source : config, fallback 18%.
         $tauxTva = (float) ($config?->tva ?? 18) / 100;
 
-        // Toute la génération (création facture + liaison des enlèvements + calcul
-        // du montant) est encapsulée dans UNE transaction : si une étape échoue,
-        // rien n'est persisté -> on ne laisse plus de facture « fantôme » à 0.
-        $facture = DB::transaction(function () use ($commande, $request, $tauxTva) {
+        return DB::transaction(function () use ($commande, $enlevementIds, $tauxTva) {
 
             $facture = Facture::create([
                 'numero' => Help::genererNumeroUnique('facture'),
@@ -229,7 +364,7 @@ class OrdersController extends Controller
 
             $montantHt = 0;
 
-            foreach ($request->enlevements as $env) {
+            foreach ($enlevementIds as $env) {
 
                 $enleve = Enlevement::find($env);
                 if (!$enleve) {
@@ -253,31 +388,44 @@ class OrdersController extends Controller
                 $montantHt += $qte * (float) ($detail->prix ?? 0);
             }
 
-            // TVA 18% appliquée sur le HT facturé (point 9).
-            $montantTva = $montantHt * $tauxTva;
+            // Livraison et remise ne s'imputent que sur la 1re facture liée à la
+            // commande. <=1 car on vient de créer la facture courante.
+            $premiere = $commande->factures()->count() <= 1;
+            $remiseImputee = $premiere ? (float) ($commande->remise ?? 0) : 0.0;
+            $supplement = $premiere
+                ? (float) ($commande->cout_livraison_client ?? 0) - $remiseImputee
+                : 0.0;
 
-            // Supplément : livraison + remise n'est appliqué que pour la 1re facture liée à la commande.
-            // La TVA, elle, est toujours recalculée à 18% du HT facturé (peu importe le nombre de factures).
-            $supplement = 0;
-            if ($commande->factures->count() <= 1) { // <=1 car on vient de créer la facture courante
-                $supplement = $commande->cout_livraison_client - $commande->remise;
-            }
+            // La TVA s'assied sur le HT REMISE DÉDUITE, comme à la commande.
+            //
+            // Elle était calculée sur le HT BRUT : la remise était donc retaxée,
+            // et la facture dépassait le dû de 18 % de la remise — la commande
+            // 105 facturée 5 004 pour 4 874, la 107 facturée 182 pour 161. Le
+            // client voyait alors un « versé en trop » qui n'existait pas.
+            //
+            // La remise se déduit ici AU PRORATA du HT facturé, alors qu'elle
+            // s'impute en valeur sur la seule première facture. Retrancher la
+            // remise entière de la première tranche ne suffit pas : sur la
+            // commande 107, la remise (114) dépassait le HT du premier bon
+            // (100), le surplus était perdu et la TVA totale retombait à 18 au
+            // lieu de 15. Au prorata, la somme des TVA facturées retrouve
+            // exactement celle enregistrée à la commande.
+            $htCommande = (float) $commande->montantHT();
+            $partRemise = $htCommande > 0
+                ? min(1.0, (float) ($commande->remise ?? 0) / $htCommande)
+                : 0.0;
+            $montantTva = $montantHt * (1 - $partRemise) * $tauxTva;
 
+            // Pas de plafonnement au reste dû ici : une commande sans TVA
+            // enregistrée — le transport en est exonéré — a un « dû » inférieur
+            // à la facture, qui applique 18 % au HT servi. Plafonner
+            // tronquerait ces factures-là.
             $facture->update([
                 'montant' => $montantHt + $montantTva + $supplement,
             ]);
 
             return $facture;
         });
-
-        // La certification FNE n'est PLUS déclenchée automatiquement ici.
-        // La facture est créée avec fne_status = 'pending' et apparaît dans
-        // la sidebar "Factures & Bons d'enlèvement" → "Factures non validées".
-        // Le gestionnaire la valide manuellement (bouton « Valider ») qui
-        // déclenchera alors FneService::signInvoice() et la fera basculer
-        // dans "Factures validées".
-        return redirect()->route('orders.BECommande', ['numero' => $commande->numero])
-            ->with('success', 'Facture générée. Elle apparaîtra dans « Factures non validées » jusqu\'à validation auprès de la DGI.');
     }
 
     /**
@@ -452,6 +600,9 @@ class OrdersController extends Controller
     {
         return view('orders.reduction', [
             'commande' => $commande,
+            // La vue cherchait la réduction par $commande->devis?->reduction :
+            // muette pour une commande sans devis (comptant, mobile).
+            'reduction' => $commande->reductionEnAttente(),
             'conf' => Configuration::first(),
         ]);
     }
@@ -468,6 +619,21 @@ class OrdersController extends Controller
                 return redirect()->back()->with('error', 'Montant ' . $request->montant . ' incorrect');
             }
 
+            // Une demande en attente n'empêchait pas d'en saisir une seconde :
+            // la page réaffichait un formulaire vierge sans rien indiquer, et
+            // les demandes s'empilaient sur la même commande.
+            if ($dejaDemandee = $commande->reductionEnAttente()) {
+                return redirect()->back()->with(
+                    'error',
+                    sprintf(
+                        "Une réduction de %s%% est déjà en attente de validation sur la commande %s (demandée par %s). Elle doit être validée ou abandonnée avant d'en saisir une autre.",
+                        $dejaDemandee->taux_reduction,
+                        $commande->numero,
+                        $dejaDemandee->user?->nom_prenoms ?: 'un administrateur'
+                    )
+                );
+            }
+
             $config = Configuration::first();
 
             // dd($request->remise);
@@ -478,28 +644,68 @@ class OrdersController extends Controller
 
             $reduction = [
                 'code' => Help::ChaineAleatoire(6),
-                'libelle' => "Initialilisation réduction",
-                // 'debut' => date("Y-m-d H:i:s"),
-                // 'fin' => date("Y-m-d H:i:s"),
+                'libelle' => "Initialisation réduction",
+                // Les colonnes debut et fin sont OBLIGATOIRES en base et n'ont
+                // aucune valeur par défaut. Laissées en commentaire, elles
+                // faisaient échouer l'insertion sur tout serveur en mode SQL
+                // strict — c'est le cas de la production — et le bouton
+                // « Initialiser la réduction » répondait donc systématiquement
+                // par une erreur 500.
+                //
+                // La fenêtre est celle du jour, comme le prévoyait le code
+                // d'origine. Elle ne gêne pas la confirmation par le trésorier,
+                // qui ne contrôle pas ces dates, et elle évite qu'une réduction
+                // interne à une commande reste indéfiniment saisissable comme
+                // code promo dans le panier d'un client (appliquerCodePromo()
+                // accepte n'importe quelle ligne de la table reduction).
+                'debut' => date('Y-m-d'),
+                'fin' => date('Y-m-d'),
                 'est_utilise' => false,
                 'taux_reduction' => $request->remise,
-                'client_id' => Auth::user()->id,
-                'devis_id' => $commande->devis_id
+                // client_id porte une CLÉ ÉTRANGÈRE vers la table client. On y
+                // écrivait l'identifiant de l'ADMINISTRATEUR connecté, c'est-à-dire
+                // un identifiant de la table users : dès que cet administrateur
+                // n'était pas lui-même client — le cas courant — la base refusait
+                // l'insertion (contrainte reduction_client_id_foreign) et la page
+                // répondait par une erreur 500.
+                //
+                // La bonne répartition est celle que le reste du code attend déjà :
+                //   client_id = le client qui bénéficie de la réduction,
+                //               c'est ainsi que Reduction::liste() la retrouve ;
+                //   user_id   = l'administrateur qui la demande, c'est la relation
+                //               user() qu'affiche l'écran de confirmation sous
+                //               « Demandeur de réduction » — cette ligne restait
+                //               vide puisque la colonne n'était jamais renseignée.
+                'client_id' => $commande->client_id,
+                'user_id' => Auth::user()->id,
+                'devis_id' => $commande->devis_id,
+                // Rattachement DIRECT à la commande. Le seul lien était le devis :
+                // une commande comptant ou venue de l'application n'en a pas, la
+                // réduction naissait donc orpheline et l'écran de confirmation
+                // affichait « Pas de demande de réduction », sans recours.
+                'commande_id' => $commande->id,
             ];
 
             $reduction = Reduction::create($reduction);
 
 
-
-
-
-            Mail::send(new emailReduction(
-                User::find($reduction->client_id)->nom_prenoms,//$client->nom . ' ' . $client->prenoms,
-                $request->remise,
-                $commande,
-                intVal($montantInitial),
-                $config->email_tresorier
-            ));
+            // L'avis au trésorier ne doit pas décider du sort de la réduction :
+            // elle est déjà enregistrée. Une boîte mail injoignable rendait la
+            // page en erreur alors que le traitement avait abouti.
+            try {
+                Mail::send(new emailReduction(
+                    // Le nom annoncé au trésorier est celui du DEMANDEUR, donc
+                    // celui de l'administrateur : il se lit désormais dans
+                    // user_id, et non plus dans client_id.
+                    User::find($reduction->user_id)->nom_prenoms,
+                    $request->remise,
+                    $commande,
+                    intVal($montantInitial),
+                    $config->email_tresorier
+                ));
+            } catch (\Throwable $e) {
+                \Log::warning('Email initialisation de réduction non envoyé: ' . $e->getMessage());
+            }
 
             /**
              * public string $nom_prenom,
@@ -509,7 +715,28 @@ class OrdersController extends Controller
                *                 public String $email
              */
 
-            return redirect()->route('orders.list')->with('success', 'Réduction initiualisée');
+            // Le message se contentait de « Réduction initialisée » : rien ne
+            // disait que le montant dû par le client n'avait pas encore bougé,
+            // ni qu'une seconde signature était attendue.
+            $tresorier = $config?->gestionnaire2?->nom_prenoms;
+
+            $message = $config?->gestionnaire2_id
+                ? sprintf(
+                    'Réduction de %s%% enregistrée sur la commande %s. Elle sera appliquée après validation par le trésorier%s : le montant dû par le client est inchangé jusque-là.',
+                    $request->remise,
+                    $commande->numero,
+                    $tresorier ? ' ' . $tresorier : ''
+                )
+                : sprintf(
+                    "Réduction de %s%% enregistrée sur la commande %s, mais AUCUN trésorier n'est configuré (second gestionnaire) : personne ne peut la valider, elle ne s'appliquera pas.",
+                    $request->remise,
+                    $commande->numero
+                );
+
+            return redirect()->route('orders.list')->with(
+                $config?->gestionnaire2_id ? 'success' : 'warning',
+                $message
+            );
 
         // } catch (\Throwable $th) {
         //     return view('layout.errorCatchBack');
@@ -518,17 +745,29 @@ class OrdersController extends Controller
 
     public function confirmationReductionTraitement(Commande $commande){
 
-        $reduction = $commande->devis->reduction;
+        // $commande->devis->reduction : sur une commande sans devis, la lecture
+        // se faisait sur null et la page répondait par une erreur 500.
+        $reduction = $commande->reductionEnAttente();
 
-        $montantReduit =  $commande->montant_total * ($reduction->taux_reduction/100);
+        if (!$reduction) {
+            return redirect()->route('orders.list')
+                ->with('error', "Aucune réduction en attente sur la commande {$commande->numero}.");
+        }
+
+        // Base de calcul : le MONTANT HT, celui qu'annonce l'écran de
+        // confirmation. On appliquait le taux à la colonne montant_total, qui ne
+        // contient pas la même chose selon l'origine de la commande : le HT pour
+        // le site, le net final (TVA et livraison comprises) pour l'application.
+        // Une remise de 10 % accordée sur une commande mobile était donc calculée
+        // sur un montant supérieur à celui affiché au gestionnaire.
+        $montantReduit = $commande->montantHT() * ($reduction->taux_reduction / 100);
+
         $commande->update([
-                'remise' => $commande->remise + $montantReduit,
-                // 'montant_total' => $commande->montant_total - $montantReduit,
-            ]);
-
+            'remise' => $commande->remise + $montantReduit,
+        ]);
 
         $reduction->est_utilise = true;
-        $reduction->update();
+        $reduction->save();
 
         return redirect()->route('orders.list')->with('success','Réduction appliquée');
     }
@@ -572,14 +811,24 @@ class OrdersController extends Controller
 
         $livreur = Livreur::find($request->livreur);
 
-        $nbrlivraison = $request->qte / $vehicule->capacite;
+        // Rotations imposées par la quantité au véhicule affecté, arrondies au
+        // supérieur : un quart de chargement demande un déplacement complet.
+        $nbrlivraison = Livreur::nombreDeVoyages(
+            (float) $request->qte,
+            (float) ($vehicule->capacite ?? 0),
+            (float) ($conf->tonne_moyenne ?? 0)
+        );
 
-        // Tarification du livreur (base ou km), appliquée telle quelle ; repli sur le
-        // coût global (distance × coût fixe × voyages) si non configurée. On stocke la
-        // décomposition (forfait_base / frais_km / distance_km) pour l'état "dette livreur".
+        // Tarification du livreur, MULTIPLIÉE PAR LE NOMBRE DE VOYAGES : trois
+        // rotations, c'est trois déplacements — donc trois fois la part fixe et
+        // trois fois le carburant. Le client, lui, paie déjà un forfait par
+        // voyage ; le livreur n'en touchait qu'un seul. Repli sur le coût global
+        // si sa tarification n'est pas configurée. On stocke la décomposition
+        // (forfait_base / frais_km / distance_km) pour l'état "dette livreur".
         $tarif = $livreur->tarificationLivraison(
             (float) $distance,
-            (float) ($distance * $conf->cout_liv_fixe * $nbrlivraison)
+            (float) ($distance * $conf->cout_liv_fixe * $nbrlivraison),
+            $nbrlivraison
         );
 
         $livraison = Livraison::create([
@@ -798,12 +1047,31 @@ class OrdersController extends Controller
             }
             # code...
 
-            // Tarification du livreur (base/km), décomposée, repli sur le coût global.
+            // Tarification du livreur, décomposée, multipliée par les rotations.
+            //
+            // Le nombre de voyages se comptait ici sur « tonne_moyenne » (40),
+            // une moyenne de configuration : avec un camion de 20 tonnes, 60
+            // tonnes n'y valaient qu'un voyage et demi au lieu de trois. On
+            // s'appuie désormais sur la capacité du VÉHICULE AFFECTÉ, comme
+            // l'autre écran de traitement, la moyenne ne servant que de repli.
             $livreurObj  = Livreur::find($livreur[$key]);
-            $nbrVoyages  = $qte[$key] / max(1, (float) ($conf->tonne_moyenne ?? 40));
+
+            // Le formulaire de cet écran ne poste qu'un véhicule (champ au nom
+            // simple), là où les autres champs sont indexés : on accepte les deux
+            // formes plutôt que de supposer. Sans véhicule connu, on retombe sur
+            // la moyenne de configuration.
+            $vehiculeBrut = $request->vehicule;
+            $idVehicule   = is_array($vehiculeBrut) ? ($vehiculeBrut[$key] ?? null) : $vehiculeBrut;
+            $vehiculeObj  = $idVehicule ? Vehicule::find($idVehicule) : null;
+
+            $nbrVoyages  = Livreur::nombreDeVoyages(
+                (float) $qte[$key],
+                (float) ($vehiculeObj->capacite ?? 0),
+                (float) ($conf->tonne_moyenne ?? 0)
+            );
             $coutGlobal  = (float) $distanceTraitement * (float) ($conf->cout_liv_fixe ?? 0) * (float) $nbrVoyages;
             $tarif = $livreurObj
-                ? $livreurObj->tarificationLivraison((float) $distanceTraitement, $coutGlobal)
+                ? $livreurObj->tarificationLivraison((float) $distanceTraitement, $coutGlobal, $nbrVoyages)
                 : ['forfait_base' => $coutGlobal, 'frais_km' => 0.0, 'total' => $coutGlobal];
 
             $livraison = Livraison::create([

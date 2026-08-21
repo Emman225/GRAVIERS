@@ -19,6 +19,7 @@ use App\Models\DemandePaiement;
 use App\Mail\CodeInscriptionMail;
 use App\Mail\InscriptionEffectueeMail;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use App\Models\CommissionApporteur;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Crypt;
@@ -29,6 +30,85 @@ use Illuminate\Validation\ValidationException;
 
 class ApporteurController extends Controller
 {
+    /**
+     * Ajoute à une liste de demandes de paiement les COMMISSIONS RÉGLÉES DEPUIS LE
+     * BACK-OFFICE, mises au format attendu par l'application.
+     *
+     * L'application ne connaît qu'une source de paiements : la table
+     * demande_paiement, alimentée par les demandes de retrait qu'elle envoie
+     * elle-même. Les commissions payées par un gestionnaire sont enregistrées
+     * ailleurs (paiement_apporteur) : sans cet ajout, l'apporteur lit
+     * « Aucune transaction » alors qu'il vient d'être payé — constaté sur
+     * l'écran d'accueil ET sur l'écran « Mes paiements ».
+     *
+     * Les lignes ajoutées sont marquées payées (paye = 1) : l'application ne
+     * propose donc pas de les modifier.
+     */
+    private function ajouterReglementsBackOffice($demandes, $apporteur, $user)
+    {
+        if (!$apporteur || $apporteur->id <= 0) {
+            return $demandes;
+        }
+
+        $regles = DB::table('paiement_apporteur')
+            ->leftJoin('mode_paiement', 'mode_paiement.id', '=', 'paiement_apporteur.mode_paiement_id')
+            ->where('paiement_apporteur.apporteur_id', $apporteur->id)
+            ->where('paiement_apporteur.statut', 1)   // validés uniquement
+            ->whereNull('paiement_apporteur.deleted_at')
+            // Les règlements issus d'une DEMANDE sont exclus : ils sont déjà
+            // dans la liste, sous leur demande. Depuis que la validation d'une
+            // demande crée sa ligne de règlement, les garder ferait apparaître
+            // le même versement DEUX FOIS dans l'application.
+            //
+            // La colonne vient d'une migration du back-office : si elle manque,
+            // on s'en passe plutôt que de casser l'écran du tiers.
+            ->when(
+                Schema::hasColumn('paiement_apporteur', 'demande_paiement_id'),
+                fn ($q) => $q->whereNull('paiement_apporteur.demande_paiement_id')
+            )
+            ->orderByDesc('paiement_apporteur.date_paiement')
+            ->select([
+                'paiement_apporteur.id',
+                'paiement_apporteur.montant',
+                'paiement_apporteur.mode_paiement_id',
+                'paiement_apporteur.date_paiement',
+                'paiement_apporteur.reference',
+                'paiement_apporteur.created_at',
+                'mode_paiement.libelle as mode_paiement',
+            ])
+            ->get();
+
+        foreach ($regles as $r) {
+            $demandes->push((object) [
+                'id'               => $r->id,
+                'montant'          => (float) $r->montant,
+                'mode_paiement_id' => $r->mode_paiement_id,
+                'mode_paiement'    => $r->mode_paiement ?? 'Paiement en agence',
+                // Un règlement enregistré au back-office n'a pas de numéro de compte :
+                // on envoie la référence de la transaction si l'agent l'a saisie,
+                // sinon les coordonnées de paiement du profil, sinon RIEN — et
+                // l'application masque alors la ligne au lieu d'afficher
+                // « Compte: null » ou « Compte: - ».
+                'numero_compte'    => $r->reference
+                    ?: ($apporteur->coordonnees_paiement ?: ''),
+                'user_id'          => $user->id,
+                'user_valide_id'   => null,
+                'user_valide2_id'  => null,
+                'date_validation'  => $r->date_paiement,
+                'paye'             => 1,
+                'statut'           => Help::$STATUT_ACTIF,
+                'deleted_at'       => null,
+                'created_at'       => $r->created_at,
+                'updated_at'       => $r->created_at,
+                'date_demande'     => $r->date_paiement
+                    ? date('d/m/Y', strtotime($r->date_paiement))
+                    : '',
+            ]);
+        }
+
+        return $demandes;
+    }
+
     public function chargerParametres()
     {
         $retour = [
@@ -344,7 +424,14 @@ class ApporteurController extends Controller
                             $user->statut = Help::$STATUT_ACTIF;
                             $user->save();
 
-                            Mail::to($user->email)->send(new InscriptionEffectueeMail($user->nom_prenoms));
+                            // Envoi NON bloquant (cf. UtilisateurController::verifierOtp) :
+                            // un SMTP lent bloquait l'apporteur sur « erreur 500 » alors
+                            // que son compte venait d'être activé.
+                            try {
+                                Mail::to($user->email)->send(new InscriptionEffectueeMail($user->nom_prenoms));
+                            } catch (\Throwable $e) {
+                                \Log::warning('Email inscription apporteur non envoyé: '.$e->getMessage());
+                            }
 
                         }
 
@@ -516,6 +603,11 @@ class ApporteurController extends Controller
                 foreach ($dems as $d) {
                     $d->date_demande = $d->created_at->format('d/m/Y H:i:s');
                 }
+
+                // Les commissions réglées depuis le back-office ne sont pas dans
+                // demande_paiement : on les ajoute (voir ajouterReglementsBackOffice).
+                $dems = $this->ajouterReglementsBackOffice($dems, Apporteur::lireSurUser($user->id), $user);
+
                 $retour->data = $dems;
             } else {
                 $retour->code = 404;
@@ -550,7 +642,30 @@ class ApporteurController extends Controller
             if ($user->id > 0) {
 
                 if ($request->id > 0) {
+                    // La branche MODIFICATION ne contrôlait ni la propriété de la
+                    // demande, ni le solde, ni le fait qu'elle soit déjà payée :
+                    // on pouvait modifier la demande d'un autre apporteur, ou porter
+                    // son montant au-delà de son solde (contrôle présent seulement
+                    // dans la branche création ci-dessous).
+                    $apporteur = Apporteur::lireSurUser($user->id);
                     $demande = DemandePaiement::lire($request->id);
+
+                    if (!$demande || $demande->id <= 0 || $demande->user_id != $user->id) {
+                        $retour->code = 404;
+                        $retour->message = "Demande de paiement introuvable";
+                        return response()->json($retour);
+                    }
+                    if ($demande->paye) {
+                        $retour->code = 406;
+                        $retour->message = "Cette demande a déjà été payée : elle ne peut plus être modifiée";
+                        return response()->json($retour);
+                    }
+                    if ($apporteur->id <= 0 || $apporteur->solde < $request->montant) {
+                        $retour->code = 406;
+                        $retour->message = "votre solde est insuffisant";
+                        return response()->json($retour);
+                    }
+
                     $demande->montant = $request->montant;
                     $demande->mode_paiement_id = $request->mode;
                     $demande->numero_compte = $request->compte;
@@ -626,6 +741,15 @@ class ApporteurController extends Controller
                     $d->date_demande = $d->created_at->format('d/m/Y H:i:s');
                 }
 
+                // « Liste des paiements effectués » de l'écran d'accueil : même
+                // correction que pour l'écran « Mes paiements ». Cette liste ne
+                // montrait que les demandes de retrait faites depuis l'application
+                // (table demande_paiement). Les commissions réglées par un
+                // gestionnaire depuis le back-office vivent dans paiement_apporteur :
+                // l'apporteur voyait donc « Aucune transaction » alors qu'il venait
+                // d'être payé.
+                $dems = $this->ajouterReglementsBackOffice($dems, $apporteur, $user);
+
                 $retour->apporteur = $apporteur;
                 $retour->data = [
                     "stats" => Apporteur::statPaiement($apporteur->id),
@@ -662,6 +786,20 @@ class ApporteurController extends Controller
             $idUsr = Crypt::decryptString($request->access);
             $user = User::lire($idUsr);
             if ($user->id > 0) {
+                // Contrôle de rattachement : sans lui, n'importe quel apporteur
+                // pouvait lire l'historique de paiement d'un client quelconque en
+                // faisant varier filleule_id (montants, libellés, restes dus).
+                $apporteur = Apporteur::lireSurUser($user->id);
+                $estMonFilleul = Client::where('id', $request->filleule_id)
+                    ->where('parrain_id', $apporteur->id)
+                    ->exists();
+
+                if (!$estMonFilleul) {
+                    $retour->code = 404;
+                    $retour->message = 'Filleul introuvable';
+                    return response()->json($retour);
+                }
+
                 $retour->code = 200;
                 $retour->message = "ok";
                 $retour->data = Paiement::liste(null, $request->filleule_id, [Help::$STATUT_ACTIF, Help::$STATUT_INACTIF]);

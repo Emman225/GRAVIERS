@@ -73,9 +73,9 @@
                                                 <td class="texte-center">{{$livraison->detailLivraison?->qte}}</td>
                                             @endif
                                             @if ($livraison->vehicule != null)
-                                                <td class="text-center">{{$livraison->vehicule->marque ?? '' }}</td>
-                                                <td class="text-center">{{$livraison->vehicule->immatriculation ?? '' }}</td>
-                                                <td class="text-center">{{$livraison->vehicule->capacite ?? '' }}t</td>
+                                                <td class="text-center">{{$livraison->vehicule?->marque ?? '' }}</td>
+                                                <td class="text-center">{{$livraison->vehicule?->immatriculation ?? '' }}</td>
+                                                <td class="text-center">{{$livraison->vehicule?->capacite ?? '' }}t</td>
                                             @else
                                                 <td class="texte-center"><b> ND </b></td>
                                                 <td class="texte-center"><b> ND </b></td>
@@ -102,7 +102,7 @@
                                                     <select class="form-control select-livreur" name="livreur"  data-key="{{ $key }}">
                                                         <option value="">Choisir un nouveau livreur</option>
                                                         @foreach($livreurs as $livreur)
-                                                            <option value="{{$livreur->id}}"> {{ $livreur->user->nom_prenoms }} </option>
+                                                            <option value="{{$livreur->id}}"> {{ $livreur->user?->nom_prenoms }} </option>
                                                         @endforeach
                                                     </select>
                                                 @endif

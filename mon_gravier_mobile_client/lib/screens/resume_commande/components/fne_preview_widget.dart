@@ -12,6 +12,7 @@ class FnePreviewWidget extends StatelessWidget {
   final double totalTtc;
   final double autresTaxes;
   final double totalAPayer;
+  final double remise;
   final List<FneResumeFiscal> resumeFiscal;
   final String date;
   final String? vendeur;
@@ -28,6 +29,7 @@ class FnePreviewWidget extends StatelessWidget {
     required this.totalTtc,
     required this.autresTaxes,
     required this.totalAPayer,
+    this.remise = 0,
     required this.resumeFiscal,
     required this.date,
     this.vendeur,
@@ -232,7 +234,9 @@ class FnePreviewWidget extends StatelessWidget {
                 child: Column(
                   children: [
                     _totauxRow('TOTAL HT', totalHt),
-                    _totauxRow('TVA', totalTva),
+                    // La remise s'affiche AVANT la TVA (même ordre que le site web).
+                    if (remise > 0) _totauxRow('Remise', remise, negatif: true),
+                    _totauxRow('TVA ($tva%)', totalTva),
                     _totauxRow('TOTAL TTC', totalTtc),
                     _totauxRow('AUTRES TAXES', autresTaxes),
                     _totauxRow('TOTAL A PAYER', totalAPayer, isBold: true),
@@ -310,7 +314,7 @@ class FnePreviewWidget extends StatelessWidget {
     );
   }
 
-  Widget _totauxRow(String label, double amount, {bool isBold = false}) {
+  Widget _totauxRow(String label, double amount, {bool isBold = false, bool negatif = false}) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
       decoration: BoxDecoration(
@@ -320,7 +324,7 @@ class FnePreviewWidget extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: TextStyle(fontSize: 8, fontWeight: isBold ? FontWeight.bold : FontWeight.w600)),
-          Text(formaterMontant(amount), style: TextStyle(fontSize: 8, fontWeight: isBold ? FontWeight.bold : FontWeight.normal)),
+          Text('${negatif ? '-' : ''}${formaterMontant(amount)}', style: TextStyle(fontSize: 8, fontWeight: isBold ? FontWeight.bold : FontWeight.normal)),
         ],
       ),
     );

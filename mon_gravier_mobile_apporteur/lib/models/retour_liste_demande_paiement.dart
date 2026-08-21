@@ -29,7 +29,10 @@ class RetourListeDemandePaiement {
 
 class DemandePaiement {
   int? id;
-  int? montant;
+  // demande_paiement.montant est un DOUBLE en base : l'API renvoie « 5000.0 ».
+  // Déclaré int?, l'affectation levait un TypeError qui faisait échouer TOUT le
+  // chargement de la liste -> écran « Gestion des demandes » toujours vide.
+  double? montant;
   int? modePaiementId;
   int? userId;
   int? userValideId;
@@ -62,7 +65,7 @@ class DemandePaiement {
 
   DemandePaiement.fromJson(Map<String, dynamic> json) {
     id = json['id'];
-    montant = json['montant'];
+    montant = double.tryParse(json['montant']?.toString() ?? '') ?? 0;
     modePaiementId = json['mode_paiement_id'];
     userId = json['user_id'];
     userValideId = json['user_valide_id'];

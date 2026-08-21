@@ -49,10 +49,10 @@
                         <div class="text">
                             <h6 class="mb-1">Info client</h6>
                             <p class="mb-1">
-                                {{ $commande->client->nom }} {{ $commande->client->prenom }} <br />
-                                {{-- {{$commande->client->user->email}} <br /> --}}
-                                {{ $commande->client->contact1 }} <br>
-                                {{ $commande->client->contact2 }}
+                                {{ $commande->client?->display_name }} <br />
+                                {{-- {{$commande->client?->user?->email}} <br /> --}}
+                                {{ $commande->client?->contact1 }} <br>
+                                {{ $commande->client?->contact2 }}
                             </p>
                         </div>
                     </article>
@@ -118,7 +118,7 @@
 
                                         @php
                                             $totalEnlev = 0;
-                                            $totalEnlev = HELP::totatEnlevementUnProduit($commande->id, $produit->id);
+                                            $totalEnlev = Help::totatEnlevementUnProduit($commande->id, $produit->id);
                                             // dd($totalEnlev);
                                             $qteRestant = $produit->pivot->qte - $totalEnlev;
 
@@ -252,7 +252,7 @@
                                 <img src="assets/imgs/card-brands/2.png" class="border" height="20" /> Master Card ****
                                 **** 4768 <br />
                                 Réference du paiement: <span class="fw-bold">{{ $lignePaiement?->reference }}</span> <br />
-                                Numéro du paiement: <span class="fw-bold">{{ $commande->client->contact1 }}</span>
+                                Numéro du paiement: <span class="fw-bold">{{ $commande->client?->contact1 }}</span>
                             </p>
                         </div> --}}
                     <div class="h-25 pt-4">

@@ -42,28 +42,46 @@ class _ListeDemandeRetraitScreenState extends State<ListeDemandeRetraitScreen> {
       }
 
       try {
-        retourHttp = await http
+        final http.Response retourHttp = await http
             .post(Uri.parse('${lienAPI()}lister-demande-paiement'),
             headers: {"Content-Type": "application/json"},
             body: jsonEncode(param))
             .timeout(const Duration(minutes: 1));
         var datas = jsonDecode(retourHttp.body);
         if (retourHttp.statusCode == 200) {
-          setState(() {
-            retDemande = RetourListeDemandePaiement.fromJson(datas);
-            demandes = retDemande.data ?? [];
-          });
+          retDemande = RetourListeDemandePaiement.fromJson(datas);
+          // Le code metier renvoye par l'API n'etait PAS controle : une session
+          // expiree ou un refus serveur (reponse HTTP 200 mais code != 200)
+          // laissait simplement une liste vide, sans aucune explication.
+          if (retDemande.code == 200) {
+            setState(() {
+              demandes = retDemande.data ?? [];
+            });
+          } else {
+            setState(() {
+              demandes = [];
+            });
+            afficherErreur(retDemande.message ??
+                "Impossible de charger vos demandes de paiement.");
+          }
+        } else {
+          // Sans cette branche, une reponse serveur en erreur ne produisait
+          // AUCUNE reaction a l'ecran.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez reessayer.");
         }
       } catch (e) {
         user.code = 500;
         user.message = "Une erreur s'est produite veuillez reesayer plus tard";
+        // Ce bloc de secours n.affichait RIEN : l.ecran restait muet en cas de
+        // coupure reseau ou de reponse illisible.
+        afficherErreur("Impossible de contacter le serveur. Verifiez votre connexion et reessayez.");
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -143,7 +161,7 @@ class _ListeDemandeRetraitScreenState extends State<ListeDemandeRetraitScreen> {
                     await Get.toNamed(EditDemandeRetraitScreen.routeName, arguments: c);
                     chargerDemandePaiement();
                   }else{
-                    EasyLoading.showError("Vous avez déjà été payé vous ne pouvez plus modifier cette ligne");
+                    afficherErreur("Vous avez déjà été payé vous ne pouvez plus modifier cette ligne");
                   }
                 },
                 child: Padding(
@@ -180,11 +198,18 @@ class _ListeDemandeRetraitScreenState extends State<ListeDemandeRetraitScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Text('Compte: ${c.numero_compte.toString()}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
+                                // Un règlement saisi en agence n'a pas de numéro de
+                                // compte : la ligne afficherait « Compte: » suivi de
+                                // rien. On la masque, et on l'intitule « Référence »
+                                // quand la valeur vient d'un versement déjà payé.
+                                if ((c.numero_compte ?? '').trim().isNotEmpty &&
+                                    (c.numero_compte ?? '').trim() != '-')
+                                  Text(
+                                    '${c.paye == true ? 'Référence' : 'Compte'}: ${c.numero_compte}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
-                                ),
                                 Text('Montant: ${formaterMontant(c.montant?.toDouble() ?? 0)}',
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,

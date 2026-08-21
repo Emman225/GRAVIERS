@@ -126,7 +126,7 @@
                 <div class="card-body">
                     @forelse ($topFilleules as $idx => $tf)
                         @php
-                            $nomComplet = trim(($tf->nom ?? '').' '.($tf->prenom ?? '')) ?: 'Client #'.$tf->id;
+                            $nomComplet = ($tf->display_name ?? '') ?: 'Client #'.$tf->id;
                         @endphp
                         <div class="dash-top-item">
                             <div class="dash-top-rank dash-top-rank-{{ $idx + 1 }}">{{ $idx + 1 }}</div>

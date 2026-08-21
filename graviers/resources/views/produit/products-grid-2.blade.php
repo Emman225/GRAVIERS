@@ -54,8 +54,8 @@
                                         <a class="dropdown-item text-danger" href="#">Delete</a>
                                     </div>
                                 </div>
-                                <a href="#" class="title">{{$infoProduct->produit->nom}}</a>
-                                <div class="price mt-1"> {{$infoProduct->produit->unite}} F </div>
+                                <a href="#" class="title">{{$infoProduct->produit?->nom}}</a>
+                                <div class="price mt-1"> {{$infoProduct->produit?->unite}} F </div>
                                 <!-- price-wrap.// -->
                             </div>
                         </div> 

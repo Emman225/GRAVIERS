@@ -145,6 +145,31 @@
                             @error('login')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
                         </div>
 
+                        {{-- Agence de rattachement --}}
+                        <div class="mt-3">
+                            {{-- C'est ce rattachement qui décide du guichet auquel les
+                                 encaissements de cet administrateur seront imputés : l'agence
+                                 n'est plus choisie au moment de la saisie d'un encaissement,
+                                 où l'on pouvait désigner un autre guichet que le sien. --}}
+                            <label class="form-label fw-bold">
+                                <i class="material-icons md-store" style="font-size:14px;vertical-align:middle;color:#1c57a3;"></i>
+                                Agence de rattachement
+                            </label>
+                            <select class="form-control" name="agence_id">
+                                <option value="">— Aucune pour l'instant —</option>
+                                @foreach ($agences as $ag)
+                                    <option value="{{ $ag->id }}" {{ old('agence_id') == $ag->id ? 'selected' : '' }}>
+                                        {{ $ag->nom }}{{ $ag->code ? ' (' . $ag->code . ')' : '' }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <small class="text-muted">
+                                Sans agence, cet administrateur ne pourra effectuer aucun encaissement.
+                                Vous pourrez l'affecter plus tard depuis la liste des administrateurs.
+                            </small>
+                            @error('agence_id')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
+                        </div>
+
                         {{-- Champ mot de passe supprimé : généré automatiquement et envoyé
                              au nouvel admin par email (le créateur ne doit pas le connaître). --}}
                         <div class="mt-3">

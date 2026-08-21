@@ -42,7 +42,7 @@ class CommandeScreenState extends State<CommandeScreen> {
       }
 
       try {
-        retourHttp = await http
+        final http.Response retourHttp = await http
             .post(Uri.parse('${lienAPI()}liste-commande'),
                 headers: {"Content-Type": "application/json"},
                 body: jsonEncode(param))
@@ -72,11 +72,15 @@ class CommandeScreenState extends State<CommandeScreen> {
               ];
             });
           } else {
-            EasyLoading.showError(com.message ?? '');
+            afficherErreur(com.message ?? '');
           }
+        } else {
+          // Sans cette branche, une reponse serveur en erreur ne produisait
+          // AUCUNE reaction a l'ecran.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez reessayer.");
         }
       } catch (e) {
-        EasyLoading.showError(
+        afficherErreur(
             "Une erreur s'est produite veuillez reesayer plus tard");
         if (kDebugMode) {
           print(e.toString());
@@ -84,7 +88,7 @@ class CommandeScreenState extends State<CommandeScreen> {
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 

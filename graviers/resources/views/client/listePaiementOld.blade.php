@@ -62,8 +62,8 @@
                                             <tr>
                                                 <td> <a href="">{{$paiement->code}} </a></td>
                                                 <td> {{$paiement->lignePaiements->first()->moyen_paiement}} </td>
-                                                <td> {{$paiement->commande->numero}} </td>
-                                                <td> {{$paiement->commande->created_at}} </td>
+                                                <td> {{$paiement->commande?->numero}} </td>
+                                                <td> {{$paiement->commande?->created_at}} </td>
                                                 <td>
                                                     {{number_format($paiement->lignePaiements->first()->montant,0,'',' ')}} fcfa
                                                 </td>
@@ -112,7 +112,7 @@
                                                         <td> {{$facture->created_at->format('d-m-Y')}} </td>
                                                         <td> {{number_format($facture->montant,'0','',' ')}} fcfa </td>
                                                         <td> {{$commande->numero}} </td>
-                                                        <td> {{number_format($commande->montant_total,'0','',' ')}} fcfa </td>
+                                                        <td> {{number_format($commande->montantHT(),'0','',' ')}} fcfa </td>
                                                         <td>
                                                             {{$commande->created_at->format('d-m-Y')}}
                                                         </td>

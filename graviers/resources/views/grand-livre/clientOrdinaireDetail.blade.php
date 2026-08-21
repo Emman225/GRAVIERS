@@ -41,7 +41,7 @@
                                     <th class="text-center" style="background-color: #1c57a3; color: white; border-top-left-radius:5px">N°</th>
                                     <th class="text-center" style="background-color: #1c57a3; color: white">Nom du client</th>
                                     <th class="text-center" style="background-color: #1c57a3; color: white">Type du client</th>
-                                    <th class="text-center" style="background-color: #1c57a3; color: white">Montant</th>
+                                    <th class="text-center" style="background-color: #1c57a3; color: white">Montant HT</th>
                                     <th class="text-center" style="background-color: #1c57a3; color: white">Etat</th>
                                     <th class="text-center" style="background-color: #1c57a3; color: white">Date</th>
                                     <!-- <th class="text-center" style="background-color: #1c57a3; color: white; border-top-right-radius:5px">Réduction</th> -->
@@ -54,12 +54,12 @@
                                
                                         <tr>
                                             <td class="texte-center" > {{ $commande->numero }} </td>
-                                            <td class="texte-center"><b><a href=""></a>{{ $commande->client->nom }}  {{ $commande->client->prenom }}</b></td>
-                                            <td class="text-center"> {{$commande->client->type_client}} </td>
+                                            <td class="texte-center"><b><a href=""></a>{{ $commande->client?->display_name }}</b></td>
+                                            <td class="text-center"> {{$commande->client?->type_client}} </td>
                                             <td class="texte-center">
                                                 {{-- Afficher le prix avant la reduction --}}
-                                                <span class="vieux-prix">{{ $commande->remise > 0 ? number_format($commande->remise+ $commande->montant_total,'0','',' ').' fcfa' : '' }}</span> <br>
-                                                {{ number_format($commande->montant_total,'0','',' ') }} fcfa
+                                                <span class="vieux-prix">{{ $commande->remise > 0 ? number_format($commande->remise + $commande->montantAPayer(),'0','',' ').' fcfa' : '' }}</span> <br>
+                                                {{ number_format($commande->montantAPayer(),'0','',' ') }} fcfa
                                             </td>
                                             <td><span
                                                     class="badge rounded-pill text-warning">{{ $commande->etat_commande }}</span>

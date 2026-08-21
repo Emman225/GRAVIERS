@@ -294,3 +294,56 @@ span.text-danger {
     padding: 14px 16px;
     border: none;
 }
+
+/* ==============================================================
+   VUE RAPIDE — le champ montant, à côté de la quantité
+   ==============================================================
+   Le thème ne prévoyait qu'une boîte de quantité (.detail-qty). Le montant
+   reprend exactement sa mise en forme, pour que les deux se lisent comme une
+   paire, avec la devise collée à droite du nombre. */
+.detail-extralink .detail-montant {
+    margin: 0 6px 15px 0;
+    background: #fff;
+    border: 2px solid #1C57A3 !important;
+    font-size: 16px;
+    font-weight: 700;
+    color: #1C57A3;
+    border-radius: 5px;
+    /* Hauteur alignée sur celle de .detail-qty, mesurée à 54px : les deux
+       boîtes se lisent comme une paire. */
+    height: 54px;
+    padding: 0 14px;
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px;
+    /* Le conteneur est en flex : sans cela la boîte s'étire sur toute la
+       hauteur de la ligne et ne s'aligne plus sur la quantité. */
+    align-self: center;
+}
+
+.detail-extralink .detail-montant .montant-val {
+    /* Le thème dessine les champs en pilule blanche bordée, avec une ombre
+       interne : posée DANS la boîte, elle faisait une seconde bordure autour du
+       nombre. On efface tout, la boîte fournit déjà le cadre. */
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    outline: none;
+    width: 92px;
+    font-size: 16px;
+    font-weight: 700;
+    color: #1C57A3;
+    text-align: right;
+    /* Le thème impose height:64px et padding:12px 24px à TOUT input — la boîte
+       de quantité y échappe par une règle dédiée, celle-ci fait de même. */
+    height: auto !important;
+    padding: 0 !important;
+    line-height: 1.2;
+}
+
+.detail-extralink .detail-montant .montant-devise {
+    font-size: 13px;
+    font-weight: 600;
+    opacity: .75;
+}

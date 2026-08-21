@@ -85,7 +85,7 @@
                                 Nous ne vendons que <br />
                                 De la qualité
                             </h2>
-                            <p class="mb-45">Commencer vos achat avec <span class="text-brand"> IMLOD </span></p>
+                            <p class="mb-45">Commencer vos achat avec <span class="text-brand"> DALAKOUN </span></p>
                             {{-- Ce formulaire n'était relié à rien : ni action, ni méthode, ni
                                  nom de champ. Le visiteur croyait s'inscrire et rechargeait
                                  simplement la page ; aucune adresse n'était conservée. --}}
@@ -129,7 +129,7 @@
                     </div>
                 </div>
                 <div class="footer-link-widget col">
-                    <h4 class="widget-title">IMLOD</h4>
+                    <h4 class="widget-title">DALAKOUN</h4>
                     <ul class="footer-list mb-sm-5 mb-md-0">
                         {{-- Ces entrées renvoyaient toutes vers « Site en construction ».
                              Elles mènent désormais à de vraies pages. --}}
@@ -204,7 +204,7 @@
             <div class="col-xl-4 col-lg-6 col-md-6">
                 {{-- Année courante : le pied de page annonçait 2024 en dur, ce qui
                      vieillit le site chaque 1er janvier sans que personne n'y pense. --}}
-                <p class="font-sm mb-0">&copy; {{ date('Y') }}, <strong class="text-brand">gravierci</strong> - Immobilier - Location - Distribution <br />Tous droits reservés</p>
+                <p class="font-sm mb-0">&copy; {{ date('Y') }}, <strong class="text-brand">gravierci</strong> - DALAKOUN SARL <br />Tous droits reservés</p>
             </div>
             <div class="col-xl-4 col-lg-6 text-center d-none d-xl-block">
                 <div class="hotline d-lg-inline-flex mr-30">

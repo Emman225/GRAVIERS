@@ -22,6 +22,8 @@ class Configuration extends Model
         'gestionnaire2_id',
         'prixKm',
         'cout_livraison_min',
+        // 0 = formule kilométrique, 1 = grille tarifaire (cf. Help::coutLivraison).
+        'livraison_sur_grille',
         'raison_sociale',
         'ncc',
         'regime_imposition',

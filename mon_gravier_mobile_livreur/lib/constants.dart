@@ -22,8 +22,11 @@ const headingStyle = TextStyle(
 const defaultDuration = Duration(milliseconds: 250);
 
 // Form Error
+// Ancienne expression : ^[a-zA-Z0-9.]+@[a-zA-Z0-9]+\.[a-zA-Z]+
+// Elle REFUSAIT les adresses contenant un tiret, un underscore ou un « + »
+// (jean-luc@..., service_com@...), et n'etait pas ancree en fin de chaine.
 final RegExp emailValidatorRegExp =
-    RegExp(r"^[a-zA-Z0-9.]+@[a-zA-Z0-9]+\.[a-zA-Z]+");
+    RegExp(r"^[\w.+-]+@[\w-]+(\.[\w-]+)+$");
 const String kEmailNullError = "Veuillez entrer votre email";
 const String kInvalidEmailError = "Veuillez entrer un email valide";
 const String kPassNullError = "Veuillez entrer votre mot de passe";

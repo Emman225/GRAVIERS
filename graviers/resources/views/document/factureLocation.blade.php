@@ -49,10 +49,10 @@
                 @endphp
                 <tr>
                     <td class="col-ref">{{ str_pad($index + 1, 2, '0', STR_PAD_LEFT) }}</td>
-                    <td class="col-designation">{{ ucwords($detail->produit->nom ?? 'Location') }} (location {{ $jours }} j)</td>
+                    <td class="col-designation">{{ ucwords($detail->produit?->nom ?? 'Location') }} (location {{ $jours }} j)</td>
                     <td class="col-pu">{{ number_format($puPeriode, 0, '', ' ') }}</td>
                     <td class="col-qte">{{ $detail->qte }}</td>
-                    <td class="col-unite">{{ $detail->produit->uniteProduit->libelle ?? 'U' }}</td>
+                    <td class="col-unite">{{ $detail->produit?->uniteProduit->libelle ?? 'U' }}</td>
                     <td class="col-taxes">TVA ({{ $config->tva ?? 0 }}%)</td>
                     <td class="col-rem">0</td>
                     <td class="col-montant">{{ number_format($montantLigne, 0, '', ' ') }}</td>
@@ -81,6 +81,12 @@
             <td class="label">TOTAL HT</td>
             <td class="valeur">{{ number_format($totalHT, 0, '', ' ') }}</td>
         </tr>
+        @if($remise > 0)
+        <tr>
+            <td class="label">Remise</td>
+            <td class="valeur">-{{ number_format($remise, 0, '', ' ') }}</td>
+        </tr>
+        @endif
         <tr>
             <td class="label">TVA</td>
             <td class="valeur">{{ number_format($totalTVA, 0, '', ' ') }}</td>
@@ -89,12 +95,6 @@
         <tr>
             <td class="label">Coût livraison</td>
             <td class="valeur">{{ number_format($coutLivraison, 0, '', ' ') }}</td>
-        </tr>
-        @endif
-        @if($remise > 0)
-        <tr>
-            <td class="label">Remise</td>
-            <td class="valeur">-{{ number_format($remise, 0, '', ' ') }}</td>
         </tr>
         @endif
         <tr>

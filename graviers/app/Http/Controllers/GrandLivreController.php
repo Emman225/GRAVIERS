@@ -28,12 +28,29 @@ class GrandLivreController extends Controller
         ]);
     }
 
+    /**
+     * Les clients d'un grand livre, choisis EN BASE et non dans la vue.
+     *
+     * Les deux écrans chargeaient tous les comptes clients — à terme comme
+     * ordinaires — puis écartaient les autres dans le Blade. Trois effets :
+     * la moitié des lignes était lue pour rien, le compte des lignes affichées
+     * était inconnu du contrôleur, et un compte sans fiche client produisait
+     * une ligne muette.
+     */
+    private function clientsDuGrandLivre(int $aTerme)
+    {
+        return Client::with('user')
+            ->where('client_a_terme', $aTerme)
+            ->whereHas('user', fn ($q) => $q->where('type_user_id', 4))
+            ->orderBy('nom')
+            ->orderBy('prenom')
+            ->get();
+    }
+
     public function grandLivreClientOrdinaire(){
 
-        $users = User::where('type_user_id',4)->get();
-
         return view('grand-livre.clientOrdinaire',[
-            'users' => $users,
+            'clients' => $this->clientsDuGrandLivre(0),
         ]);
     }
 
@@ -59,7 +76,7 @@ class GrandLivreController extends Controller
 
     public function grandLivreClientATerme(){
         return view('grand-livre.clientATerme',[
-            'users' => User::where('type_user_id',4)->get()
+            'clients' => $this->clientsDuGrandLivre(1),
         ]);
     }
 

@@ -53,6 +53,24 @@ class CoutLivraison extends Model
         else return new CoutLivraison();
     }
 
+    /**
+     * Des coordonnées sont exploitables si elles ne sont pas « nulles » (0,0 — le
+     * point de repli renvoyé par le téléphone quand le GPS est indisponible) et
+     * qu'elles restent dans des bornes plausibles.
+     */
+    public static function coordonneesExploitables($longitude, $latitude): bool
+    {
+        $long = (float) $longitude;
+        $lat  = (float) $latitude;
+
+        // Le « point zéro » (golfe de Guinée) : ni une adresse ni une position réelle.
+        if (abs($long) < 0.5 && abs($lat) < 0.5) {
+            return false;
+        }
+
+        return abs($long) <= 180 && abs($lat) <= 90;
+    }
+
     public static function calculer($longitude, $latitude, $regionID, $qte)
     {
         $region = DB::table('regions')->where('id', $regionID)->first();
@@ -67,6 +85,20 @@ class CoutLivraison extends Model
 
         // Région sans coordonnées : minimum (cohérent avec le web Help::coutLivraison).
         if ($regionLong == 0 && $regionLat == 0) {
+            return (float) ($conf->cout_livraison_min ?? 0);
+        }
+
+        // GARDE-FOU COORDONNÉES : l'application envoie « position?.longitude ?? 0 ».
+        // GPS coupé ou refusé -> (0,0), un point dans l'Atlantique. La distance
+        // devenait alors de plusieurs centaines de kilomètres et le transport était
+        // facturé plusieurs milliers de francs (739 km -> 3 695 F mesurés) au lieu du
+        // coût réel. On retombe sur le coût minimum plutôt que sur une distance absurde.
+        if (!self::coordonneesExploitables($longitude, $latitude)) {
+            \Log::warning('Coût de livraison : coordonnées inexploitables, application du coût minimum', [
+                'longitude' => $longitude,
+                'latitude'  => $latitude,
+                'region_id' => $regionID,
+            ]);
             return (float) ($conf->cout_livraison_min ?? 0);
         }
 

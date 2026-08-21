@@ -31,9 +31,9 @@
                 </div>
                 <div class="carousel-inner">
                 <div class="carousel-item active" data-bs-interval="10000">
-                    <img src="{{asset('backend/assets/imgs/theme/logoAvecFond1.jpg')}}" class="d-block w-100" alt="...">
+                    <img src="{{asset(config('constantes.logo_pdf'))}}" class="d-block w-100" alt="...">
                     <div class="carousel-caption d-none d-md-block">
-                    <h5>Immobilier - Location - Distribution</h5>
+                    <h5>DALAKOUN SARL</h5>
                     <p>Nous proposons des produits de qualité et un bref delai de livraison</p>
                     </div>
                 </div>
@@ -78,9 +78,9 @@
             <div class="card col-3"  style="width: 18rem;">
                 <img src="" class="card-img-top" alt="...">
                 <div class="card-body">
-                <h5 class="card-title"> {{$produit->produit->nom}} </h5>
-                <p> {{$produit->produit->unite}} FCFA</p>
-                <p class="card-text">{{$produit->produit->description}}</p>
+                <h5 class="card-title"> {{$produit->produit?->nom}} </h5>
+                <p> {{$produit->produit?->unite}} FCFA</p>
+                <p class="card-text">{{$produit->produit?->description}}</p>
                 <form action="{{route('client.ajout.panier',$produit->produit)}}">
                     @csrf
                     <button class="btn btn-primary d-block d-flex" type="submit">

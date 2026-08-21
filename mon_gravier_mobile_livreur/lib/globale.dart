@@ -34,6 +34,16 @@ String urlCarteVisa = "";
 int entierTransition = 0;
 int idNotification = 1;
 User user = User();
+
+/// Version de l'application, affichée sur l'écran Profil.
+///
+/// À incrémenter à CHAQUE build livré, en même temps que `version:` dans
+/// pubspec.yaml. Sans repère visible, plusieurs APK successifs sont
+/// indiscernables une fois installés : on ne sait plus lequel s'exécute, et
+/// tout diagnostic devient une conjecture. C'est ce qui a coûté une journée
+/// entière sur l'application client.
+const String versionApplication = '1.0.3 (4)';
+
 DateTime? currentBackPressTime;
 List<Cart> paniers = [];
 DemandeLivraison demandeLivraison = DemandeLivraison();
@@ -107,7 +117,9 @@ bool verifierClickBouton(DateTime currentTime, {int tmp = 3}) {
     dateHeure = currentTime;
     return false;
   }
-  print('diff is ${currentTime.difference(dateHeure!).inSeconds}');
+  if (kDebugMode) {
+    print('diff is ${currentTime.difference(dateHeure!).inSeconds}');
+  }
   if (currentTime.difference(dateHeure!).inSeconds < tmp) {
     // set this difference time in seconds
     return true;
@@ -181,7 +193,12 @@ String melangeChaine(String ch, {bool avecChaine = true}) {
 
 String valeurQrCode = '', msgErr = '', token = "", kt = "";
 
+/// Vrai tant qu'un indicateur « Patientez... » est réellement affiché.
+/// Empêche fermerChargement() d'effacer un message qui vient de le remplacer.
+bool _chargementEnCours = false;
+
 afficherChargement() {
+  _chargementEnCours = true;
   EasyLoading.show(
     dismissOnTap: false,
     status: "Patientez...",
@@ -189,7 +206,39 @@ afficherChargement() {
 }
 
 fermerChargement() {
+  // Ne ferme QUE l'indicateur de chargement. Sans ce garde-fou, un appel placé
+  // après un message d'erreur ou de succès effaçait ce message dans la
+  // milliseconde : le livreur ne voyait AUCUNE réaction et recliquait.
+  if (!_chargementEnCours) return;
+  _chargementEnCours = false;
   EasyLoading.dismiss();
+}
+
+/// Message d'ERREUR, protégé d'un fermerChargement() qui suivrait.
+void afficherErreur(dynamic message) {
+  _chargementEnCours = false;
+  final texte = (message == null || message.toString().trim().isEmpty)
+      ? "Une erreur s'est produite, veuillez réessayer"
+      : message.toString();
+  EasyLoading.showError(texte, duration: const Duration(seconds: 3));
+}
+
+/// Message d'INFORMATION (même protection).
+void afficherInfo(dynamic message) {
+  _chargementEnCours = false;
+  final texte = (message == null || message.toString().trim().isEmpty)
+      ? "Information indisponible"
+      : message.toString();
+  EasyLoading.showInfo(texte, duration: const Duration(seconds: 3));
+}
+
+/// Message de SUCCÈS (même protection).
+void afficherSucces(dynamic message) {
+  _chargementEnCours = false;
+  final texte = (message == null || message.toString().trim().isEmpty)
+      ? "Opération effectuée"
+      : message.toString();
+  EasyLoading.showSuccess(texte, duration: const Duration(seconds: 3));
 }
 
 String formaterMontant(double montant) {
@@ -200,7 +249,7 @@ String formaterMontant(double montant) {
               thousandSeparator: ' ',
               decimalSeparator: ',',
               symbolAndNumberSeparator: ' ',
-              fractionDigits: 1,
+              fractionDigits: 0,
               compactFormatType: CompactFormatType.short))
       .output;
   return mnt.symbolOnRight;
@@ -392,9 +441,11 @@ onWillPop() {
 }
 
 formaterDate(String dateString, {String format = 'd MMMM y à HH\'h\'mm'}){
-  // Convertir la chaîne en objet DateTime
-  DateTime dateTime = DateTime.parse(dateString);
-  // Formater la date
+  // DateTime.parse levait une FormatException sur une date absente (les appelants
+  // passent parfois « null » ou un motif de repli) : la carte ou la fiche était
+  // alors remplacée par un rectangle d'erreur rouge. On renvoie une chaîne vide.
+  final dateTime = DateTime.tryParse(dateString);
+  if (dateTime == null) return '';
   return DateFormat(format, 'fr_FR').format(dateTime);
 }
 

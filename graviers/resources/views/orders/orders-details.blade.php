@@ -40,10 +40,10 @@
                         <div class="text">
                             <h6 class="mb-1">Info client</h6>
                             <p class="mb-1">
-                                {{ $commande->client->nom }} {{ $commande->client->prenom }} <br />
-                                {{ $commande->client->email }} <br />
-                                {{ $commande->client->contact1 }} <br>
-                                {{ $commande->client->contact2 }}
+                                {{ $commande->client?->display_name }} <br />
+                                {{ $commande->client?->email }} <br />
+                                {{ $commande->client?->contact1 }} <br>
+                                {{ $commande->client?->contact2 }}
                             </p>
                             {{-- <a href="#">View profile</a> --}}
                         </div>
@@ -59,7 +59,7 @@
                             <h6 class="mb-1">Info commande</h6>
                             <p class="mb-1">
                                 Livraison: Fargo express <br />
-                                Mode de paiement: {{ $lignePaiement?->modePaiement->description }} <br />
+                                Mode de paiement: {{ $lignePaiement?->modePaiement?->description }} <br />
                                 Statut: new
                             </p>
                         </div>
@@ -76,8 +76,8 @@
                                 </span>
                                     <h6 class="mb-1">Lieu de livraison</h6>
                                     <p class="mb-1">
-                                        Pays: {{ ucfirst($commande->adresseLivraison->pays->nom) }}
-                                        <br />Ville: {{ ucfirst($commande->adresseLivraison->ville->nom) }}
+                                        Pays: {{ ucfirst($commande->adresseLivraison->pays?->nom) }}
+                                        <br />Ville: {{ ucfirst($commande->adresseLivraison->ville?->nom) }}
                                         <br />{{ ucfirst($commande->adresseLivraison->complement_adresse) }} <br />
 
                                     </p>
@@ -163,7 +163,41 @@
                                 @foreach ($commande->produits as $produit)
                                     @php
                                         $qte = (float) $produit->pivot->qte;
-                                        $qteLivree = (float) ($produit->pivot->qte_livree ?? 0);
+
+                                        // Quantité livrée : la colonne qte_livree n'était
+                                        // alimentée que par l'application mobile du livreur.
+                                        // Une livraison validée depuis le site laissait la
+                                        // ligne à 0 et le statut affichait « Non livrée »
+                                        // alors que la marchandise était bien partie.
+                                        // On retient donc la valeur la plus avancée entre la
+                                        // colonne et la somme des livraisons marquées LIVREE.
+                                        // La quantité d'une livraison reste celle qui a été
+                                        // DEMANDÉE : quand le fournisseur sert moins, seul
+                                        // l'enlèvement porte la quantité servie
+                                        // (SellerController n'écrit que `qte_servi`). On
+                                        // additionne donc, livraison par livraison, ce qui a
+                                        // réellement été servi — même règle que le paiement
+                                        // du fournisseur et que la facture.
+                                        $qteLivreeLivraisons = (float) \App\Models\Livraison::with('enlevement')
+                                            ->where('detail_commande_id', $produit->pivot->id)
+                                            ->where('etat_livraison', \Help::$LIVRAISON_LIVREE)
+                                            ->get()
+                                            ->sum(fn ($uneLivraison) => $uneLivraison->enlevement
+                                                ? $uneLivraison->enlevement->quantiteAPayer()
+                                                : (float) $uneLivraison->qte);
+
+                                        // Entre les deux sources, la somme des livraisons est
+                                        // la seule qui connaisse la quantité servie : la
+                                        // colonne `qte_livree` est incrémentée avec la
+                                        // quantité DEMANDÉE (LivreurController, côté site
+                                        // comme côté mobile). La prendre par un max()
+                                        // annulerait la correction ci-dessus. Elle ne sert
+                                        // donc plus que de repli, pour le cas qu'elle
+                                        // couvrait déjà : aucune livraison encore marquée
+                                        // LIVREE alors que la ligne, elle, a avancé.
+                                        $qteLivree = min($qte, $qteLivreeLivraisons > 0
+                                            ? $qteLivreeLivraisons
+                                            : (float) ($produit->pivot->qte_livree ?? 0));
                                         $qteRestante = max(0, $qte - $qteLivree);
                                         if ($qteLivree <= 0) {
                                             $statut = 'NON_LIVREE';
@@ -207,15 +241,56 @@
                                         </td>
                                     </tr>
                                 @endforeach
+
+                                {{-- Codes à communiquer au client : numéro de livraison (que le
+                                     client donne au livreur) et code d'enlèvement (retrait chez le
+                                     fournisseur). Ils n'apparaissaient NULLE PART dans le
+                                     back-office : quand l'e-mail au client échouait, personne ne
+                                     pouvait les retrouver pour les lui redonner. --}}
+                                @php
+                                    // Une livraison est rattachée à une LIGNE de commande
+                                    // (detail_commande_id) : la relation Commande::livraisons()
+                                    // vise une colonne commande_id qui n'existe pas dans la table.
+                                    $livraisonsCommande = \App\Models\Livraison::whereIn(
+                                            'detail_commande_id',
+                                            $commande->detailCommande->pluck('id')
+                                        )
+                                        ->orderBy('id')
+                                        ->get();
+                                @endphp
+                                @if ($livraisonsCommande->isNotEmpty())
+                                    <tr>
+                                        <td colspan="7" style="background:#f8f9fa;">
+                                            <strong>Codes à communiquer au client</strong>
+                                            <div class="mt-2">
+                                                @foreach ($livraisonsCommande as $uneLivraison)
+                                                    <div class="mb-1">
+                                                        <span class="badge bg-info">N° de livraison</span>
+                                                        <strong>{{ $uneLivraison->numero }}</strong>
+                                                        @if ($uneLivraison->enlevement?->code_enleve)
+                                                            &nbsp;·&nbsp;
+                                                            <span class="badge bg-secondary">Code d'enlèvement</span>
+                                                            <strong>{{ $uneLivraison->enlevement->code_enleve }}</strong>
+                                                        @endif
+                                                        <small class="text-muted">
+                                                            &nbsp;— {{ $uneLivraison->etat_livraison }}
+                                                        </small>
+                                                    </div>
+                                                @endforeach
+                                            </div>
+                                        </td>
+                                    </tr>
+                                @endif
+
                                 <tr>
                                     @php
-                                        $total = $commande->montant_total + $commande->cout_livraison_client + $commande->TvaCommande->montant - $commande->remise;
+                                        $total = $commande->montantAPayer();
                                     @endphp
                                     <td colspan="7">
                                         <article class="float-end">
                                             <dl class="dlist">
                                                 <dt>Sous-total:</dt>
-                                                <dd>{{Help::formatNombre($commande->montant_total, true)}}</dd>
+                                                <dd>{{Help::formatNombre($commande->montantHT(), true)}}</dd>
                                             </dl>
                                             <dl class="dlist">
                                                 <dt>Cout de livraison:</dt>
@@ -223,7 +298,7 @@
                                             </dl>
                                             <dl class="dlist">
                                                 <dt>TVA:</dt>
-                                                <dd>{{Help::formatNombre($commande->TvaCommande->montant, true)}}</dd>
+                                                <dd>{{Help::formatNombre($commande->TvaCommande?->montant ?? 0, true)}}</dd>
                                             </dl>
                                             @if($commande->remise)
                                                 <dl class="dlist">

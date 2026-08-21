@@ -48,6 +48,24 @@ class _EditionVehiculeScreenState extends State<EditionVehiculeScreen> {
     var data = Get.arguments;
     vehicule = data[0];
     typeVehicules = data[1];
+
+    // PRÉ-REMPLISSAGE : le formulaire s'ouvrait entièrement VIDE en modification.
+    // Le livreur ressaisissait quelques champs et enregistrait : l'identifiant du
+    // véhicule partait quand même, si bien que son TYPE réel était écrasé par le
+    // type n°1 et le véhicule repassé « DISPONIBLE » à son insu.
+    if ((vehicule.id ?? 0) > 0) {
+      immatriculationController.text = vehicule.immatriculation ?? '';
+      nomController.text = vehicule.nom ?? '';
+      descriptionController.text = vehicule.description ?? '';
+      capaciteController.text = (vehicule.capacite ?? '').toString();
+      marqueController.text = vehicule.marque ?? '';
+      modeleController.text = vehicule.modele ?? '';
+      typeVehiculeController.text = vehicule.typeVehicule ?? '';
+      typeVehiculeId = vehicule.typeVehiculeId ?? typeVehiculeId;
+      disponible = (vehicule.disponible ?? true) ? 1 : 0;
+      disponibiliteController.text = disponible == 1 ? 'DISPONIBLE' : 'INDISPONIBLE';
+    }
+
     super.initState();
   }
 
@@ -223,7 +241,7 @@ class _EditionVehiculeScreenState extends State<EditionVehiculeScreen> {
                 if (_validationSaisie()) {
                   _enregistrerVehicule();
                 } else {
-                  EasyLoading.showError(msgErr);
+                  afficherErreur(msgErr);
                 }
               },
               child: const Text("Enregistrer"),
@@ -257,7 +275,7 @@ class _EditionVehiculeScreenState extends State<EditionVehiculeScreen> {
       }
 
       try {
-        retourHttp = await http
+        final http.Response retourHttp = await http
             .post(Uri.parse('${lienAPI()}enregistrer-vehicule'),
             headers: {"Content-Type": "application/json"},
             body: jsonEncode(param))
@@ -275,21 +293,28 @@ class _EditionVehiculeScreenState extends State<EditionVehiculeScreen> {
               modeleController.text = '';
               disponibiliteController.text = '';
             });
-            EasyLoading.showSuccess(datas['message']);
+            afficherSucces(datas['message']);
           }else{
-            EasyLoading.showError(datas['message']);
+            afficherErreur(datas['message']);
           }
+        } else {
+          // Sans cette branche, une reponse serveur en erreur ne produisait
+          // AUCUNE reaction a l'ecran.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez reessayer.");
         }
       } catch (e) {
         user.code = 500;
         user.message = "Une erreur s'est produite veuillez reesayer plus tard";
+        // Ce bloc de secours n.affichait RIEN : l.ecran restait muet en cas de
+        // coupure reseau ou de reponse illisible.
+        afficherErreur("Impossible de contacter le serveur. Verifiez votre connexion et reessayez.");
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 

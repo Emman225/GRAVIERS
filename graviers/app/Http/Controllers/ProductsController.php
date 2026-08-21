@@ -70,16 +70,15 @@ class ProductsController extends Controller
     }
 
     public function editCategoryTraitement(Request $request, Categorie $categorie){
-        $img_path = '';
-        if($request->image){
-            if ($categorie->image == '') {
-                $img_path = $request->image->storeAs('categorieImage','public');
-            }else{
-                $img_path = $request->image->storeAs("categorieImage", $categorie->image, 'public');
-            }
-        }else{
-            $img_path = $categorie->image;
-        }
+        // storeAs() était appelée avec deux arguments là où elle en attend trois :
+        // le disque « public » y était pris pour le NOM du fichier, et l'image
+        // atterrissait à côté de sa destination. L'autre branche repassait le
+        // chemin complet en guise de nom, ce qui redoublait le dossier
+        // (« categorieImage/categorieImage/… »). On enregistre simplement le
+        // nouveau fichier, comme à la création.
+        $img_path = $request->hasFile('image')
+            ? $request->file('image')->store('categorieImage', 'public')
+            : $categorie->image;
         $categorie->update([
             'nom' => $request->nom,
             'parent_id' => $request->parent > 0 ? $request->parent : 0,
@@ -115,12 +114,21 @@ class ProductsController extends Controller
     }
 
     public function saveCategorie(categoryRequest $request){
-        $img = $request->image;
-        $img_path = $img->store('categorieImage','public');
+
+        // L'IMAGE EST FACULTATIVE. On appelait store() sur elle sans vérifier
+        // qu'un fichier avait été joint : créer une catégorie sans image
+        // provoquait « Call to a member function store() on null », c'est-à-dire
+        // une page blanche et une erreur 500 côté navigateur.
+        $img_path = $request->hasFile('image')
+            ? $request->file('image')->store('categorieImage', 'public')
+            : null;
+
         $add = [
             'nom' => $request->nom,
-           // 'parent' => $request->parent,
-            'parent_id' => $request->parent,
+            // `parent_id` n'accepte pas le vide en base, et aucun parent choisi
+            // donnait donc une seconde erreur 500. Zéro = catégorie racine,
+            // convention déjà retenue par l'écran de modification.
+            'parent_id' => $request->parent > 0 ? $request->parent : 0,
             'description' => $request->description,
             'image' => $img_path,
             'icon' => $img_path,
@@ -143,6 +151,10 @@ class ProductsController extends Controller
         $produits = $categorie
             ? $categorie->produits()->where('produit.statut', 1)->where('produit.type_affaire', 'VENTE')->avecFournisseur()->get()
             : collect();
+        // Le prix d'une page de catégorie doit être celui du panier, comme
+        // partout ailleurs sur la boutique.
+        \App\Models\Produit::alignerPrixAffiche($produits);
+
         return view('produit.categorieListProduit',[
             'produits' => $produits,
             'categories' => Categorie::where('statut', 1)->get(),

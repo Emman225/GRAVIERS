@@ -94,6 +94,30 @@
                     @enderror
                 </span>
             </div>
+            <div class="mb-3">
+                {{-- Agence de rattachement. C'est elle qui décide du guichet auquel
+                     les encaissements de cet agent seront imputés : elle n'est plus
+                     choisie au moment de la saisie d'un encaissement, où l'on
+                     pouvait désigner un autre guichet que le sien. --}}
+                <label class="form-label">Agence de rattachement</label>
+                <select class="form-control" name="agence_id">
+                    <option value="">— Aucune pour l'instant —</option>
+                    @foreach ($agences as $ag)
+                        <option value="{{ $ag->id }}" {{ old('agence_id') == $ag->id ? 'selected' : '' }}>
+                            {{ $ag->nom }}{{ $ag->code ? ' (' . $ag->code . ')' : '' }}
+                        </option>
+                    @endforeach
+                </select>
+                <small class="text-muted">
+                    Sans agence, cet agent ne pourra effectuer aucun encaissement.
+                    Vous pourrez l'affecter plus tard depuis la liste des agents.
+                </small>
+                <span style="color: red">
+                    @error('agence_id')
+                        {{ $message }}
+                    @enderror
+                </span>
+            </div>
             {{-- Champ mot de passe supprimé : généré automatiquement et envoyé
                  à l'agent par email (l'admin ne doit pas le connaître). --}}
             <div class="mb-3">

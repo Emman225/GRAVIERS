@@ -70,8 +70,7 @@ class _ImpressionRecuPaiementPdfState extends State<ImpressionRecuPaiementPdf> {
         if (kDebugMode) {
           print(e.toString());
         }
-        EasyLoading.showError(
-            "Une erreur s'est produite veuillez reesayer plus tard");
+        afficherErreur(messageErreurTechnique(e));
       }
       if (mounted) {
         setState(() {
@@ -79,7 +78,7 @@ class _ImpressionRecuPaiementPdfState extends State<ImpressionRecuPaiementPdf> {
         });
       }
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
       if (mounted) {
         setState(() {
           _dataLoaded = true;

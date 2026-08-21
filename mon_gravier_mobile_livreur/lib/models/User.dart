@@ -331,7 +331,9 @@ class Livreur {
   int? statut;
   String? createdAt;
   String? updatedAt;
-  int? solde;
+  // livreur.solde est un DOUBLE en base : declare int?, l'affectation levait un
+  // TypeError avale par le catch -> echec de connexion ou solde affiche a 0.
+  double? solde;
 
   Livreur(
       {this.id,
@@ -356,7 +358,7 @@ class Livreur {
     statut = json['statut'];
     createdAt = json['created_at'];
     updatedAt = json['updated_at'];
-    solde = json['solde'];
+    solde = double.tryParse(json['solde']?.toString() ?? '') ?? 0;
   }
 
   Map<String, dynamic> toJson() {

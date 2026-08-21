@@ -13,7 +13,7 @@
 @section('type_document', 'Facture de vente')
 
 @if($commande->modePaiement)
-    @section('mode_paiement', ucwords($commande->modePaiement->description))
+    @section('mode_paiement', ucwords($commande->modePaiement?->description))
 @endif
 
 @if($fne_adresse)
@@ -45,17 +45,17 @@
             @php $totalHT = 0; $index = 0; @endphp
             @foreach($commande->detailCommande as $detail)
                 @php
-                    $pu = isset($prixPerso[$detail->produit->id]) ? $prixPerso[$detail->produit->id] : $detail->produit->prix_moyen;
+                    $pu = isset($prixPerso[$detail->produit?->id]) ? $prixPerso[$detail->produit?->id] : $detail->produit?->prix_moyen;
                     $montant = $pu * $detail->qte;
                     $totalHT += $montant;
                     $index++;
                 @endphp
                 <tr>
                     <td class="col-ref">{{ str_pad($index, 2, '0', STR_PAD_LEFT) }}</td>
-                    <td class="col-designation">{{ ucwords($detail->produit->nom) }}</td>
+                    <td class="col-designation">{{ ucwords($detail->produit?->nom) }}</td>
                     <td class="col-pu">{{ number_format($pu, 0, '', ' ') }}</td>
                     <td class="col-qte">{{ $detail->qte }}</td>
-                    <td class="col-unite">{{ $detail->produit->uniteProduit->abreviation ?? 'U' }}</td>
+                    <td class="col-unite">{{ $detail->produit?->uniteProduit->abreviation ?? 'U' }}</td>
                     <td class="col-taxes">TVA ({{ $config->tva ?? 0 }}%)</td>
                     <td class="col-rem">0</td>
                     <td class="col-montant">{{ number_format($montant, 0, '', ' ') }}</td>
@@ -67,20 +67,20 @@
 
 @section('totaux')
     @php
-        $totalTVA = $commande->TvaCommande->montant ?? 0;
+        $totalTVA = $commande->TvaCommande?->montant ?? 0;
         $livraison = $commande->cout_livraison_client ?? 0;
         $remise = $commande->remise ?? 0;
-        $totalAPayer = ($commande->montant_total + $totalTVA + $livraison) - $remise;
+        $totalAPayer = $commande->montantAPayer();
     @endphp
 
     <table class="fne-totaux-outer"><tr><td class="fne-totaux-spacer"></td><td class="fne-totaux-content"><table class="fne-totaux">
         <tr><td class="label">TOTAL HT</td><td class="valeur">{{ number_format($totalHT, 0, '', ' ') }}</td></tr>
+        @if($remise > 0)
+        <tr><td class="label">Remise</td><td class="valeur">-{{ number_format($remise, 0, '', ' ') }}</td></tr>
+        @endif
         <tr><td class="label">TVA ({{ $config->tva ?? 0 }}%)</td><td class="valeur">{{ number_format($totalTVA, 0, '', ' ') }}</td></tr>
         @if($livraison > 0)
         <tr><td class="label">Coût livraison</td><td class="valeur">{{ number_format($livraison, 0, '', ' ') }}</td></tr>
-        @endif
-        @if($remise > 0)
-        <tr><td class="label">Remise</td><td class="valeur">-{{ number_format($remise, 0, '', ' ') }}</td></tr>
         @endif
         <tr><td class="label">TOTAL TTC</td><td class="valeur">{{ number_format($totalHT + $totalTVA, 0, '', ' ') }}</td></tr>
         <tr><td class="label">AUTRES TAXES</td><td class="valeur">0</td></tr>

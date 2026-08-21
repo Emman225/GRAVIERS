@@ -49,15 +49,21 @@ class _ForgotPassFormState extends State<ForgotPassForm> {
               return;
             },
             validator: (value) {
-              if (value!.isEmpty && !errors.contains(kEmailNullError)) {
-                setState(() {
-                  errors.add(kEmailNullError);
-                });
-              } else if (!emailValidatorRegExp.hasMatch(value) &&
-                  !errors.contains(kInvalidEmailError)) {
-                setState(() {
-                  errors.add(kInvalidEmailError);
-                });
+              // Le validateur retournait TOUJOURS null : validate() valait donc
+              // toujours true et un email vide ou invalide partait au serveur.
+              if (value == null || value.isEmpty) {
+                if (!errors.contains(kEmailNullError)) {
+                  WidgetsBinding.instance.addPostFrameCallback(
+                      (_) => setState(() => errors.add(kEmailNullError)));
+                }
+                return kEmailNullError;
+              }
+              if (!emailValidatorRegExp.hasMatch(value)) {
+                if (!errors.contains(kInvalidEmailError)) {
+                  WidgetsBinding.instance.addPostFrameCallback(
+                      (_) => setState(() => errors.add(kInvalidEmailError)));
+                }
+                return kInvalidEmailError;
               }
               return null;
             },
@@ -102,22 +108,30 @@ class _ForgotPassFormState extends State<ForgotPassForm> {
                     if (retourHttp.statusCode == 200) {
                       if (datas['code'] == 200) {
                         user = User.fromJson(datas);
+                        fermerChargement();
                         Get.toNamed(OtpScreen.routeName, arguments: 2);
                       } else {
-                        EasyLoading.showError(datas['message']);
+                        afficherErreur(datas['message']);
                       }
+                    } else {
+                      // Sans cette branche, une réponse serveur en erreur ne
+                      // produisait STRICTEMENT AUCUNE réaction à l'écran.
+                      afficherErreur(
+                          "Le serveur est momentanément indisponible (code ${retourHttp.statusCode}). Veuillez réessayer.");
                     }
                   } catch (e) {
-                    user.code = 500;
-                    user.message =
-                        "Une erreur s'est produite veuillez reesayer plus tard";
                     if (kDebugMode) {
                       print(e.toString());
                     }
+                    // Le catch ne faisait qu'alimenter des variables jamais lues :
+                    // en cas d'erreur réseau ou de réponse illisible, l'écran
+                    // restait muet.
+                    afficherErreur(
+                        "Impossible de contacter le serveur. Vérifiez votre connexion et réessayez.");
                   }
                   fermerChargement();
                 } else {
-                  EasyLoading.showInfo(
+                  afficherInfo(
                       "Veuillez vérifier votre connexion internet");
                 }
               }

@@ -186,7 +186,7 @@ class _SignUpFormState extends State<SignUpForm> {
       }
 
       try {
-        retourHttp = await http.get(Uri.parse('${lienAPI()}get-config'),
+        final http.Response retourHttp = await http.get(Uri.parse('${lienAPI()}get-config'),
             headers: {
               "Content-Type": "application/json"
             }).timeout(const Duration(minutes: 1));
@@ -201,6 +201,15 @@ class _SignUpFormState extends State<SignUpForm> {
             pays = config?.pays ?? [];
             villesTot = config?.villes ?? [];
             modePaiements = config?.modePaiements ?? [];
+
+            // « villes » n'était alimentée que dans le onChanged du sélecteur de PAYS :
+            // un apporteur qui n'y touchait pas voyait une liste de villes VIDE et son
+            // inscription partait quand même avec ville_id = 1, ville arbitraire
+            // enregistrée sans erreur. On l'initialise dès le chargement.
+            villes = villesTot.where((v) => v.paysId == pays_id).toList();
+            if (!villes.any((v) => v.id == ville_id)) {
+              ville_id = villes.isNotEmpty ? (villes.first.id ?? 1) : 1;
+            }
           });
           if (kDebugMode) {
             print('Pays chargés: ${pays.length}');
@@ -208,11 +217,11 @@ class _SignUpFormState extends State<SignUpForm> {
             print('Modes de paiement chargés: ${modePaiements.length}');
           }
         } else {
-          EasyLoading.showError(
+          afficherErreur(
               "Erreur de chargement des données (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
-        EasyLoading.showError(
+        afficherErreur(
             "Impossible de charger la configuration. Vérifiez votre connexion.");
         if (kDebugMode) {
           print('Erreur get-config: ${e.toString()}');
@@ -220,7 +229,7 @@ class _SignUpFormState extends State<SignUpForm> {
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -521,7 +530,7 @@ class _SignUpFormState extends State<SignUpForm> {
           ElevatedButton(
             onPressed: () async {
               if (pays_id <= 0 || ville_id <= 0) {
-                EasyLoading.showError(
+                afficherErreur(
                     "Veuillez choisir votre pays et votre ville");
               } else {
                 if (_formKey.currentState!.validate()) {
@@ -640,7 +649,7 @@ class _SignUpFormState extends State<SignUpForm> {
           print(param);
         }
 
-        retourHttp = await http
+        final http.Response retourHttp = await http
             .post(Uri.parse('${lienAPI()}inscription'),
                 headers: {"Content-Type": "application/json"},
                 body: jsonEncode(param))
@@ -669,14 +678,14 @@ class _SignUpFormState extends State<SignUpForm> {
                 msg.toLowerCase().contains('integrity')) {
               msg = "Cette adresse email est déjà utilisée.";
             }
-            EasyLoading.showError(msg);
+            afficherErreur(msg);
           }
         } else {
-          EasyLoading.showError(
+          afficherErreur(
               "Erreur serveur. Veuillez réessayer plus tard.");
         }
       } catch (e) {
-        EasyLoading.showError(
+        afficherErreur(
             "Une erreur s'est produite veuillez reesayer plus tard");
         if (kDebugMode) {
           print(e.toString());
@@ -685,7 +694,7 @@ class _SignUpFormState extends State<SignUpForm> {
 
       fermerChargement();
     } else {
-      EasyLoading.showError("Veuillez vérifier votre connexion internet");
+      afficherErreur("Veuillez vérifier votre connexion internet");
     }
   }
 }

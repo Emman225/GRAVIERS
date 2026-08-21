@@ -144,6 +144,50 @@ class Produit extends Model
      * factures, exports). Aucun autre code ne doit lire `prix_moyen` directement quand
      * un client est en jeu.
      */
+    /**
+     * ALIGNE LE PRIX AFFICHÉ SUR CELUI QUE LE PANIER FACTURERA.
+     *
+     * Le catalogue montrait `produit.prix_moyen` pendant que le panier retenait
+     * prixPour() — le prix fournisseur le plus bas parmi les stocks actifs. Les
+     * deux ne coïncident que par hasard : une bétonnière annoncée à 20 000 se
+     * retrouvait au panier à 100, et une brique annoncée à 150 y passait à
+     * 5 000. Le client ne payait pas le prix qu'on lui avait montré, dans un
+     * sens comme dans l'autre.
+     *
+     * L'alignement se faisait déjà sur l'accueil et la recherche, recopié à
+     * l'identique dans chacun ; il manquait à la location, à la page d'accueil
+     * secondaire et aux pages de catégorie. Il est désormais écrit une fois.
+     *
+     * UNE SEULE REQUÊTE pour toute la liste : appelée par produit, prixPour()
+     * en déclencherait une par article — 80 requêtes pour un catalogue de 80.
+     *
+     * Surcharge d'AFFICHAGE, jamais persistée : le prix métier reste prixPour().
+     */
+    public static function alignerPrixAffiche($produits): void
+    {
+        $liste = $produits instanceof \Illuminate\Pagination\AbstractPaginator
+            ? $produits->getCollection()
+            : collect($produits);
+
+        if ($liste->isEmpty()) {
+            return;
+        }
+
+        $moinsDisant = StockProduit::whereIn('produit_id', $liste->pluck('id'))
+            ->where('statut', Help::$STATUT_ACTIF)
+            ->where('prix', '>', 0)
+            ->whereNull('deleted_at')
+            ->groupBy('produit_id')
+            ->selectRaw('produit_id, MIN(prix) AS mn')
+            ->pluck('mn', 'produit_id');
+
+        foreach ($liste as $produit) {
+            if (isset($moinsDisant[$produit->id])) {
+                $produit->prix_moyen = (float) $moinsDisant[$produit->id];
+            }
+        }
+    }
+
     public function prixPour(?Client $client = null): float
     {
         if ($client && $client->id) {

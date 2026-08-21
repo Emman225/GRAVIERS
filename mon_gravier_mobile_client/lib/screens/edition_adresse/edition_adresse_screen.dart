@@ -185,10 +185,10 @@ class _EditionAdresseScreenState extends State<EditionAdresseScreen> {
                       ville_id = 0;
                     });
                     Get.back(result: adr);
-                    EasyLoading.showSuccess("Adresse enregistrée avec succès");
+                    afficherSucces("Adresse enregistrée avec succès");
                   }
                 }else{
-                  EasyLoading.showError(msgErr);
+                  afficherErreur(msgErr);
                 }
               },
               child: const Text("Enregistrer"),

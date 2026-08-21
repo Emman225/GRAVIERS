@@ -78,30 +78,51 @@ class LignePaiement {
         this.gestionnaire,
       });
 
+  /// Convertit en texte quelle que soit la forme reçue.
+  ///
+  /// Le serveur renvoie « user_id » sous forme de NOMBRE — c'est une clé
+  /// étrangère — alors que le champ est déclaré String?. L'affectation directe
+  /// levait « type 'int' is not a subtype of type 'String?' », et l'écran
+  /// « Imprimer mon reçu de paiement » s'ouvrait entièrement vide : ni numéro,
+  /// ni lignes, ni montants. Le reçu était inutilisable.
+  static String? _texte(dynamic valeur) =>
+      valeur == null ? null : valeur.toString();
+
+  /// Convertit en entier, que le serveur envoie un entier, un décimal ou du
+  /// texte. « montant » est un DOUBLE en base : un règlement à décimales
+  /// aurait produit la même erreur, dans l'autre sens.
+  static int? _entier(dynamic valeur) {
+    if (valeur == null) return null;
+    if (valeur is int) return valeur;
+    if (valeur is num) return valeur.round();
+    return int.tryParse(valeur.toString()) ??
+        double.tryParse(valeur.toString())?.round();
+  }
+
   LignePaiement.fromJson(Map<String, dynamic> json) {
-    id = json['id'];
-    paiementId = json['paiement_id'];
-    modePaiementId = json['mode_paiement_id'];
-    reference = json['reference'];
-    moyenPaiement = json['moyen_paiement'];
-    datePaiement = json['date_paiement'];
-    montant = json['montant'];
-    statut = json['statut'];
-    deletedAt = json['deleted_at'];
-    createdAt = json['created_at'];
-    updatedAt = json['updated_at'];
-    userId = json['user_id'];
-    codePaiement = json['code_paiement'];
-    serviceId = json['service_id'];
-    service = json['service'];
-    libelle = json['libelle'];
-    nom = json['nom'];
-    email = json['email'];
-    contact1 = json['contact1'];
-    adresse = json['adresse'];
-    pays = json['pays'];
-    ville = json['ville'];
-    gestionnaire = json['gestionnaire'];
+    id = _entier(json['id']);
+    paiementId = _entier(json['paiement_id']);
+    modePaiementId = _entier(json['mode_paiement_id']);
+    reference = _texte(json['reference']);
+    moyenPaiement = _texte(json['moyen_paiement']);
+    datePaiement = _texte(json['date_paiement']);
+    montant = _entier(json['montant']);
+    statut = _entier(json['statut']);
+    deletedAt = _texte(json['deleted_at']);
+    createdAt = _texte(json['created_at']);
+    updatedAt = _texte(json['updated_at']);
+    userId = _texte(json['user_id']);
+    codePaiement = _texte(json['code_paiement']);
+    serviceId = _entier(json['service_id']);
+    service = _texte(json['service']);
+    libelle = _texte(json['libelle']);
+    nom = _texte(json['nom']);
+    email = _texte(json['email']);
+    contact1 = _texte(json['contact1']);
+    adresse = _texte(json['adresse']);
+    pays = _texte(json['pays']);
+    ville = _texte(json['ville']);
+    gestionnaire = _texte(json['gestionnaire']);
   }
 
   Map<String, dynamic> toJson() {

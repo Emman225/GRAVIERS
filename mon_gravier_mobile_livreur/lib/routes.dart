@@ -14,6 +14,7 @@ import 'package:mon_gravier_com_livreur/screens/vehicule/vehicule_screen.dart';
 import 'screens/details/details_screen.dart';
 import 'screens/forgot_password/forgot_password_screen.dart';
 import 'screens/init_screen.dart';
+import 'screens/otp/otp_screen.dart';
 import 'screens/sign_in/sign_in_screen.dart';
 
 // We use name route
@@ -22,6 +23,9 @@ final Map<String, WidgetBuilder> routes = {
   InitScreen.routeName: (context) => const InitScreen(),
   SignInScreen.routeName: (context) => const SignInScreen(),
   ForgotPasswordScreen.routeName: (context) => const ForgotPasswordScreen(),
+  // Route ABSENTE : le parcours « mot de passe oublié » ne pouvait pas aboutir,
+  // même une fois le code envoyé.
+  OtpScreen.routeName: (context) => const OtpScreen(),
   CommandeSuccessScreen.routeName: (context) => const CommandeSuccessScreen(),
   ProfileScreen.routeName: (context) => const ProfileScreen(),
   DetailsScreen.routeName: (context) => const DetailsScreen(),

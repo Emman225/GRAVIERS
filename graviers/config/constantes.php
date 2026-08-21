@@ -1,7 +1,7 @@
 <?php
 
 return [
-    "userName" => "Moblier - Location - Distribution",
+    "userName" => "DALAKOUN SARL",
     "userMailSortant" =>  "test.reply@numerisk.net",
     "passwordMailSortant" => "6bnE5Uy6zvPu",
     "IMAP_Port" => 993,
@@ -18,5 +18,11 @@ return [
                         "User_agent" => 7,
                         "Livreur" => 8,
                     ],
+    // Le logo de la PLATEFORME, celui qui s'affiche sur le site et dans le
+    // back-office.
     "logo" => 'frontend/assets/imgs/logo/omer 1.png',
+    // Le logo de l'ENTREPRISE, réservé aux documents et aux courriels : reçus,
+    // factures, devis, bons d'enlèvement. Fond blanc et sans transparence, parce
+    // que dompdf compose mal un PNG à palette avec canal alpha.
+    "logo_pdf" => 'frontend/assets/imgs/logo/dalakoun-blanc.png',
 ];

@@ -71,7 +71,7 @@ class DevisController extends Controller
         }else{
             $total = Cart::total();
         }
-        $client = HELP::clientValide();
+        $client = Help::clientValide();
 
         // Ajout du produit à la selection
         return view('client.modifierDevis',[
@@ -143,8 +143,14 @@ class DevisController extends Controller
                     $dev = Devis::find(session('devisAModifier'));
                     $this->newDetailDevis($dev);
 
+                    // montant_ht doit suivre : sans lui, la colonne gardait la
+                    // valeur écrite à la CRÉATION du devis. Un devis établi à
+                    // 10 000 puis ramené à 5 000 conservait 10 000 en HT, et le
+                    // client lisait 14 900 F sur son devis contre 9 900 F sur la
+                    // commande qui en découlait (devis 687789).
                     $devis->update([
                             'montant' => Cart::total(),
+                            'montant_ht' => Cart::total(),
                             'tva' => Client::tva($client) * Cart::total(),
                         ]);
 
@@ -171,8 +177,14 @@ class DevisController extends Controller
                             ]);
                         $adresseId = $adresse_livraison->id;
                     }
+                    // montant_ht doit suivre : sans lui, la colonne gardait la
+                    // valeur écrite à la CRÉATION du devis. Un devis établi à
+                    // 10 000 puis ramené à 5 000 conservait 10 000 en HT, et le
+                    // client lisait 14 900 F sur son devis contre 9 900 F sur la
+                    // commande qui en découlait (devis 687789).
                     $devis->update([
                             'montant' => Cart::total(),
+                            'montant_ht' => Cart::total(),
                             'tva' => Client::tva($client) * Cart::total(),
                             'adresse_livraison_id' => $adresseId,
                             'cout_livraison' => session('0')['cout_livraison'],
@@ -251,7 +263,7 @@ class DevisController extends Controller
         return view('orders.recapDevis',[
             'devis' => $devis,
             'produits' => Produit::all(),
-            'client' => HELP::clientValide(),
+            'client' => Help::clientValide(),
             'categories' => Categorie::all(),
             'total' => $total,
 
@@ -279,7 +291,7 @@ class DevisController extends Controller
             'villes' => Ville::all(),
             'client' => $client,
             'categories' => Categorie::all(),
-            'modes'=> ModePaiement::liste(),
+            'modes'=> ModePaiement::listePourClient(),
             'total' => $devis->montant,
             'devis' => $devis,
             'typeLivraison' => TypeLivraison::orderBy('libelle')->get(),

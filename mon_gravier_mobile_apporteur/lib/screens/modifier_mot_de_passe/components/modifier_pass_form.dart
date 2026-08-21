@@ -3,8 +3,10 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
+import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:mon_gravier_com_apporteur/globale.dart';
+import 'package:mon_gravier_com_apporteur/screens/sign_in/sign_in_screen.dart';
 
 import '../../../components/custom_surfix_icon.dart';
 
@@ -21,11 +23,24 @@ class _ModifierPassFormState extends State<ModifierPassForm> {
   TextEditingController newPassController = TextEditingController();
   TextEditingController passwordController = TextEditingController();
 
+  /// 1 = changement volontaire depuis le profil (l'ancien mot de passe est exigé)
+  /// 2 = réinitialisation après validation du code « mot de passe oublié »
+  ///     (l'utilisateur ne connaît justement PAS son mot de passe actuel)
+  ///
+  /// Les deux écrans appelants transmettaient déjà cette valeur (profil -> 1,
+  /// écran du code -> 2), mais le formulaire ne la lisait pas : il affichait
+  /// toujours le champ « Mot de passe actuel » et envoyait niveau 1.
+  int niveau = 1;
+
+  bool get estReinitialisation => niveau != 1;
+
   @override
   void initState() {
     confirmPassController = TextEditingController();
     newPassController = TextEditingController();
     passwordController = TextEditingController();
+    final arg = Get.arguments;
+    niveau = (arg is int) ? arg : 1;
     super.initState();
   }
 
@@ -44,20 +59,22 @@ class _ModifierPassFormState extends State<ModifierPassForm> {
       child: Column(
         children: [
           const SizedBox(height: 20),
-          TextFormField(
-            controller: passwordController,
-            obscureText: true,
-            textInputAction: TextInputAction.next,
-            decoration: const InputDecoration(
-              labelText: "Mot de passe actuel",
-              hintText: "Entrez votre Mot de passe actuel",
-              // If  you are using latest version of flutter then lable text and hint text shown like this
-              // if you r using flutter less then 1.20.* then maybe this is not working properly
-              floatingLabelBehavior: FloatingLabelBehavior.always,
-              suffixIcon: CustomSurffixIcon(svgIcon: "assets/icons/Lock.svg"),
+          // Masqué en réinitialisation : demander le mot de passe actuel à quelqu'un
+          // qui vient de déclarer l'avoir oublié n'a pas de sens.
+          if (!estReinitialisation) ...[
+            TextFormField(
+              controller: passwordController,
+              obscureText: true,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: "Mot de passe actuel",
+                hintText: "Entrez votre Mot de passe actuel",
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+                suffixIcon: CustomSurffixIcon(svgIcon: "assets/icons/Lock.svg"),
+              ),
             ),
-          ),
-          const SizedBox(height: 20),
+            const SizedBox(height: 20),
+          ],
           TextFormField(
             controller: newPassController,
             obscureText: true,
@@ -91,7 +108,7 @@ class _ModifierPassFormState extends State<ModifierPassForm> {
               if (_validationSaisie()) {
                 modifierPass();
               }else{
-                EasyLoading.showError(msgErr);
+                afficherErreur(msgErr);
               }
             },
             child: const Text("Modifier mes accès"),
@@ -103,7 +120,8 @@ class _ModifierPassFormState extends State<ModifierPassForm> {
 
   _validationSaisie() {
     bool pass = true;
-    if (passwordController.text.trim() == '') {
+    // L'ancien mot de passe n'est exigé QUE pour un changement volontaire.
+    if (!estReinitialisation && passwordController.text.trim() == '') {
       pass = false;
       msgErr = "Veuillez saisir l'ancien mot de passe";
     } else if (newPassController.text.trim() == '') {
@@ -128,7 +146,10 @@ class _ModifierPassFormState extends State<ModifierPassForm> {
         "type": user.type.toString(),
         "old": passwordController.text.trim(),
         "new": newPassController.text.trim(),
-        "niveau": 1,
+        // Niveau réellement demandé par l'écran appelant (1 = profil, 2 = après code).
+        // Il était codé en dur à 1 : le serveur exigeait donc l'ancien mot de passe
+        // même dans le parcours « mot de passe oublié ».
+        "niveau": niveau,
       };
 
       if (kDebugMode) {
@@ -136,7 +157,7 @@ class _ModifierPassFormState extends State<ModifierPassForm> {
       }
 
       try {
-        retourHttp = await http
+        final http.Response retourHttp = await http
             .post(Uri.parse('${lienAPI()}modifier-pass-apporteur'),
             headers: {"Content-Type": "application/json"},
             body: jsonEncode(param))
@@ -152,23 +173,32 @@ class _ModifierPassFormState extends State<ModifierPassForm> {
               newPassController.text = '';
               passwordController.text = '';
             });
-            EasyLoading.showSuccess(datas['message']);
+            fermerChargement();
+            afficherSucces(datas['message'] ?? 'Mot de passe modifié');
+            // Après une RÉINITIALISATION, l'apporteur n'est pas encore réellement
+            // connecté avec ce nouveau mot de passe : on le ramène à la connexion.
+            if (estReinitialisation) {
+              Get.offAllNamed(SignInScreen.routeName);
+            }
+            return;
           }else{
-            EasyLoading.showError(datas['message']);
+            afficherErreur(datas['message'] ?? "La modification a échoué.");
           }
         } else {
-          EasyLoading.showError("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
-        user.code = 500;
-        user.message = "Une erreur s'est produite veuillez reesayer plus tard";
         if (kDebugMode) {
           print(e.toString());
         }
+        // Le bloc de secours n'alimentait que des variables jamais lues : en cas de
+        // panne réseau, l'écran restait muet.
+        afficherErreur(
+            "Impossible de contacter le serveur. Vérifiez votre connexion et réessayez.");
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 }

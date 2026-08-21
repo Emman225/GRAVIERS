@@ -75,6 +75,7 @@ class _SplashScreenState extends State<SplashScreen> {
             _code = uri.queryParameters['code'] ?? "";
             if (_statut == 1) {
               paniers.clear();
+              devisRepris = null;
               reduction = Reduction();
               Get.toNamed(ImpressionRecuPaiementPdf.routeName,
                   arguments: [1, _code, 0]);
@@ -84,6 +85,13 @@ class _SplashScreenState extends State<SplashScreen> {
             }
             break;
         }
+        // Ce flux reste à l'écoute pendant toute la vie de l'application, bien
+        // après que l'écran d'accueil ait disparu : c'est par lui que revient
+        // le résultat d'un paiement en ligne. Le traitement ci-dessus (vidage
+        // du panier, navigation vers le reçu ou vers l'écran d'échec) est donc
+        // fait dans tous les cas ; seul le rafraîchissement de CET écran-ci
+        // suppose qu'il soit encore affiché.
+        if (!mounted) return;
         setState(() {});
       }
     });

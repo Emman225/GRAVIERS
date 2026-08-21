@@ -81,22 +81,22 @@
                                                             <td rowspan="{{ $detail->livraisons->where('accepte', 1)->count() }}" class="custome-checkbox pl-30"></td>
 
                                                             <td rowspan="{{ $detail->livraisons->where('accepte', 1)->count() }}" class="image product-thumbnail pt-40">
-                                                                <img src="/storage/{{ $detail->produit->image->first()->image }}" alt="{{ $detail->produit->nom }}">
+                                                                <img src="/storage/{{ $detail->produit?->image->first()->image }}" alt="{{ $detail->produit?->nom }}">
                                                             </td>
 
                                                             <td rowspan="{{ $detail->livraisons->where('accepte', 1)->count() }}" class="product-des product-name">
-                                                                <h6 class="mb-5 validation-livraison-product__name">{{ $detail->produit->nom }}</h6>
+                                                                <h6 class="mb-5 validation-livraison-product__name">{{ $detail->produit?->nom }}</h6>
                                                                 <small class="text-muted">
                                                                     {{ $detail->livraisons->where('accepte', 1)->count() }}
                                                                     livraison{{ $detail->livraisons->where('accepte', 1)->count() > 1 ? 's' : '' }} prévu{{ $detail->livraisons->where('accepte', 1)->count() > 1 ? 'es' : 'e' }}
                                                                 </small>
-                                                                @if(($detail->produit->meilleur_note ?? 0) > 0)
+                                                                @if(($detail->produit?->meilleur_note ?? 0) > 0)
                                                                     <div class="product-rate-cover mt-1">
                                                                         <div class="product-rate d-inline-block">
-                                                                            <div class="product-rating" style="width: {{ $detail->produit->meilleur_note }}%"></div>
+                                                                            <div class="product-rating" style="width: {{ $detail->produit?->meilleur_note }}%"></div>
                                                                         </div>
                                                                         <span class="font-small ml-5 text-muted">
-                                                                            ({{ round(($detail->produit->meilleur_note * 5) / 100, 1) }})
+                                                                            ({{ round(($detail->produit?->meilleur_note * 5) / 100, 1) }})
                                                                         </span>
                                                                     </div>
                                                                 @endif
@@ -138,7 +138,7 @@
                                                             <td>
                                                                 <span {{ $livraison->etat_livraison == 'LIVREE' ? 'class=barre-livree' : '' }}>
                                                                     <i class="fi-rs-phone-call" style="font-size:11px;color:#10b981;"></i>
-                                                                    {{ $livraison->livreur->user->contact }}
+                                                                    {{ $livraison->livreur?->user?->contact }}
                                                                 </span>
                                                             </td>
 
@@ -177,18 +177,18 @@
                                                     <td class="custome-checkbox pl-30"></td>
 
                                                     <td class="image product-thumbnail pt-40">
-                                                        <img src="/storage/{{ $detail->produit->image->first()->image }}" alt="{{ $detail->produit->nom }}">
+                                                        <img src="/storage/{{ $detail->produit?->image->first()->image }}" alt="{{ $detail->produit?->nom }}">
                                                     </td>
 
                                                     <td class="product-des product-name">
-                                                        <h6 class="mb-5 validation-livraison-product__name">{{ $detail->produit->nom }}</h6>
-                                                        @if(($detail->produit->meilleur_note ?? 0) > 0)
+                                                        <h6 class="mb-5 validation-livraison-product__name">{{ $detail->produit?->nom }}</h6>
+                                                        @if(($detail->produit?->meilleur_note ?? 0) > 0)
                                                             <div class="product-rate-cover">
                                                                 <div class="product-rate d-inline-block">
-                                                                    <div class="product-rating" style="width: {{ $detail->produit->meilleur_note }}%"></div>
+                                                                    <div class="product-rating" style="width: {{ $detail->produit?->meilleur_note }}%"></div>
                                                                 </div>
                                                                 <span class="font-small ml-5 text-muted">
-                                                                    ({{ round(($detail->produit->meilleur_note * 5) / 100, 1) }})
+                                                                    ({{ round(($detail->produit?->meilleur_note * 5) / 100, 1) }})
                                                                 </span>
                                                             </div>
                                                         @endif

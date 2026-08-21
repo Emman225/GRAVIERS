@@ -25,7 +25,7 @@ class DocumentPdfMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: $this->typeDocument . ' N° ' . $this->numero . ' - IMLOD',
+            subject: $this->typeDocument . ' N° ' . $this->numero . ' - DALAKOUN',
             to: $this->emailClient
         );
     }

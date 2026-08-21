@@ -70,25 +70,30 @@ class _DetailsCommandeScreenState extends State<DetailsCommandeScreen> {
         if (retourHttp.statusCode == 200) {
           infoCom = InformationsCommande.fromJson(datas);
           if (infoCom.code == 200) {
-            setState(() {
+            // Écran quitté pendant l'appel : la réponse revient sur un écran détruit
+            // et le rafraîchissement échoue (voir devis_screen.dart).
+            if (mounted) setState(() {
               clientATerme = infoCom.data?.client_a_terme ?? false;
               commande = infoCom.data?.commande ?? UneCommande();
               lignes = infoCom.data?.lignes ?? [];
             });
           } else {
-            EasyLoading.showError(infoCom.message ?? '');
+            afficherErreur(infoCom.message ?? '');
           }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
-        EasyLoading.showError(
-            "Une erreur s'est produite veuillez reesayer plus tard");
+        afficherErreur(messageErreurTechnique(e));
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -187,7 +192,7 @@ class _DetailsCommandeScreenState extends State<DetailsCommandeScreen> {
               ),
             );
           } else {
-            EasyLoading.showError(
+            afficherErreur(
                 "Impossible de récupérer les détails de cette opération");
           }
         },
@@ -253,7 +258,7 @@ class _DetailsCommandeScreenState extends State<DetailsCommandeScreen> {
                   }
                 });
               } else {
-                EasyLoading.showInfo("L'article n'a pas encore été livré!");
+                afficherInfo("L'article n'a pas encore été livré!");
               }
             },
             child: Padding(
@@ -400,20 +405,26 @@ class _DetailsCommandeScreenState extends State<DetailsCommandeScreen> {
 
                           if (retourHttp.statusCode == 200) {
                             if (datas['code'] == 200) {
-                              setState(() {
+                              // Écran quitté pendant l'appel : la réponse revient sur un écran détruit
+                              // et le rafraîchissement échoue (voir devis_screen.dart).
+                              if (mounted) setState(() {
                                 ids.clear();
                                 idsProd.clear();
                               });
                               Get.back();
-                              EasyLoading.showSuccess(datas['message']);
+                              afficherSucces(datas['message']);
                             } else {
-                              EasyLoading.showError(datas['message']);
+                              afficherErreur(datas['message']);
                             }
+                          } else {
+                            // Sans cette branche, une réponse serveur en erreur ne produisait
+                            // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+                            afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
                           }
                         } catch (e) {
                           user.code = 500;
                           user.message =
-                              "Une erreur s'est produite veuillez reesayer plus tard";
+                              messageErreurTechnique(e);
                           if (kDebugMode) {
                             print(e.toString());
                           }
@@ -421,12 +432,12 @@ class _DetailsCommandeScreenState extends State<DetailsCommandeScreen> {
 
                         fermerChargement();
                       } else {
-                        EasyLoading.showInfo(
+                        afficherInfo(
                             "Veuillez vérifier votre connexion internet");
                       }
                       Get.back();
                     } else {
-                      EasyLoading.showError(
+                      afficherErreur(
                           "Veuillez saisir le motif du retour de produit");
                     }
                   },

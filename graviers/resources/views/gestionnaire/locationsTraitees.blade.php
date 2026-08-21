@@ -35,7 +35,7 @@
                                     @php $etat = $location->etatLibelle(); @endphp
                                     <tr>
                                         <td class="text-center">{{ $location->numero }}</td>
-                                        <td class="text-center"><b>{{ $location->client?->nom }} {{ $location->client?->prenom }}</b></td>
+                                        <td class="text-center"><b>{{ $location->client?->display_name }}</b></td>
                                         <td class="text-center">{{ $location->livreur?->user?->nom_prenoms ?? '-' }}</td>
                                         <td class="text-center">{{ number_format($location->montant_total, 0, '', ' ') }} fcfa</td>
                                         <td class="text-center">
@@ -61,14 +61,16 @@
                                             @if ($etat === 'EN COURS')
                                                 <a href="{{ route('show.retourLocationPage', $location) }}" class="btn btn-sm btn-success rounded font-sm">Retour matériel</a>
                                             @endif
-                                            {{-- "Paiement" seulement si la location n'est pas déjà soldée (statut 3). --}}
+                                            {{-- Voir le commentaire de listeLocation : le règlement passe
+                                                 désormais par le guichet des encaissements. --}}
                                             @if ($location->statut != 3)
-                                                <a href="{{ route('paye.paiementLocation', $location) }}" class="btn btn-sm rounded font-sm">Paiement</a>
+                                                <a href="{{ route('show.encaissements.locations', ['location' => $location->numero]) }}"
+                                                   class="btn btn-sm rounded font-sm">Paiement</a>
                                             @endif
-                                            {{-- Facture FNE : générer (une fois) puis consulter. --}}
+                                            {{-- Facture FNE : générer (une fois, paiement soldé ou client à terme exigé) puis consulter. --}}
                                             @if ($location->factureFne)
                                                 <a href="{{ route('orders.factureLocation', ['facture' => $location->factureFne->id, 'action' => 'voir']) }}" target="_blank" class="btn btn-sm btn-outline-secondary rounded font-sm">Voir facture</a>
-                                            @else
+                                            @elseif ($location->statut == 3 || $location->client?->client_a_terme == 1)
                                                 <form action="{{ route('orders.genererFactureLocation', $location) }}" method="post" style="display:inline-block">
                                                     @csrf
                                                     <button type="submit" class="btn btn-sm btn-outline-primary rounded font-sm"

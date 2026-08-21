@@ -39,7 +39,7 @@
                             @endphp
                             <tr>
                                 <td>{{ $ticket->numero }}</td>
-                                <td>{{ $ticket->client?->nom }} {{ $ticket->client?->prenom }}</td>
+                                <td>{{ $ticket->client?->display_name }}</td>
                                 <td>{{ $ticket->detailCommande?->produit?->nom ?? '-' }}</td>
                                 <td>{{ $ticket->objet }}</td>
                                 <td>{{ Carbon::parse($ticket->created_at)->format('d/m/Y H:i') }}</td>

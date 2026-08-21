@@ -99,7 +99,7 @@ class _CheckoutCardState extends State<CheckoutCard> {
                       case 1:
                         if (paniers.isNotEmpty) {
                         }  else{
-                          EasyLoading.showError("Votre panier est vide");
+                          afficherErreur("Votre panier est vide");
                         }
                         break;
                       case 2:
@@ -133,7 +133,7 @@ class _CheckoutCardState extends State<CheckoutCard> {
                               print(param);
                             }
 
-                            retourHttp = await http
+                            final http.Response retourHttp = await http
                                 .post(Uri.parse('${lienAPI()}enregistrer-commande'),
                                 headers: {"Content-Type": "application/json"},
                                 body: jsonEncode(param))
@@ -150,8 +150,12 @@ class _CheckoutCardState extends State<CheckoutCard> {
                                 paniers.clear();
                                 Get.toNamed(CommandeSuccessScreen.routeName, arguments: datas['message']);
                               }else{
-                                EasyLoading.showError(datas['message']);
+                                afficherErreur(datas['message']);
                               }
+                            } else {
+                              // Sans cette branche, une reponse serveur en erreur ne produisait
+                              // AUCUNE reaction a l'ecran.
+                              afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez reessayer.");
                             }
                           } catch (e) {
                             user.code = 500;
@@ -164,7 +168,7 @@ class _CheckoutCardState extends State<CheckoutCard> {
 
                           fermerChargement();
                         }else{
-                          EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+                          afficherInfo("Veuillez vérifier votre connexion internet");
                         }
                         break;
                       default:

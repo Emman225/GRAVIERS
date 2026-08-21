@@ -133,6 +133,30 @@
                             @error('adresse')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
                         </div>
 
+                        <div class="mt-3">
+                            {{-- Agence de rattachement. C'est elle qui décide du guichet auquel
+                                 les encaissements de ce gestionnaire seront imputés : elle n'est
+                                 plus choisie au moment de la saisie d'un encaissement, où l'on
+                                 pouvait désigner un autre guichet que le sien. --}}
+                            <label class="form-label fw-bold">
+                                <i class="material-icons md-store" style="font-size:14px;vertical-align:middle;color:#1c57a3;"></i>
+                                Agence de rattachement
+                            </label>
+                            <select class="form-control" name="agence_id">
+                                <option value="">— Aucune pour l'instant —</option>
+                                @foreach ($agences as $ag)
+                                    <option value="{{ $ag->id }}" {{ old('agence_id') == $ag->id ? 'selected' : '' }}>
+                                        {{ $ag->nom }}{{ $ag->code ? ' (' . $ag->code . ')' : '' }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <div class="small text-muted mt-1">
+                                Sans agence, ce gestionnaire ne pourra effectuer aucun encaissement.
+                                Vous pourrez l'affecter plus tard depuis la liste des gestionnaires.
+                            </div>
+                            @error('agence_id')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
+                        </div>
+
                         {{-- Identifiants générés automatiquement --}}
                         <div class="mt-3 alert alert-info d-flex align-items-start" style="border-radius:8px;">
                             <i class="material-icons md-vpn_key" style="font-size:20px;margin-right:10px;color:#1c57a3;"></i>

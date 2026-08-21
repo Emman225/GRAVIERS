@@ -254,7 +254,7 @@
                                     <th>N° commande</th>
                                     <th>Client</th>
                                     <th>Date</th>
-                                    <th class="text-end">Total</th>
+                                    <th class="text-end">Total HT</th>
                                     <th class="text-center">Statut</th>
                                     <th class="text-center">Action</th>
                                 </tr>
@@ -271,9 +271,9 @@
                                     @endphp
                                     <tr>
                                         <td><strong class="text-primary">{{ $commande->numero }}</strong></td>
-                                        <td>{{ $commande->client?->nom.' '.$commande->client?->prenom }}</td>
+                                        <td>{{ $commande->client?->display_name }}</td>
                                         <td>{{ $commande->created_at?->format('d/m/Y') }}</td>
-                                        <td class="text-end fw-bold">{{ number_format($commande->montant_total, 0, ',', ' ') }} FCFA</td>
+                                        <td class="text-end fw-bold">{{ number_format($commande->montantAPayer(), 0, ',', ' ') }} FCFA</td>
                                         <td class="text-center">
                                             <span class="badge {{ $etatBadge }}">{{ $commande->etat_commande }}</span>
                                         </td>

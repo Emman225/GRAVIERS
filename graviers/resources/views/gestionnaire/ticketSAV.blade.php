@@ -45,8 +45,12 @@
                             <th class="text-center" style="background-color: #1c57a3; color: white; border-top-left-radius:5px">Client</th>
                             <th class="text-center" style="background-color: #1c57a3; color: white; ">N° Commande</th>
                             <th class="text-center" style="background-color: #1c57a3; color: white; ">Produit</th> {{--  --}}
-                            <th class="text-center" style="background-color: #1c57a3; color: white; ">Date de retour</th>
-                            <th class="text-center" style="background-color: #1c57a3; color: white; "> Motif</th>
+                            {{-- Ces deux intitulés étaient ceux de la liste des RETOURS, dont
+                                 cette page est la copie : un ticket n'a ni « date de retour »
+                                 ni « motif », il porte une demande et un message. --}}
+                            <th class="text-center" style="background-color: #1c57a3; color: white; ">Demandé le</th>
+                            <th class="text-center" style="background-color: #1c57a3; color: white; ">Message</th>
+                            <th class="text-center" style="background-color: #1c57a3; color: white; ">Confié à</th>
                             <th class="text-center" style="background-color: #1c57a3; color: white; border-top-right-radius:5px">Action</th> {{--  --}}
                             {{-- <th class="text-center">Montant reglé</th>
                             <th class="text-center">SOLDE </th>
@@ -69,20 +73,46 @@
 
                                 <td class="text-center fw_bold"> {{Carbon::parse($ticket->created_at)->format('d-m-Y à H:i')}} </td>
                                 <td class="text-center"> {{$ticket->message}} </td>
-                                <td class="text-center">
 
+                                {{-- À qui le ticket est confié : la liste ne le disait nulle
+                                     part. Passé l'assignation, elle n'affichait qu'un badge
+                                     « En traitement », et plus personne ne savait qui l'avait. --}}
+                                <td class="text-center">
+                                    @if ($ticket->user_id && $ticket->agent->nom_prenoms)
+                                        {{ $ticket->agent->nom_prenoms }}
+                                        @if ((int) $ticket->user_id === (int) Auth::id())
+                                            <br><small class="text-success">c'est vous</small>
+                                        @endif
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </td>
+
+                                <td class="text-center">
+                                    {{-- La colonne s'intitule « Action » mais n'en proposait
+                                         plus aucune dès le ticket assigné : un simple badge, et
+                                         la personne qui l'avait en charge n'avait aucun moyen
+                                         de l'ouvrir depuis cette page. Elle devait deviner
+                                         qu'il fallait passer par « Mes tickets SAV ». --}}
                                     @switch($ticket->statut)
                                         @case(1)
-                                            <a href="{{route('show.ticketSAVTraitement',$ticket)}}" class="btn btn-primary"> traiter le retour</a>
+                                            <a href="{{route('show.ticketSAVTraitement',$ticket)}}" class="btn btn-primary btn-sm">Confier le ticket</a>
                                             @break
                                         @case(2)
-                                        <span class="badge badge-warning bg-warning ">En traitement</span>
+                                            @if ((int) $ticket->user_id === (int) Auth::id())
+                                                <a href="{{ route('show.traiterTicketSAVPage', $ticket) }}" class="btn btn-success btn-sm">Traiter</a>
+                                            @else
+                                                <span class="badge badge-warning bg-warning d-block mb-1">En traitement</span>
+                                                <a href="{{route('show.ticketSAVTraitement',$ticket)}}" class="btn btn-outline-primary btn-sm">Confier à quelqu'un d'autre</a>
+                                            @endif
                                             @break
                                         @case(3)
-                                        <span class="badge badge-warning bg-second text-white">Traité</span>
+                                            <span class="badge badge-warning bg-second text-white d-block">Traité</span>
+                                            @if ($ticket->solution_trouvee)
+                                                <small class="text-muted d-block mt-1">{{ \Illuminate\Support\Str::limit($ticket->solution_trouvee, 80) }}</small>
+                                            @endif
                                             @break
-
-                                            @endswitch
+                                    @endswitch
                                 </td>
                                 {{-- <td class="text-center">
 

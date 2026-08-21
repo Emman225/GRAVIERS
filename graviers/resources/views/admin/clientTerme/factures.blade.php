@@ -88,7 +88,7 @@
                                 $alerteRetard = $l->jours_retard >= $seuilAlerte;
                             @endphp
                             <tr class="{{ $alerteRetard ? 'table-danger' : '' }}">
-                                <td class="text-center">{{ $l->facture->numero }}</td>
+                                <td class="text-center">{{ $l->facture?->numero }}</td>
                                 <td class="text-center">{{ $l->date_facture ? Carbon::parse($l->date_facture)->format('d/m/Y') : '-' }}</td>
                                 <td class="text-center">{{ $l->code_client }}</td>
                                 <td>{{ $l->client_nom }}</td>

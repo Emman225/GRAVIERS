@@ -452,7 +452,9 @@ class PaiementController extends Controller
                 }
                 $retour->data = $pais;
                 $retour->code = 200;
-                $retour->message = 'ok' . json_encode($client);
+                // Le message est affichable par l'application : ne pas y concaténer la
+                // fiche client complète (e-mail, contacts, NCC/RCCM, points, à-terme).
+                $retour->message = 'ok';
             } else {
                 $retour->code = 404;
                 $retour->message = 'Impossible de récupérer l\'utilisateur';
@@ -494,7 +496,9 @@ class PaiementController extends Controller
                 }
                 $retour->data = $pais;
                 $retour->code = 200;
-                $retour->message = 'ok' . json_encode($client);
+                // Le message est affichable par l'application : ne pas y concaténer la
+                // fiche client complète (e-mail, contacts, NCC/RCCM, points, à-terme).
+                $retour->message = 'ok';
             } else {
                 $retour->code = 404;
                 $retour->message = 'Impossible de récupérer l\'utilisateur';
@@ -526,14 +530,20 @@ class PaiementController extends Controller
             $idUsr = Crypt::decryptString($request->access);
             $user = User::lire($idUsr);
             if ($user->id > 0) {
+                // Fuite de données : ces requêtes renvoient nom, e-mail, contact et
+                // adresse du client. Sans restriction au client authentifié, n'importe
+                // quel porteur de jeton pouvait lire l'historique de paiement d'autrui
+                // en essayant des codes ou des identifiants de paiement.
+                $clientCourant = Client::lireSurUser($user->id);
+
                 $pais = [];
                 if ($request->niveau == 1) {
-                    $pais = LignePaiement::listeSurCode($request->codePaiement);
+                    $pais = LignePaiement::listeSurCode($request->codePaiement, $clientCourant->id);
                     foreach ($pais as $d) {
                         $d->date_paiement = Help::formatterDate($d->date_paiement, "Y-m-d H:i:s", "d/m/Y H:i:s");
                     }
                 } else {
-                    $pais = LignePaiement::listeSurIdPaiement($request->idPaiement);
+                    $pais = LignePaiement::listeSurIdPaiement($request->idPaiement, $clientCourant->id);
                     foreach ($pais as $d) {
                         $d->date_paiement = Help::formatterDate($d->date_paiement, "Y-m-d H:i:s", "d/m/Y H:i:s");
                     }
@@ -601,10 +611,10 @@ class PaiementController extends Controller
     //                     'prenom_usager' => $lePrenom,
     //                     'telephone' => $client->contact1,
     //                     'email' => $user->email,
-    //                     'libelle_article' => "Paiement IMLOD",
+    //                     'libelle_article' => "Paiement DALAKOUN",
     //                     'quantite' => 1,
     //                     'montant' => $total,
-    //                     'lib_order' => "Paiement de facture IMLOD",
+    //                     'lib_order' => "Paiement de facture DALAKOUN",
     //                     'Url_Retour' => route("ouvreApp", ['codePaiement' => $codePaiement]),
     //                     'Url_Callback' => route('callBackPaiement'),
     //                 ],
@@ -684,10 +694,10 @@ class PaiementController extends Controller
                         'prenom_usager' => $lePrenom,
                         'telephone' => $client->contact1,
                         'email' => $user->email,
-                        'libelle_article' => "Paiement IMLOD",
+                        'libelle_article' => "Paiement DALAKOUN",
                         'quantite' => 1,
                         'montant' => $total,
-                        'lib_order' => "Paiement de facture IMLOD",
+                        'lib_order' => "Paiement de facture DALAKOUN",
                         'Url_Retour' => Help::urlPaiement(route("ouvreApp", ['codePaiement' => $codePaiement])),
                         'Url_Callback' => Help::urlPaiement(route('callBackPaiement')),
                     ],
@@ -747,7 +757,11 @@ class PaiementController extends Controller
                             $paiement->client_id = $client->id;
                             $paiement->devis_id = null;
                             $paiement->service_id = $idService;
-                            $paiement->service = Help::$COMMANDE;
+                            // Le service était codé en dur à COMMANDE alors que $service
+                            // vaut LOCATION ou LIVRAISON selon l'appelant : les paiements
+                            // de location/livraison étaient classés comme commandes, ce
+                            // qui faussait les rapprochements et les écrans de paiement.
+                            $paiement->service = $service;
                             $paiement->code = $numero;
                             $paiement->libelle = $paramInit['lib_order'];
                             $paiement->montant_total = $montantTotal;

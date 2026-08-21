@@ -57,7 +57,9 @@ class LivraisonScreenState extends State<LivraisonScreen> {
         if (retourHttp.statusCode == 200) {
           liv = RetourLivraison.fromJson(datas);
           if (liv.code == 200) {
-            setState(() {
+            // Écran quitté pendant le chargement : la réponse revient sur un écran
+            // détruit et le rafraîchissement échoue (voir devis_screen.dart).
+            if (mounted) setState(() {
               var livraisons = liv.data ?? [];
               if (kDebugMode) {
                 print("taille------------------${livraisons.length}");
@@ -78,19 +80,22 @@ class LivraisonScreenState extends State<LivraisonScreen> {
               ];
             });
           } else {
-            EasyLoading.showError(liv.message ?? '');
+            afficherErreur(liv.message ?? '');
           }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
-        EasyLoading.showError(
-            "Une erreur s'est produite veuillez reesayer plus tard");
+        afficherErreur(messageErreurTechnique(e));
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 

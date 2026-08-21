@@ -18,10 +18,10 @@ Detail de la commande
     <tbody>
         @foreach ($commande->detailCommande as $detail )
             <tr style="background-color: #f2f2f2;">
-                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$detail->produit->nom}}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$detail->produit?->nom}}</td>
                 <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$detail->qte}}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{number_format($detail->produit->prix_moyen,'0','',' ')}}fcfa</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{number_format($detail->qte * $detail->produit->prix_moyen,'0','',' ')}}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{number_format($detail->produit?->prix_moyen,'0','',' ')}}fcfa</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{number_format($detail->qte * $detail->produit?->prix_moyen,'0','',' ')}}</td>
             </tr>
         @endforeach
         <tr>
@@ -31,7 +31,7 @@ Detail de la commande
             <td colspan="4" style="border: 1px solid #ddd; padding: 8px; text-align:center">-{{$remise}}% de reduction</td>
         </tr>
         <tr>
-            <td colspan="4" style="border: 1px solid #ddd; padding: 8px; text-align:center"> Montant final: {{number_format($commande->montant_total + $remise/100,'0','','  ')}}fcfa</td>
+            <td colspan="4" style="border: 1px solid #ddd; padding: 8px; text-align:center"> Montant final: {{number_format($commande->montantAPayer() + $remise/100,'0','','  ')}}fcfa</td>
         </tr>
     </tbody>
 </table>

@@ -38,7 +38,20 @@ return [
 
         'public' => [
             'driver' => 'local',
-            'root' => storage_path('app/public'),
+
+            // Racine = public/storage, le dossier RÉELLEMENT servi par le serveur web.
+            //
+            // Laravel dépose normalement les fichiers dans storage/app/public, rendu
+            // accessible par un lien symbolique public/storage. Sur cet hébergement
+            // mutualisé, ce lien n'existe pas : public/storage est un vrai dossier.
+            // Les images téléversées (bannières, blogs…) partaient donc dans
+            // storage/app/public et n'étaient JAMAIS servies — d'où les visuels
+            // manquants, alors que les enregistrements étaient corrects en base.
+            //
+            // Écrire directement dans public/storage fonctionne dans les deux cas :
+            // avec un lien symbolique, ce chemin mène au même dossier.
+            'root' => public_path('storage'),
+
             'url' => env('APP_URL').'/storage',
             'visibility' => 'public',
             'throw' => false,

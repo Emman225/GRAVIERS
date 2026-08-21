@@ -4,6 +4,35 @@
 @endphp
 @extends('client.main')
 @section('title', 'detail ' . $produit->nom)
+
+@section('cssPart')
+    <style>
+        /* Champ « Montant » posé à côté du sélecteur de quantité, dans la même
+           barre. Le thème aligne .detail-extralink en ligne : on garde ce flux
+           et on laisse les deux blocs se replier sur mobile. */
+        .detail-extralink { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+
+        .pd-montant {
+            display: flex; align-items: center; gap: 8px;
+            padding: 4px 12px; border: 1px solid #d5dee8; border-radius: 6px;
+            background: #fff;
+        }
+        .pd-montant label { margin: 0; font-size: 13px; color: #48586b; white-space: nowrap; }
+        .pd-montant input { width: 120px; border: 0; text-align: right; padding: 6px 0; }
+        .pd-montant input:focus { outline: none; }
+
+        .pd-total { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; }
+        .pd-total__libelle { font-size: 15px; color: #48586b; }
+        .pd-total__valeur { font-size: 24px; font-weight: 700; color: #1c57a3; }
+        .pd-total__note { font-size: 13px; color: #7a8a9c; font-style: italic; }
+
+        @media (max-width: 575px) {
+            .pd-montant { width: 100%; justify-content: space-between; }
+            .pd-montant input { width: auto; flex: 1; }
+        }
+    </style>
+@endsection
+
 @section('content')
 
 
@@ -139,7 +168,31 @@
                                                     <li><a href="#">150g</a></li>
                                                 </ul>
                                             </div> --}}
-                                            <div class="detail-extralink mb-50">
+                                            @php
+                                                // Prix unitaire RÉELLEMENT appliqué : le prix négocié du
+                                                // client s'il en a un, le prix courant sinon. C'est celui
+                                                // que le panier retiendra ; l'afficher autrement ici
+                                                // annoncerait un total que la commande ne confirmerait pas.
+                                                $prixUnitaire = (isset($prixPerso) && isset($prixPerso[$produit->id]))
+                                                    ? (float) $prixPerso[$produit->id]
+                                                    : (float) $produit->prix_moyen;
+                                            @endphp
+
+                                            {{-- Quantité, montant et total.
+
+                                                 La page n'affichait que le prix UNITAIRE : changer la
+                                                 quantité ne montrait aucun total, et il fallait ajouter
+                                                 au panier pour découvrir la somme. Le panier, lui,
+                                                 permet depuis toujours les deux sens — saisir une
+                                                 quantité ou saisir un budget. La fiche produit fait
+                                                 désormais de même, avant l'ajout au panier.
+
+                                                 Le prix unitaire est porté par un attribut de données :
+                                                 il ne doit JAMAIS être relu depuis le texte affiché, dont
+                                                 les espaces de milliers (« 12 000 fcfa ») tronquent
+                                                 l'analyse à 12. --}}
+                                            <div class="detail-extralink mb-50" id="blocAchat"
+                                                 data-prix-unitaire="{{ $prixUnitaire }}">
                                                 <div class="detail-qty border radius">
                                                     <a href="#" class="qty-down" onclick="changerQuantite(event,-1)"><i
                                                             class="fi-rs-angle-small-down"></i></a>
@@ -147,6 +200,12 @@
                                                         min="1" step="1">
                                                     <a href="#" class="qty-up" onclick="changerQuantite(event,1)"><i
                                                             class="fi-rs-angle-small-up"></i></a>
+                                                </div>
+
+                                                <div class="pd-montant border radius">
+                                                    <label for="montantProduit">Montant (FCFA)</label>
+                                                    <input type="number" id="montantProduit" class="qty-val"
+                                                           min="0" step="1" value="{{ (int) $prixUnitaire }}">
                                                 </div>
                                                 <div class="product-extra-link2">
                                                     {{-- <form action="{{ route('client.ajout.panier', $produit) }}"> --}}
@@ -158,6 +217,17 @@
                                                     {{-- <a aria-label="Compare" class="action-btn hover-up" href="shop-compare.html"><i class="fi-rs-shuffle"></i></a> --}}
                                                 </div>
                                             </div>
+
+                                            <div class="pd-total mb-30">
+                                                <span class="pd-total__libelle">Total</span>
+                                                <span class="pd-total__valeur" id="totalProduit">—</span>
+                                                {{-- Un budget ne tombe presque jamais juste sur un
+                                                     multiple du prix unitaire. On dit alors clairement
+                                                     ce qui a été retenu, plutôt que de corriger la
+                                                     saisie du client en silence. --}}
+                                                <span class="pd-total__note" id="noteAjustement" hidden></span>
+                                            </div>
+
                                             <div class="font-xs">
                                                 <ul class="mr-50 float-start">
                                                     <li class="mb-5">Catégorie:
@@ -399,7 +469,7 @@
                                                                                         <img src="assets/imgs/blog/author-2.png"
                                                                                             alt="" />
                                                                                         <a href="#"
-                                                                                            class="font-heading text-brand">{{ $client->nom . ' ' . $client->prenom }}</a>
+                                                                                            class="font-heading text-brand">{{ $client->display_name }}</a>
                                                                                     </div>
                                                                                     <div class="desc">
                                                                                         <div class="d-flex justify-content-between mb-10">
@@ -737,6 +807,74 @@
 
 @section('jspart')
     <script>
+        // ============================================================
+        //  Quantité <-> Montant, dans les deux sens.
+        //
+        //  Le prix unitaire vient d'un attribut de données. Il ne doit
+        //  JAMAIS être relu depuis le prix affiché : « 12 000 fcfa »
+        //  s'analyse en 12 à cause de l'espace des milliers, et le total
+        //  serait mille fois trop petit.
+        // ============================================================
+        var blocAchat = document.getElementById('blocAchat');
+        var prixUnitaire = blocAchat ? parseFloat(blocAchat.dataset.prixUnitaire) : 0;
+
+        function formaterMontant(valeur) {
+            return Math.round(valeur).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' fcfa';
+        }
+
+        function majDepuisQuantite() {
+            var champQte = document.getElementById('qtyProduit');
+            var champMontant = document.getElementById('montantProduit');
+            var total = document.getElementById('totalProduit');
+            var note = document.getElementById('noteAjustement');
+            if (!champQte || !total) return;
+
+            var qte = parseInt(champQte.value, 10);
+            if (isNaN(qte) || qte < 1) qte = 1;
+
+            var montant = qte * prixUnitaire;
+            if (champMontant) champMontant.value = Math.round(montant);
+            total.textContent = formaterMontant(montant);
+            if (note) note.hidden = true;
+        }
+
+        function majDepuisMontant() {
+            var champQte = document.getElementById('qtyProduit');
+            var champMontant = document.getElementById('montantProduit');
+            var total = document.getElementById('totalProduit');
+            var note = document.getElementById('noteAjustement');
+            if (!champQte || !champMontant || !total || prixUnitaire <= 0) return;
+
+            var budget = parseFloat(champMontant.value);
+            if (isNaN(budget) || budget < 0) budget = 0;
+
+            // Arrondi vers le BAS : avec 50 000 F et un prix de 12 000 F, le
+            // client obtient 4 unités pour 48 000 F. L'arrondi supérieur lui
+            // ferait dépasser son budget sans l'avoir demandé.
+            var qteVoulue = Math.floor(budget / prixUnitaire);
+            var qte = qteVoulue < 1 ? 1 : qteVoulue;
+
+            champQte.value = qte;
+            var retenu = qte * prixUnitaire;
+            total.textContent = formaterMontant(retenu);
+
+            if (note) {
+                if (qteVoulue < 1) {
+                    // Le budget ne couvre même pas une unité : on le dit, plutôt
+                    // que d'afficher un total supérieur sans explication.
+                    note.textContent = 'Ce montant est inférieur au prix d\'une unité ('
+                        + formaterMontant(prixUnitaire) + '). Total calculé pour 1 unité.';
+                    note.hidden = false;
+                } else if (Math.abs(retenu - budget) >= 1) {
+                    note.textContent = 'Montant ajusté à ' + qte + ' unité' + (qte > 1 ? 's' : '')
+                        + ' — le reliquat ne suffit pas pour une unité de plus.';
+                    note.hidden = false;
+                } else {
+                    note.hidden = true;
+                }
+            }
+        }
+
         function changerQuantite(e, delta) {
             e.preventDefault();
             const input = document.getElementById('qtyProduit');
@@ -745,6 +883,7 @@
             if (isNaN(val) || val < 1) val = 1;
             val = Math.max(1, val + delta);
             input.value = val;
+            majDepuisQuantite();
         }
 
         document.addEventListener('DOMContentLoaded', function () {
@@ -755,8 +894,40 @@
                     if (isNaN(v) || v < 1) {
                         this.value = 1;
                     }
+                    majDepuisQuantite();
                 });
             }
+
+            const champMontant = document.getElementById('montantProduit');
+            if (champMontant) {
+                // Recalcul AUTOMATIQUE pendant la saisie, mais différé.
+                //
+                // À chaque frappe, ce serait ingérable : en tapant « 50000 », le
+                // premier caractère « 5 » recalculerait aussitôt une quantité de
+                // 1, et le champ se réécrirait sous les doigts du client.
+                //
+                // On attend donc une courte pause — le temps qu'il finisse son
+                // nombre — avant de recalculer. Chaque nouvelle frappe repousse
+                // l'échéance.
+                var minuteur = null;
+
+                champMontant.addEventListener('input', function () {
+                    if (minuteur) clearTimeout(minuteur);
+                    minuteur = setTimeout(majDepuisMontant, 500);
+                });
+
+                // Sortie du champ ou validation : on ne fait plus attendre.
+                champMontant.addEventListener('change', function () {
+                    if (minuteur) clearTimeout(minuteur);
+                    majDepuisMontant();
+                });
+                champMontant.addEventListener('blur', function () {
+                    if (minuteur) clearTimeout(minuteur);
+                    majDepuisMontant();
+                });
+            }
+
+            majDepuisQuantite(); // total affiché dès l'arrivée sur la page
         });
 
         let form = document.getElementById('form');

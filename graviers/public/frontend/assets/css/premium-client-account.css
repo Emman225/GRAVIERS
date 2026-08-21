@@ -29,7 +29,10 @@
 }
 
 .dashboard-menu .nav-link {
-    color: #cdd2dd !important;
+    /* Blanc plein : le gris clair d'origine (#cdd2dd) manquait de contraste sur
+       le fond sombre du menu. Le repère visuel de l'élément survolé ou actif
+       reste assuré par le changement de FOND, plus bas. */
+    color: #ffffff !important;
     background: transparent !important;
     font-weight: 500 !important;
     font-size: 0.92rem !important;
@@ -45,7 +48,9 @@
 
 .dashboard-menu .nav-link i,
 .dashboard-menu .nav-link [class^="fi-"] {
-    color: #8b94ad !important;
+    /* Icônes en blanc, comme le libellé. Elles étaient d'un gris moyen
+       (#8b94ad) nettement plus terne que le texte à côté d'elles. */
+    color: #ffffff !important;
     font-size: 1.05rem !important;
     transition: all 0.25s ease;
 }

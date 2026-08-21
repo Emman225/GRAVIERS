@@ -90,7 +90,7 @@
                 <a href="#"><img src="{{asset('frontend/assets/imgs/theme/icons/icon-pinterest-white.svg')}}" alt="" /></a>
                 <a href="#"><img src="{{asset('frontend/assets/imgs/theme/icons/icon-youtube-white.svg')}}" alt="" /></a>
             </div>
-            <div class="site-copyright"> &copy; Immobilier - Location - Distribution. |
+            <div class="site-copyright"> &copy; DALAKOUN SARL. |
                 <script>
                     document.write(new Date().getFullYear());
                 </script></div>

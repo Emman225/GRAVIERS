@@ -77,6 +77,7 @@
                             <th>Email</th>
                             <th class="text-center">Téléphone</th>
                             <th class="text-center">Identifiant</th>
+                            <th class="text-center">Agence</th>
                             <th class="text-center">Statut</th>
                             <th class="text-center">Enregistré le</th>
                             <th class="text-end">Actions</th>
@@ -118,6 +119,29 @@
                                 <td class="text-center">{{ $admin->contact ?? '-' }}</td>
                                 <td class="text-center">
                                     <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">{{ $admin->login }}</code>
+                                </td>
+                                <td>
+                                    {{-- Rattachement à un guichet. Il décide de l'agence à laquelle
+                                         les encaissements de cet administrateur seront imputés :
+                                         elle n'est plus choisie au moment de la saisie. Sans
+                                         rattachement, il ne peut pas encaisser — lui non plus. --}}
+                                    <form method="POST" action="{{ route('show.affecterAgence', $admin->id) }}" class="d-flex gap-1 align-items-center">
+                                        @csrf
+                                        <select name="agence_id" class="form-control form-control-sm" style="min-width:150px">
+                                            <option value="">— Aucune —</option>
+                                            @foreach ($agences as $ag)
+                                                <option value="{{ $ag->id }}" {{ (int) $admin->agence_id === (int) $ag->id ? 'selected' : '' }}>
+                                                    {{ $ag->nom }}
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                        <button type="submit" class="btn btn-sm btn-light rounded" title="Enregistrer l'affectation">
+                                            <i class="material-icons md-save"></i>
+                                        </button>
+                                    </form>
+                                    @if (!$admin->agence_id)
+                                        <small class="text-danger">ne peut pas encaisser</small>
+                                    @endif
                                 </td>
                                 <td class="text-center">
                                     @if ($admin->statut == 1)
@@ -195,7 +219,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="text-center text-muted py-4">
+                                <td colspan="8" class="text-center text-muted py-4">
                                     Aucun administrateur enregistré.
                                     <a href="{{ route('show.registerAdmin') }}">Créer le premier</a>.
                                 </td>

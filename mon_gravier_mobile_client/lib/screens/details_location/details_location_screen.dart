@@ -60,7 +60,9 @@ class _DetailsLocationScreenState extends State<DetailsLocationScreen> {
         if (retourHttp.statusCode == 200) {
           infoLoc = InformationsLocation.fromJson(datas);
           if (infoLoc.code == 200) {
-            setState(() {
+            // Écran quitté pendant le chargement : la réponse revient sur un écran
+            // détruit et le rafraîchissement échoue (voir devis_screen.dart).
+            if (mounted) setState(() {
               clientATerme = infoLoc.data?.clientATerme ?? false;
               location = infoLoc.data?.location ?? UneLocation();
               lignes = infoLoc.data?.lignes ?? [];
@@ -72,18 +74,22 @@ class _DetailsLocationScreenState extends State<DetailsLocationScreen> {
               // });
             });
           }else{
-            EasyLoading.showError(infoLoc.message ?? '');
+            afficherErreur(infoLoc.message ?? '');
           }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
-        EasyLoading.showError("Une erreur s'est produite veuillez reesayer plus tard");
+        afficherErreur(messageErreurTechnique(e));
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -152,7 +158,7 @@ class _DetailsLocationScreenState extends State<DetailsLocationScreen> {
               ),
             );
           }else{
-            EasyLoading.showError("Impossible de récupérer les détails de cette opération");
+            afficherErreur("Impossible de récupérer les détails de cette opération");
           }
         },
         backgroundColor: greenColor,
@@ -182,7 +188,7 @@ class _DetailsLocationScreenState extends State<DetailsLocationScreen> {
                   statut: lignes[index].statut,
                 ));
               }else{
-               EasyLoading.showInfo("L'article n'a pas encore été livré!");
+               afficherInfo("L'article n'a pas encore été livré!");
               }
             },
             child: Padding(

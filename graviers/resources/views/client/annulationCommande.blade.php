@@ -63,19 +63,19 @@
                                                         <tr class="pt-30">
                                                             <td class="custome-checkbox pl-30"></td>
                                                             <td class="image product-thumbnail pt-40">
-                                                                @foreach ($detail->produit->image as $image)
-                                                                    <img src="/storage/{{ $image->image }}" alt="{{ $detail->produit->nom }}">
+                                                                @foreach ($detail->produit?->image as $image)
+                                                                    <img src="/storage/{{ $image->image }}" alt="{{ $detail->produit?->nom }}">
                                                                 @endforeach
                                                             </td>
                                                             <td class="product-des product-name">
-                                                                <h6 class="mb-5 annul-cmd-table__name">{{ $detail->produit->nom }}</h6>
-                                                                @if(($detail->produit->meilleur_note ?? 0) > 0)
+                                                                <h6 class="mb-5 annul-cmd-table__name">{{ $detail->produit?->nom }}</h6>
+                                                                @if(($detail->produit?->meilleur_note ?? 0) > 0)
                                                                     <div class="product-rate-cover">
                                                                         <div class="product-rate d-inline-block">
-                                                                            <div class="product-rating" style="width: {{ $detail->produit->meilleur_note }}%"></div>
+                                                                            <div class="product-rating" style="width: {{ $detail->produit?->meilleur_note }}%"></div>
                                                                         </div>
                                                                         <span class="font-small ml-5 text-muted">
-                                                                            ({{ round(($detail->produit->meilleur_note * 5) / 100, 1) }})
+                                                                            ({{ round(($detail->produit?->meilleur_note * 5) / 100, 1) }})
                                                                         </span>
                                                                     </div>
                                                                 @endif
@@ -83,8 +83,8 @@
                                                             <td class="price" data-title="Prix">
                                                                 <div class="mr-15">
                                                                     <div class="detail-qty annul-cmd-price">
-                                                                        {{ number_format($detail->prix ?? $detail->produit->prix_moyen, 0, '', ' ') }} fcfa /
-                                                                        {{ $detail->produit->UniteProduit->abreviation }}
+                                                                        {{ number_format($detail->prix ?? $detail->produit?->prix_moyen, 0, '', ' ') }} fcfa /
+                                                                        {{ $detail->produit?->UniteProduit->abreviation }}
                                                                     </div>
                                                                 </div>
                                                             </td>

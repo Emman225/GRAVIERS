@@ -20,7 +20,7 @@ $produitSelectionne = $fournisseur->produits()->pluck('produit_id')
     <div class=" mt-20 card mx-auto "style=" width: 40rem; ">
         <div class="card-body">
 
-                    <h4 class="card-title mb-4">Associez des produits à M/Mme {{ ucwords($fournisseur->user->nom_prenoms) }}</h4>
+                    <h4 class="card-title mb-4">Associez des produits à M/Mme {{ ucwords($fournisseur->user?->nom_prenoms) }}</h4>
             <form action="" method="post" >
                 @csrf
 
@@ -66,6 +66,25 @@ $produitSelectionne = $fournisseur->produits()->pluck('produit_id')
                             <option value="{{ $pp->nom }}" {{ $prodPrincipal === $pp->nom ? 'selected' : '' }}>{{ $pp->nom }}</option>
                         @endforeach
                     </select>
+                </div>
+
+                <div class="mb-3 px-3">
+                    <label class="form-label">Régime de TVA</label>
+                    @php $assujetti = (bool) old('assujetti_tva', $fournisseur->assujetti_tva); @endphp
+                    {{-- Champ caché : une case décochée n'est pas postée, le décochage serait perdu. --}}
+                    <input type="hidden" name="assujetti_tva" value="0">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="1" name="assujetti_tva"
+                            id="assujettiTva" {{ $assujetti ? 'checked' : '' }}>
+                        <label class="form-check-label" for="assujettiTva">
+                            Fournisseur assujetti à la TVA
+                        </label>
+                    </div>
+                    <small class="text-muted">
+                        Décoché : on lui verse le seul coût du produit — la TVA payée par le client
+                        revient à l'État, le transport à l'entreprise.
+                        Coché : sa facture porte la TVA, elle s'ajoute donc à son règlement.
+                    </small>
                 </div>
 
 

@@ -23,7 +23,7 @@
                         @foreach ($commande->detailcommande as $detail)
                             <div class="row">
                                 <div class="col-6">
-                                    <p> {{ $detail->produit->nom }} </p>
+                                    <p> {{ $detail->produit?->nom }} </p>
                                 </div>
                                 <div class="col-2">
                                     <p> {{ $detail->qte }} </p>
@@ -34,7 +34,9 @@
                             </div>
                         @endforeach
                     </div>
-                    <p class="btn border text-center"> Montant Total: <span class="fw-bold"> {{ $commande->montant_total }}
+                    {{-- Libellé « HT » : cette colonne ne contient pas la TVA ni la livraison,
+                         qui sont ajoutées au montant à payer (cf. Commande::montantAPayer). --}}
+                    <p class="btn border text-center"> Montant HT : <span class="fw-bold"> {{ Help::formatNombre($commande->montantHT(), true) }}
                             FCFA </span> </p>
                     <form action="" class="text-center row">
                         <p class="btn btn-primary mt-2 d-block" >{{ $commande->etat_commande }}...</p>

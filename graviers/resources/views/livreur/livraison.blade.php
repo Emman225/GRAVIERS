@@ -51,7 +51,7 @@
                                 @if ($livraison->etat_livraison != 'LIVREE' && in_array($livraison->accepte, [1, 2]) && $livraison->client != null)
                                     <tr>
 
-                                        <td class="text-center"><b> {{ $livraison->client->nom.' '.$livraison->client->prenom}} </b></td>
+                                        <td class="text-center"><b> {{ $livraison->client?->display_name}} </b></td>
                                         {{-- Produit selon la provenance : enlèvement (COMMANDE),
                                              detail_location (LOCATION : detail_commande_id pointe un
                                              detail_location), ou demande de livraison. --}}

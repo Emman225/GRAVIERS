@@ -61,7 +61,9 @@ class CommandeScreenState extends State<CommandeScreen> {
         if (retourHttp.statusCode == 200) {
           com = Commande.fromJson(datas);
           if (com.code == 200) {
-            setState(() {
+            // Écran quitté pendant le chargement : la réponse revient sur un écran
+            // détruit et le rafraîchissement échoue (voir devis_screen.dart).
+            if (mounted) setState(() {
               var commandes = com.data?.commande ?? [];
               commandeAttente = commandes
                   .where((c) => c.etatCommande == COMMANDE_EN_ATTENTE)
@@ -95,19 +97,22 @@ class CommandeScreenState extends State<CommandeScreen> {
               ];
             });
           } else {
-            EasyLoading.showError(com.message ?? '');
+            afficherErreur(com.message ?? '');
           }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
-        EasyLoading.showError(
-            "Une erreur s'est produite veuillez reesayer plus tard");
+        afficherErreur(messageErreurTechnique(e));
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 

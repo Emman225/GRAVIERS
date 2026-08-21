@@ -44,13 +44,13 @@
                                             @endphp
                                         <tr>
                                             <td class="text-center"> {{ $enlevement->code_enleve }} </td>
-                                             @if ($enlevement->livraison->livre_par  == 1)
-                                                <td class="text-center"><b> {{ $enlevement->livraison->livreur->nom.' '.$enlevement->livraison->livreur->prenom }} </b></td>
+                                             @if ($enlevement->livraison?->livre_par  == 1)
+                                                <td class="text-center"><b> {{ $enlevement->livraison?->livreur?->nom.' '.$enlevement->livraison?->livreur?->prenom }} </b></td>
                                             @else
-                                                <td class="text-center"><b> {{ $enlevement->livraison->clientLivreur->nom.' '.$enlevement->livraison->clientLivreur->prenom }} </b></td>
+                                                <td class="text-center"><b> {{ $enlevement->livraison?->clientLivreur->display_name }} </b></td>
                                             @endif
-                                            {{-- <td class="text-center"><b> {{ $enlevement->livraison->livreur->user->nom_prenoms}} </b></td> --}}
-                                            <td class="text-center">{{ $enlevement->produit->nom }}</td>
+                                            {{-- <td class="text-center"><b> {{ $enlevement->livraison?->livreur?->user?->nom_prenoms}} </b></td> --}}
+                                            <td class="text-center">{{ $enlevement->produit?->nom }}</td>
                                             <td class="text-center">{{ $enlevement->qte }}</td>
                                             <td class="text-center">{{ $enlevement->qte_servi }}</td>
                                             <td class="text-center">{{ Carbon::parse($enlevement->fournisseur_validation)->format('d-m-Y') }} à {{ Carbon::parse($enlevement->updated_at)->format('H:i') }}</td>

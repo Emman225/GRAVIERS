@@ -1,4 +1,9 @@
 @extends('client.main')
+
+{{-- Cette page affiche des vignettes de produit avec un bouton « vue rapide » :
+     elle a donc besoin des fenêtres générées par client.quickView. --}}
+@section('quickView', 'oui')
+
 @section('title','Location de matériel')
 @section('content')
 

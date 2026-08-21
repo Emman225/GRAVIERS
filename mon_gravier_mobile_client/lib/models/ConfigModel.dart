@@ -361,8 +361,11 @@ class Produits {
     unite_id = json['unite_id'];
     unite_produit_id = json['unite_produit_id'];
     description = json['description'];
-    prixMoyen = json['prix_moyen'];
-    prixReduction = json['prix_reduction'];
+    // Colonnes « decimal » côté Laravel : elles peuvent arriver en 1500, 1500.00
+    // ou "1500.00". Une affectation directe sur un int? lève un TypeError qui fait
+    // échouer TOUT le chargement de l'accueil (ni produits, ni catégories, ni bannières).
+    prixMoyen = num.tryParse(json['prix_moyen']?.toString() ?? '')?.toInt() ?? 0;
+    prixReduction = num.tryParse(json['prix_reduction']?.toString() ?? '')?.toInt() ?? 0;
     prixPersonnalise = json['prix_personnalise'] != null ? (json['prix_personnalise'] as num).toDouble() : null;
     meilleurNote = json['meilleur_note'];
     statut = json['statut'];

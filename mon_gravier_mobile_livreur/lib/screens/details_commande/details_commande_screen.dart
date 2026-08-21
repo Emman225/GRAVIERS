@@ -44,7 +44,7 @@ class _DetailsCommandeScreenState extends State<DetailsCommandeScreen> {
       }
 
       // try {
-        retourHttp = await http
+        final http.Response retourHttp = await http
             .post(Uri.parse('${lienAPI()}details-commande/$idCommande'),
             headers: {"Content-Type": "application/json"},
             body: jsonEncode(param))
@@ -66,18 +66,22 @@ class _DetailsCommandeScreenState extends State<DetailsCommandeScreen> {
               });
             });
           }else{
-            EasyLoading.showError(infoCom.message ?? '');
+            afficherErreur(infoCom.message ?? '');
           }
+        } else {
+          // Sans cette branche, une reponse serveur en erreur ne produisait
+          // AUCUNE reaction a l'ecran.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez reessayer.");
         }
       // } catch (e) {
-      //   EasyLoading.showError("Une erreur s'est produite veuillez reesayer plus tard");
+      //   afficherErreur("Une erreur s'est produite veuillez reesayer plus tard");
       //   if (kDebugMode) {
       //     print(e.toString());
       //   }
       // }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -136,7 +140,7 @@ class _DetailsCommandeScreenState extends State<DetailsCommandeScreen> {
             onTap: (){
               if (lignes[index].etatLivraison == LIVRAISON_LIVREE) {
               }else{
-               EasyLoading.showInfo("L'article n'a pas encore été livré!");
+               afficherInfo("L'article n'a pas encore été livré!");
               }
             },
             child: Padding(

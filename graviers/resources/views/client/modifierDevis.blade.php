@@ -90,7 +90,7 @@
                                         <tbody id="listProduit">
                                             @foreach (Cart::content() as $produit)
                                                 @php $type_affaire = $produit->options->type_affaire @endphp
-                                                <tr class="pt-30 modif-devis-row" data-rowid="{{ $produit->rowId }}">
+                                                <tr class="pt-30 modif-devis-row" data-rowid="{{ $produit->rowId }}" data-price="{{ $produit->price }}">
                                                     <td class="custome-checkbox pl-30"></td>
 
                                                     <td class="image product-thumbnail pt-40">
@@ -733,8 +733,8 @@
             let row = $(this).closest('tr');
             let input = row.find('input[name="qte[]"]');
             let newQty = parseInt(input.val()) + 1;
-            console.log("New Qty:", newQty);
 
+            input.val(newQty);
             updateTotals(row, newQty);
         });
 
@@ -745,16 +745,35 @@
             let currentQty = parseInt(input.val());
             if (currentQty > 1) {
                 let newQty = currentQty - 1;
+                input.val(newQty);
                 updateTotals(row, newQty);
             }
         });
 
-        $('input[name="qte[]"]').on('keyup', function () {
-            let row = $(this).closest('tr');
-            let newQty = parseInt($(this).val());
+        // Saisie directe de la quantité : événement 'input' (fiable aussi sur
+        // clavier mobile, contrairement à keyup) + debounce, et parseFloat
+        // pour accepter les quantités décimales (ex : 2.5).
+        const qteDebounceTimers = {};
+        $(document).on('input', 'input[name="qte[]"]', function () {
+            const row = $(this).closest('tr');
+            const rowId = row.data('rowid');
+            const newQty = parseFloat($(this).val());
 
+            clearTimeout(qteDebounceTimers[rowId]);
             if (newQty > 0) {
-                updateTotals(row, newQty);
+                qteDebounceTimers[rowId] = setTimeout(function () {
+                    updateTotals(row, newQty);
+                }, 500);
+            }
+        });
+
+        // À la sortie du champ montant, applique le sous-total réel renvoyé
+        // par le serveur pendant la saisie (voir pendingSubtotal ci-dessus).
+        $(document).on('blur', 'input[name="montant[]"]', function () {
+            const pending = $(this).data('pendingSubtotal');
+            if (pending !== undefined) {
+                $(this).val(pending);
+                $(this).removeData('pendingSubtotal');
             }
         });
 
@@ -780,7 +799,17 @@
                         const tr = $('tr[data-rowid="' + response.rowId + '"]');
 
                         tr.find('input[name="qte[]"]').val(response.qte);
-                        tr.find('input[name="montant[]"]').val(response.subtotal);
+                        // Ne pas réécrire le montant pendant que l'utilisateur
+                        // le saisit encore (sinon la valeur tapée est écrasée
+                        // en cours de frappe et se combine avec la réponse).
+                        const montantInput = tr.find('input[name="montant[]"]');
+                        if (!montantInput.is(':focus')) {
+                            montantInput.val(response.subtotal);
+                        } else {
+                            // Mémorise le sous-total réel : il sera appliqué
+                            // quand l'utilisateur quittera le champ.
+                            montantInput.data('pendingSubtotal', response.subtotal);
+                        }
                         $('#montant_total').text(response.total);
                         $('#montant_tva').text(response.tva);
                         $('#montant_ttc').text(response.ttc);
@@ -817,10 +846,11 @@
                 const montant = parseFloat(inputMontant.val()) || 0;
                 const qte = parseFloat(tr.find('input[name="qte[]"]').val()) || 0;
 
-                const prixText = tr.find('td.price .detail-qty').text().trim();
-                const matchPrix = prixText.match(/(\d+([.,]?\d+)?)/);
-                const prixUnitaire = matchPrix ? parseFloat(matchPrix[1].replace(',', '.')) : 0;
-                if(montant > 0){
+                // Prix unitaire brut porté par la ligne (data-price) : ne pas
+                // le re-parser depuis le texte affiché, l'espace des milliers
+                // (« 12 000 fcfa ») tronquerait la valeur (12 au lieu de 12000).
+                const prixUnitaire = parseFloat(tr.data('price')) || 0;
+                if(montant > 0 && prixUnitaire > 0){
                     console.log('montant là: ' + montant);
                     updateByTotal(rowId, qte, prixUnitaire, montant);
                 }

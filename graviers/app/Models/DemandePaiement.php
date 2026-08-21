@@ -17,6 +17,7 @@ class DemandePaiement extends Model
         'numero',
         'mode_paiement_id',
         'user_id',
+        'agence_id',
         'user_valide_id',
         'user_valide2_id',
         'date_validation',
@@ -38,5 +39,15 @@ class DemandePaiement extends Model
 
     public function userValide(){
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Agence d'où le règlement est sorti — celle de l'utilisateur qui l'a
+     * enregistré. Un décaissement sans agence rendait le rapprochement de
+     * caisse faux par construction : il ne voyait que les entrées.
+     */
+    public function agence()
+    {
+        return $this->belongsTo(\App\Models\Agence::class, 'agence_id');
     }
 }

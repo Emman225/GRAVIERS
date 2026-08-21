@@ -2,7 +2,7 @@
 @section('title','Livreur - Paramètre')
 
 @php
-    $userName  = $livreur->user->nom_prenoms ?? 'Livreur';
+    $userName  = $livreur->user?->nom_prenoms ?? 'Livreur';
     $firstName = explode(' ', $userName)[0];
     $initials  = strtoupper(mb_substr($firstName, 0, 1));
 @endphp
@@ -42,7 +42,7 @@
                 <div class="premium-form-body text-center">
                     <div class="parametre-avatar mx-auto mb-3">{{ $initials ?: 'L' }}</div>
                     <h5 class="mb-1 fw-bold">{{ $userName }}</h5>
-                    <p class="text-muted mb-3" style="font-size:0.85rem">{{ $livreur->user->email ?? '' }}</p>
+                    <p class="text-muted mb-3" style="font-size:0.85rem">{{ $livreur->user?->email ?? '' }}</p>
 
                     <div class="parametre-info-grid">
                         <div class="parametre-info-row">
@@ -63,7 +63,7 @@
                             <i class="material-icons md-perm_identity text-primary"></i>
                             <div class="text-start">
                                 <div class="parametre-info-label">Login</div>
-                                <div class="parametre-info-value">{{ $livreur->user->login ?? '—' }}</div>
+                                <div class="parametre-info-value">{{ $livreur->user?->login ?? '—' }}</div>
                             </div>
                         </div>
                     </div>
@@ -87,19 +87,19 @@
                             <div class="col-md-6">
                                 <label class="premium-field-label" for="nom_prenoms"><i class="material-icons md-account_box"></i> Nom complet</label>
                                 <input id="nom_prenoms" class="form-control" required type="text" name="nom_prenoms"
-                                       value="{{ $livreur->user->nom_prenoms }}" />
+                                       value="{{ $livreur->user?->nom_prenoms }}" />
                             </div>
 
                             <div class="col-md-6">
                                 <label class="premium-field-label" for="contact"><i class="material-icons md-phone"></i> Contact</label>
                                 <input id="contact" class="form-control" required type="tel" name="contact"
-                                       value="{{ $livreur->user->contact }}" placeholder="07 XX XX XX XX" />
+                                       value="{{ $livreur->user?->contact }}" placeholder="07 XX XX XX XX" />
                             </div>
 
                             <div class="col-md-6">
                                 <label class="premium-field-label" for="login"><i class="material-icons md-perm_identity"></i> Login</label>
                                 <input id="login" class="form-control {{ session('loginExiste') ? 'is-invalid' : '' }}"
-                                       required type="text" name="login" value="{{ $livreur->user->login }}" />
+                                       required type="text" name="login" value="{{ $livreur->user?->login }}" />
                                 @if (session('loginExiste'))
                                     <div class="invalid-feedback d-block">{{ session('loginExiste') }}</div>
                                 @endif
@@ -108,7 +108,7 @@
                             <div class="col-md-6">
                                 <label class="premium-field-label" for="email"><i class="material-icons md-mail"></i> Email</label>
                                 <input id="email" class="form-control {{ session('emailExiste') ? 'is-invalid' : '' }}"
-                                       required type="email" name="email" value="{{ $livreur->user->email }}"
+                                       required type="email" name="email" value="{{ $livreur->user?->email }}"
                                        placeholder="vous@exemple.com" />
                                 @if (session('emailExiste'))
                                     <div class="invalid-feedback d-block">{{ session('emailExiste') }}</div>
@@ -118,7 +118,7 @@
                             <div class="col-12">
                                 <label class="premium-field-label" for="adresse"><i class="material-icons md-home"></i> Adresse</label>
                                 <input id="adresse" class="form-control" required type="text" name="adresse"
-                                       value="{{ $livreur->user->adresse }}" placeholder="Ville, quartier, rue..." />
+                                       value="{{ $livreur->user?->adresse }}" placeholder="Ville, quartier, rue..." />
                             </div>
 
                             <div class="col-12">

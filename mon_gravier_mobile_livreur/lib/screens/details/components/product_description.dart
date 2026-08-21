@@ -207,7 +207,7 @@ class _ProductDescriptionState extends State<ProductDescription> {
       }
 
       try {
-        retourHttp = await http
+        final http.Response retourHttp = await http
             .post(Uri.parse('${lienAPI()}ajouter-retirer-liste-souhait/$id'),
                 headers: {"Content-Type": "application/json"},
                 body: jsonEncode(param))
@@ -215,21 +215,28 @@ class _ProductDescriptionState extends State<ProductDescription> {
         var datas = jsonDecode(retourHttp.body);
         if (retourHttp.statusCode == 200) {
           if (datas['code'] == 200) {
-            EasyLoading.showSuccess(datas['message']);
+            afficherSucces(datas['message']);
           } else {
-            EasyLoading.showError(datas['message']);
+            afficherErreur(datas['message']);
           }
+        } else {
+          // Sans cette branche, une reponse serveur en erreur ne produisait
+          // AUCUNE reaction a l'ecran.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez reessayer.");
         }
       } catch (e) {
         user.code = 500;
         user.message = "Une erreur s'est produite veuillez reesayer plus tard";
+        // Ce bloc de secours n.affichait RIEN : l.ecran restait muet en cas de
+        // coupure reseau ou de reponse illisible.
+        afficherErreur("Impossible de contacter le serveur. Verifiez votre connexion et reessayez.");
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 }

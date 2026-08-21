@@ -38,18 +38,28 @@
 
             @foreach ($enlevements as $index => $env)
                 @php
-                    $prixUnitaire = $env->livraison->detailCommande->prix;
-                    $montantLigne = $env->qte * $prixUnitaire;
+                    $prixUnitaire = $env->livraison?->detailCommande?->prix;
+
+                    // La quantité FACTURÉE est celle que le fournisseur a
+                    // réellement servie, la demandée tant que le bon n'est pas
+                    // servi (Enlevement::quantiteAPayer). C'est déjà celle que
+                    // retient le calcul du montant de la facture
+                    // (OrdersController::creerFacturePourEnlevements) : la
+                    // ligne affichait la quantité DEMANDÉE, si bien qu'un bon
+                    // servi partiellement montrait un détail plus élevé que le
+                    // total à payer inscrit juste en dessous.
+                    $qteFacturee = $env->quantiteAPayer();
+                    $montantLigne = $qteFacturee * $prixUnitaire;
                     $tvaLigne = $montantLigne * (($config->tva ?? 0) / 100);
                     $totalHT += $montantLigne;
                     $totalTVA += $tvaLigne;
                 @endphp
                 <tr>
                     <td class="col-ref">{{ str_pad($index + 1, 2, '0', STR_PAD_LEFT) }}</td>
-                    <td class="col-designation">{{ ucwords($env->produit->nom) }}</td>
+                    <td class="col-designation">{{ ucwords($env->produit?->nom) }}</td>
                     <td class="col-pu">{{ number_format($prixUnitaire, 0, '', ' ') }}</td>
-                    <td class="col-qte">{{ $env->qte }}</td>
-                    <td class="col-unite">{{ $env->produit->uniteProduit->libelle ?? 'U' }}</td>
+                    <td class="col-qte">{{ rtrim(rtrim(number_format($qteFacturee, 2, ',', ' '), '0'), ',') }}</td>
+                    <td class="col-unite">{{ $env->produit?->uniteProduit->libelle ?? 'U' }}</td>
                     <td class="col-taxes">TVA ({{ $config->tva ?? 0 }}%)</td>
                     <td class="col-rem">0</td>
                     <td class="col-montant">{{ number_format($montantLigne, 0, '', ' ') }}</td>
@@ -64,12 +74,12 @@
         if($livraison == 1) {
             // On préfère la TVA recalculée sur le HT (point 9 : TVA 18% sur toutes les factures).
             // On ne reprend la TvaCommande historique que si elle est strictement positive (rétro-compat).
-            $tvaCommande = $facture->commande->TvaCommande->montant ?? 0;
+            $tvaCommande = $facture->commande?->TvaCommande?->montant ?? 0;
             if ($tvaCommande > 0 && $totalTVA <= 0) {
                 $totalTVA = $tvaCommande;
             }
-            $coutLivraison = $facture->commande->cout_livraison_client ?? 0;
-            $remise = $facture->commande->remise ?? 0;
+            $coutLivraison = $facture->commande?->cout_livraison_client ?? 0;
+            $remise = $facture->commande?->remise ?? 0;
         }
         $totalTTC = $totalHT + $totalTVA + $coutLivraison - $remise;
         $totalAPayer = $facture->montant ?? $totalTTC;
@@ -80,6 +90,12 @@
             <td class="label">TOTAL HT</td>
             <td class="valeur">{{ number_format($totalHT, 0, '', ' ') }}</td>
         </tr>
+        @if($remise > 0)
+        <tr>
+            <td class="label">Remise</td>
+            <td class="valeur">-{{ number_format($remise, 0, '', ' ') }}</td>
+        </tr>
+        @endif
         <tr>
             <td class="label">TVA</td>
             <td class="valeur">{{ number_format($totalTVA, 0, '', ' ') }}</td>
@@ -88,12 +104,6 @@
         <tr>
             <td class="label">Coût livraison</td>
             <td class="valeur">{{ number_format($coutLivraison, 0, '', ' ') }}</td>
-        </tr>
-        @endif
-        @if($remise > 0)
-        <tr>
-            <td class="label">Remise</td>
-            <td class="valeur">-{{ number_format($remise, 0, '', ' ') }}</td>
         </tr>
         @endif
         <tr>

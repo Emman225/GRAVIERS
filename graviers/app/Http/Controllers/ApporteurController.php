@@ -11,6 +11,7 @@ use App\Models\Apporteur;
 use Illuminate\Http\Request;
 use App\Mail\confirmationEmail;
 use App\Models\DemandePaiement;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use App\Models\CommissionApporteur;
 use Illuminate\Support\Facades\Auth;
@@ -86,7 +87,13 @@ class ApporteurController extends Controller
             SELECT cde.id AS commande_id,
                    cde.numero AS num_commande,
                    cde.created_at AS date_commande,
-                   cde.montant_total,
+                   -- Montant NET de la commande recalculé depuis les lignes : la colonne
+                   -- cde.montant_total contient le HT côté site et le NET côté mobile.
+                   (IFNULL((SELECT SUM(d.prix * d.qte) FROM detail_commande d
+                             WHERE d.commande_id = cde.id AND d.deleted_at IS NULL), 0)
+                    + IFNULL(cde.cout_livraison_client, 0)
+                    + IFNULL((SELECT t.montant FROM tva_commande t WHERE t.commande_id = cde.id LIMIT 1), 0)
+                    - IFNULL(cde.remise, 0)) AS montant_total,
                    CONCAT(cli.nom,' ',cli.prenom) AS client,
                    com.montant AS montant_recu,
                    com.created_at AS date_paiement,
@@ -123,7 +130,16 @@ class ApporteurController extends Controller
     // connexion de l'apporteur d'affaire
     public function login(Request $request){
 
-        $user = User::where('email',$request->email)->where('type_user_id',6)->first();
+        // E-mail OU login, comme l'application mobile — voir le commentaire
+        // détaillé dans LivreurController::login(). Ici c'était l'inverse du
+        // site livreur : seul l'e-mail était accepté, et un apporteur qui
+        // saisissait son login se voyait refuser ses identifiants.
+        $identifiant = $request->email;
+        $user = User::where(function ($q) use ($identifiant) {
+                $q->where('email', $identifiant)->orWhere('login', $identifiant);
+            })
+            ->where('type_user_id',6)
+            ->first();
         // dd($user);
 
         if($user){
@@ -164,33 +180,110 @@ class ApporteurController extends Controller
 
         $apporteur = Apporteur::where('user_id', $user->id)->first();
 
-        $paiements = DemandePaiement::where('user_id', $user->id)
+        // L'entreprise paie l'apporteur par DEUX chemins : la demande qu'il
+        // initie, et le règlement qu'un administrateur saisit sur une de ses
+        // commissions. Cet écran ne montrait que le premier — il ne voyait donc
+        // nulle part les sommes versées à notre propre initiative, et son
+        // historique ne retombait pas sur ce qu'il avait réellement reçu.
+        $demandes = DemandePaiement::where('user_id', $user->id)
             ->with('modePaiement')
             ->orderByDesc('created_at')
-            ->get();
+            ->get()
+            ->map(fn (DemandePaiement $d) => (object) [
+                'reference'     => $d->numero ?: ('#' . $d->id),
+                'date'          => $d->created_at,
+                'montant'       => (float) $d->montant,
+                // 1 = acceptée, 2 = refusée, NULL/0 = en attente.
+                'statut'        => (int) ($d->paye ?? 0),
+                'mode'          => $d->modePaiement?->libelle,
+                'date_paiement' => (int) $d->paye === 1 ? $d->updated_at : null,
+                'origine'       => 'Vous',
+                'detail'        => 'Demande de paiement',
+            ]);
 
-        $totalDemandes  = $paiements->count();
-        $totalEnAttente = $paiements->where('paye', 0)->count();
-        $totalPayees    = $paiements->where('paye', 1)->count();
-        $totalRefusees  = $paiements->where('paye', 2)->count();
-        $montantPaye    = (float) $paiements->where('paye', 1)->sum('montant');
-        $montantEnAttente = (float) $paiements->where('paye', 0)->sum('montant');
+        // Les règlements issus d'une demande sont EXCLUS : ils portent
+        // `demande_paiement_id` et sont déjà listés sous leur demande. Sans
+        // cette exclusion, le même versement apparaîtrait deux fois.
+        //
+        // La colonne vient d'une migration : sans elle, on s'en passe plutôt
+        // que de priver l'apporteur de sa page.
+        $reglements = collect();
+
+        if ($apporteur) {
+            $reglements = \App\Models\PaiementApporteur::with(['modePaiement', 'commission'])
+                ->where('apporteur_id', $apporteur->id)
+                ->where('statut', 1)
+                ->when(
+                    \Illuminate\Support\Facades\Schema::hasColumn('paiement_apporteur', 'demande_paiement_id'),
+                    fn ($q) => $q->whereNull('demande_paiement_id')
+                )
+                ->orderByDesc('date_paiement')
+                ->get()
+                ->map(fn ($p) => (object) [
+                    'reference'     => $p->reference ?: ('#' . $p->id),
+                    'date'          => $p->date_paiement ?? $p->created_at,
+                    'montant'       => (float) $p->montant,
+                    // Un règlement enregistré est un versement fait.
+                    'statut'        => 1,
+                    'mode'          => $p->modePaiement?->libelle,
+                    'date_paiement' => $p->date_paiement ?? $p->created_at,
+                    'origine'       => "L'entreprise",
+                    'detail'        => $p->commission
+                        ? 'Commission ' . ($p->commission->numero ?: '#' . $p->commission->id)
+                        : 'Règlement de commission',
+                ]);
+        }
+
+        $mouvements = $demandes->concat($reglements)
+            ->sortByDesc(fn ($m) => $m->date)
+            ->values();
+
+        $recus   = $mouvements->where('statut', 1);
+        $attente = $mouvements->where('statut', 0);
 
         return view('apporteur.Paiement', [
-            'paiements'        => $paiements,
+            'mouvements'       => $mouvements,
             'apporteur'        => $apporteur,
-            'totalDemandes'    => $totalDemandes,
-            'totalEnAttente'   => $totalEnAttente,
-            'totalPayees'      => $totalPayees,
-            'totalRefusees'    => $totalRefusees,
-            'montantPaye'      => $montantPaye,
-            'montantEnAttente' => $montantEnAttente,
+            'totalDemandes'    => $mouvements->count(),
+            'totalEnAttente'   => $attente->count(),
+            'totalPayees'      => $recus->count(),
+            'totalRefusees'    => $mouvements->where('statut', 2)->count(),
+            'montantPaye'      => (float) $recus->sum('montant'),
+            'montantEnAttente' => (float) $attente->sum('montant'),
         ]);
     }
 
 
     public function profile(){
         return view('apporteur.profile');
+    }
+
+    /**
+     * Enregistre une pièce d'identité déposée depuis le formulaire PUBLIC
+     * d'inscription, sous un nom que l'envoyeur ne contrôle pas.
+     *
+     * L'extension est déduite du CONTENU du fichier (extension()) et non de celle
+     * qu'annonce l'envoyeur (getClientOriginalExtension()) ; elle est en outre
+     * confrontée à une liste blanche. Le nom, lui, est aléatoire : aucune donnée
+     * de la requête n'y entre, ce qui exclut aussi bien la double extension que
+     * l'écriture hors du dossier prévu.
+     *
+     * @return string chemin relatif au disque « public », à stocker en base
+     */
+    private function enregistrerPieceIdentite($fichier, string $prefixe): string
+    {
+        $extension = strtolower((string) $fichier->extension());
+
+        // Filet de sécurité : la validation mimes: en amont laisse déjà passer
+        // uniquement ces formats, mais on ne s'en remet pas à un seul contrôle
+        // pour un formulaire ouvert à tous.
+        if (!in_array($extension, ['jpg', 'jpeg', 'png', 'pdf'], true)) {
+            $extension = 'bin';
+        }
+
+        $nom = $prefixe . '-' . date('YmdHis') . '-' . Str::random(20) . '.' . $extension;
+
+        return $fichier->storeAs('piecesApporteurs', $nom, 'public');
     }
 
     // création du compte
@@ -251,18 +344,24 @@ class ApporteurController extends Controller
 
             if ($request->hasFile('recto') && $request->hasFile('verso')) {
 
-                // enregistrement de la carte recto
-                $destination = base_path('public/storage/piecesApporteurs/');
-
-                $recto = 'piecesApporteurs/recto'.'-'.$request->nom_prenom.''. date('YmdHis') .'.'.$request->file('recto')->getClientOriginalExtension();
-                $request->file('recto')->move($destination, $recto);
-
-                // enregistrement de la carte verso
-                $destination = base_path('public/storage/piecesApporteurs/');
-                $verso = 'piecesApporteurs/verso'.'-'.$request->nom_prenom.''. date('YmdHis') .'.'.$request->file('verso')->getClientOriginalExtension();
-                $request->file('verso')->move($destination, $verso);
-                // $path = $request->file('fichier')->move($destination, 'public');
-                // dd($destination);
+                // Ce formulaire est PUBLIC : n'importe quel visiteur peut y déposer
+                // deux fichiers, qui atterrissent dans un dossier servi par le web.
+                // Le nom du fichier ne doit donc rien devoir à ce que l'envoyeur
+                // fournit. L'ancienne construction reprenait deux valeurs de la
+                // requête :
+                //   - getClientOriginalExtension(), l'extension ANNONCÉE par
+                //     l'envoyeur : un fichier au contenu d'image valide mais nommé
+                //     « .php » passait le contrôle de type (qui déduit l'extension du
+                //     contenu) et était pourtant écrit avec l'extension « .php » ;
+                //   - nom_prenom, simplement validé comme une chaîne : un « ../ »
+                //     permettait d'écrire hors du dossier prévu.
+                // Trois fichiers .php déposés le 14/06/2025 par ce formulaire sont
+                // encore présents dans storage/app/public/piecesApporteurs.
+                //
+                // On génère désormais un nom aléatoire et une extension déduite du
+                // CONTENU réel du fichier, en repassant par le disque « public ».
+                $recto = $this->enregistrerPieceIdentite($request->file('recto'), 'recto');
+                $verso = $this->enregistrerPieceIdentite($request->file('verso'), 'verso');
 
             }
 
@@ -349,7 +448,14 @@ class ApporteurController extends Controller
 
                     // Auth::login($user);
 
-                    Mail::send(new ConfirmationCreationCompteApporteur($user->nom_prenoms, $user->email));
+                    // Email NON bloquant : le token vient d'être effacé en base. Si l'envoi
+                    // échoue, l'apporteur voyait une erreur 500 alors que son compte était
+                    // confirmé — et un second essai répondait « déjà vérifié ».
+                    try {
+                        Mail::send(new ConfirmationCreationCompteApporteur($user->nom_prenoms, $user->email));
+                    } catch (\Throwable $e) {
+                        \Log::warning('Email confirmation apporteur non envoyé: '.$e->getMessage());
+                    }
 
                     return redirect()->route('apporteur.login')->with('success', 'Votre compte a bien été confirmé, connectez-vous !');
                 } else {

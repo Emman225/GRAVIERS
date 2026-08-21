@@ -182,16 +182,20 @@ class _NoteClientScreenState extends State<NoteClientScreen> {
 
                       if (retourHttp.statusCode == 200) {
                         if (datas['code'] == 200) {
-                          EasyLoading.showSuccess(datas['message']);
+                          afficherSucces(datas['message']);
                           Get.back();
                         } else {
-                          EasyLoading.showError(datas['message']);
+                          afficherErreur(datas['message']);
                         }
+                      } else {
+                        // Sans cette branche, une réponse serveur en erreur ne produisait
+                        // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+                        afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
                       }
                     } catch (e) {
                       user.code = 500;
                       user.message =
-                      "Une erreur s'est produite veuillez reesayer plus tard";
+                      messageErreurTechnique(e);
                       if (kDebugMode) {
                         print(e.toString());
                       }
@@ -199,11 +203,11 @@ class _NoteClientScreenState extends State<NoteClientScreen> {
 
                     fermerChargement();
                   } else {
-                    EasyLoading.showInfo(
+                    afficherInfo(
                         "Veuillez vérifier votre connexion internet");
                   }
                 }else{
-                  EasyLoading.showInfo(
+                  afficherInfo(
                       "Veuillez saisir votre avis sur ce produit");
                 }
               },

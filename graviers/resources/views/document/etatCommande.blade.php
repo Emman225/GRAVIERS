@@ -19,7 +19,7 @@
             <tr>
                 <th style="width:15%">N° Commande</th>
                 <th style="width:30%">Produits commandés</th>
-                <th style="width:15%; text-align:right">Total commande</th>
+                <th style="width:15%; text-align:right">Total HT</th>
                 <th style="width:20%">Paiement</th>
                 <th style="width:20%">Date de commande</th>
             </tr>
@@ -30,10 +30,10 @@
                     <td>{{ $commande->numero }}</td>
                     <td>
                         @foreach($commande->detailCommande as $detail)
-                            - {{ ucfirst($detail->produit->nom) }}<br>
+                            - {{ ucfirst($detail->produit?->nom) }}<br>
                         @endforeach
                     </td>
-                    <td style="text-align:right">{{ number_format($commande->montant_total, 0, '', ' ') }} fcfa</td>
+                    <td style="text-align:right">{{ number_format($commande->montantHT(), 0, '', ' ') }} fcfa</td>
                     <td>
                         @if($commande->statut == 1)
                             <span style="color:red;">Aucun paiement effectué</span>
@@ -54,7 +54,7 @@
     <table class="fne-totaux-outer"><tr><td class="fne-totaux-spacer"></td><td class="fne-totaux-content"><table class="fne-totaux">
         <tr>
             <td class="label" style="font-size:10pt;">TOTAL DE TOUTES LES COMMANDES</td>
-            <td class="valeur" style="font-size:10pt; font-weight:bold;">{{ number_format($commandes->sum('montant_total'), 0, '', ' ') }} fcfa</td>
+            <td class="valeur" style="font-size:10pt; font-weight:bold;">{{ number_format($commandes->sum(fn ($c) => $c->montantHT()), 0, '', ' ') }} fcfa</td>
         </tr>
     </table></td></tr></table>
 @endsection

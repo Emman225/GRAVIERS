@@ -1,7 +1,11 @@
 @php
     use Illuminate\Support\Carbon;
-    $totalBlogs    = $blogs->count();
-    $totalEnLigne  = $blogs->where('publie', true)->count();
+    // La liste inclut désormais les blogs mis à la corbeille : on les compte à part
+    // pour que « en ligne » et « hors ligne » gardent leur sens.
+    $totalCorbeille = $blogs->filter(fn ($b) => $b->trashed())->count();
+    $actifs         = $blogs->reject(fn ($b) => $b->trashed());
+    $totalBlogs     = $actifs->count();
+    $totalEnLigne   = $actifs->where('publie', true)->count();
     $totalHorsLigne = $totalBlogs - $totalEnLigne;
 @endphp
 
@@ -79,8 +83,9 @@
                             <th class="text-center">Image</th>
                             <th>Titre</th>
                             <th class="text-center">Date de publication</th>
+                            <th class="text-center">Commentaires</th>
                             <th class="text-center">Statut</th>
-                            <th class="text-end">Actions</th>
+                            <th class="text-center">Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -104,42 +109,84 @@
                                     </a>
                                 </td>
                                 <td class="text-center">{{ $blog->created_at?->isoFormat('LL') }}</td>
+
+                                {{-- Repère de modération : le nombre en attente saute aux yeux
+                                     sans avoir à ouvrir chaque article. --}}
                                 <td class="text-center">
-                                    @if ($blog->publie)
+                                    <a href="{{ route('show.commentaireBlogs', $blog->id) }}" class="text-decoration-none">
+                                        <span class="badge bg-light text-dark">{{ $blog->nb_commentaires }}</span>
+                                        @if ($blog->nb_commentaires_attente > 0)
+                                            <span class="badge bg-warning">{{ $blog->nb_commentaires_attente }} en attente</span>
+                                        @endif
+                                    </a>
+                                </td>
+
+                                <td class="text-center">
+                                    {{-- Un blog à la corbeille n'apparaît plus sur le site,
+                                         quel que soit son état de publication. --}}
+                                    @if ($blog->trashed())
+                                        <span class="badge bg-dark">Corbeille</span>
+                                    @elseif ($blog->publie)
                                         <span class="badge bg-success">En ligne</span>
                                     @else
                                         <span class="badge bg-secondary">Hors ligne</span>
                                     @endif
                                 </td>
-                                <td class="text-end">
-                                    <div class="dropdown">
-                                        <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm">
-                                            <i class="material-icons md-more_horiz"></i> Actions
-                                        </a>
-                                        <div class="dropdown-menu">
-                                            <a href="{{ route('show.modificationDeBlogPage', $blog->id) }}" class="dropdown-item">
-                                                <i class="material-icons md-edit"></i> Modifier
+
+                                {{-- Colonne Action : commandes en icônes, avec bulle d'aide
+                                     au survol, comme sur la liste des bannières. --}}
+                                <td class="text-center text-nowrap">
+                                    <a href="{{ route('show.modificationDeBlogPage', $blog->id) }}"
+                                       class="btn btn-sm btn-primary" title="Modifier">
+                                        <i class="material-icons md-edit"></i>
+                                    </a>
+
+                                    <a href="{{ route('show.commentaireBlogs', $blog->id) }}"
+                                       class="btn btn-sm btn-info" title="Voir les commentaires">
+                                        <i class="material-icons md-comment"></i>
+                                    </a>
+
+                                    @if (!$blog->trashed())
+                                        @if ($blog->publie)
+                                            <a href="{{ route('show.supprimerPublierBlog', ['id' => $blog->id]) }}"
+                                               class="btn btn-sm btn-warning" title="Retirer du site"
+                                               data-confirm-msg="Voulez-vous vraiment retirer le blog « {{ $blog->titre }} » du site ?">
+                                                <i class="material-icons md-visibility_off"></i>
                                             </a>
-                                            @if ($blog->publie)
-                                                <a href="{{ route('show.supprimerPublierBlog', $blog->id) }}"
-                                                   class="dropdown-item text-danger"
-                                                   data-confirm-msg="Voulez-vous vraiment retirer le blog « {{ $blog->titre }} » du site ?">
-                                                    <i class="material-icons md-visibility_off"></i> Retirer
-                                                </a>
-                                            @else
-                                                <a href="{{ route('show.supprimerPublierBlog', $blog->id) }}"
-                                                   class="dropdown-item text-success"
-                                                   data-confirm-msg="Voulez-vous vraiment republier le blog « {{ $blog->titre }} » sur le site ?">
-                                                    <i class="material-icons md-public"></i> Republier
-                                                </a>
-                                            @endif
-                                        </div>
-                                    </div>
+                                        @else
+                                            <a href="{{ route('show.supprimerPublierBlog', ['id' => $blog->id]) }}"
+                                               class="btn btn-sm btn-success" title="Republier"
+                                               data-confirm-msg="Voulez-vous vraiment republier le blog « {{ $blog->titre }} » sur le site ?">
+                                                <i class="material-icons md-public"></i>
+                                            </a>
+                                        @endif
+
+                                        <a href="{{ route('show.supprimerPublierBlog', ['id' => $blog->id, 'action' => 'supprimer']) }}"
+                                           class="btn btn-sm btn-danger" title="Mettre à la corbeille">
+                                            <i class="material-icons md-delete"></i>
+                                        </a>
+                                    @else
+                                        <a href="{{ route('show.supprimerPublierBlog', ['id' => $blog->id, 'action' => 'supprimer']) }}"
+                                           class="btn btn-sm btn-success" title="Restaurer">
+                                            <i class="material-icons md-restore_from_trash"></i>
+                                        </a>
+
+                                        {{-- Suppression définitive : en DELETE avec confirmation.
+                                             Elle emporte aussi les images et les commentaires. --}}
+                                        <form action="{{ route('show.suppressionDefinitiveBlog', $blog->id) }}" method="POST" class="d-inline"
+                                              onsubmit="return confirm('Supprimer définitivement ce blog, ses images et ses commentaires ? Cette action est irréversible.');">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit" class="btn btn-sm btn-dark" title="Supprimer définitivement">
+                                                <i class="material-icons md-delete_forever"></i>
+                                            </button>
+                                        </form>
+                                    @endif
                                 </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="5" class="text-center text-muted">
+                                <td colspan="6" class="text-center text-muted">
                                     Aucun blog publié. <a href="{{ route('show.creationDeBlog') }}">Créer le premier</a>.
                                 </td>
                             </tr>
@@ -167,7 +214,7 @@
                     order: [[2, 'desc']],
                     columnDefs: [
                         { targets: '_all', defaultContent: '-' }, // évite l'erreur "unknown parameter" sur table vide
-                        { orderable: false, targets: [0, 4] }
+                        { orderable: false, targets: [0, 5] }
                     ]
                 });
             }

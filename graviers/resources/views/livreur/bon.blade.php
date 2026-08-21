@@ -108,7 +108,7 @@
                                 <td>@if($vehicule?->immatriculation) <span class="badge bg-light text-dark">{{ $vehicule->immatriculation }}</span> @else — @endif</td>
                                 <td class="text-end">{{ $vehicule?->capacite ? $vehicule->capacite.'t' : '—' }}</td>
                                 <td><small>{{ Carbon::parse($enlevement->created_at)->format('d/m/Y H:i') }}</small></td>
-                                <td><small>{{ optional($enlevement->livraison)->date_livraison ? Carbon::parse($enlevement->livraison->date_livraison)->format('d/m/Y') : '—' }}</small></td>
+                                <td><small>{{ optional($enlevement->livraison)->date_livraison ? Carbon::parse($enlevement->livraison?->date_livraison)->format('d/m/Y') : '—' }}</small></td>
                                 <td class="text-center">
                                     @if($accepte == 2)
                                         <a href="{{ route('livreur.actionBonEnlevement', ['enlevement' => $enlevement, 'action' => 'accepter']) }}" class="btn btn-sm btn-success">

@@ -286,10 +286,10 @@
                                     @foreach (Cart::content() as $produit )
                                         <li>
                                             <div class="shopping-cart-img">
-                                                <a href="shop-product-right.html"><img alt="Nest" src="/storage/{{$produit->options->image}}" /></a>
+                                                <a href="{{ route('client.produit.info', $produit->id) }}"><img alt="Nest" src="/storage/{{$produit->options->image}}" /></a>
                                             </div>
                                             <div class="shopping-cart-title">
-                                                <h4><a href="shop-product-right.html">{{$produit->name}}</a></h4>
+                                                <h4><a href="{{ route('client.produit.info', $produit->id) }}">{{$produit->name}}</a></h4>
                                                 <h3><span>{{$produit->qty}} × </span> {{$produit->price}}fcfa </h3>
                                             </div>
                                             <div class="shopping-cart-delete">

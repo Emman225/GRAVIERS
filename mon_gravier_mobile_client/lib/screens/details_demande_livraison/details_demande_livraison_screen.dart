@@ -35,6 +35,7 @@ class _DetailsDemandeLivraisonScreenState
     qteController = TextEditingController();
     _listUnite = user.configs?.unites ?? [];
     paniers.clear();
+    devisRepris = null;
     super.initState();
   }
 

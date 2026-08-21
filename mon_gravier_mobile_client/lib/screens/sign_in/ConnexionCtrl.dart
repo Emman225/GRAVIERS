@@ -34,10 +34,14 @@ signInCtrl(login, pass) async {
           print(datas);
         }
         user = User.fromJson(datas);
+      } else {
+        // Sans cette branche, une réponse serveur en erreur ne produisait
+        // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+        afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
       }
     } catch (e) {
       user.code = 500;
-      user.message = "Une erreur s'est produite veuillez reesayer plus tard";
+      user.message = messageErreurTechnique(e);
       if (kDebugMode) {
         print(e.toString());
       }

@@ -19,10 +19,10 @@ Detail de la commande
     <tbody>
         @foreach ($commande->detailCommande as $detail )
             <tr style="background-color: #f2f2f2;">
-                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$detail->produit->nom}}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$detail->produit?->nom}}</td>
                 <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$detail->qte}}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{number_format($detail->produit->prix_moyen,'0','',' ')}} fcfa</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{number_format($detail->qte * $detail->produit->prix_moyen,'0','',' ')}} fcfa</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{number_format($detail->produit?->prix_moyen,'0','',' ')}} fcfa</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{number_format($detail->qte * $detail->produit?->prix_moyen,'0','',' ')}} fcfa</td>
             </tr>
         @endforeach
     </tbody>

@@ -134,7 +134,7 @@ strong {
     <header>
         <img src="{{'data:image/png;base64,'.base64_encode(file_get_contents($image))}}" alt="Logo" class="logo">
         <div class="company-details">
-            <h1 class="text-primary">IMLOD</h1>
+            <h1 class="text-primary">DALAKOUN</h1>
             <p>Sis à Yopougon Terminus 27</p>
             <p>Email: imlod@gravierr.com</p>
             <p>Téléphone: +225 01 23 45 67 89</p>
@@ -142,7 +142,7 @@ strong {
     </header>
 
     <div class="receipt-container">
-        <h1 class="receipt-title">RECU DU PAIEMENT {{$ligne->paiement->code}}</h1>
+        <h1 class="receipt-title">RECU DU PAIEMENT {{$ligne->paiement?->code}}</h1>
 
         <table  class="receipt-table">
 
@@ -154,7 +154,7 @@ strong {
 
             <tr>
                 <td colspan="3">
-                    <p>À L'ATTENTION DE : <strong>M./Mme {{$ligne->paiement->client->nom.' '.$ligne->paiement->client->prenom}}</strong></p>
+                    <p>À L'ATTENTION DE : <strong>M./Mme {{$ligne->paiement?->client?->display_name}}</strong></p>
                 </td>
                 <td class="field-label">DATE</td>
                 <td colspan="2" class="field-value"><strong>{{$ligne->created_at->translatedFormat('d F Y')}}</strong></td>
@@ -162,13 +162,13 @@ strong {
 
             <tr>
                 <td colspan="3"></td>
-                <td class="field-label">N° {{$ligne->paiement->location_id == null ? 'COMMANDE' : 'LOCATION'}}</td>
+                <td class="field-label">N° {{$ligne->paiement?->location_id == null ? 'COMMANDE' : 'LOCATION'}}</td>
                 <td colspan="2" class="field-value">
                     <strong>
-                        @if($ligne->paiement->location_id == null)
-                            {{$ligne->paiement->devis->numero}}
+                        @if($ligne->paiement?->location_id == null)
+                            {{$ligne->paiement?->devis?->numero}}
                         @else
-                            {{$ligne->paiement->location->numero}}
+                            {{$ligne->paiement?->location?->numero}}
                         @endif
                     </strong>
                 </td>
@@ -176,17 +176,17 @@ strong {
 
             <tr>
                 <td colspan="3" class="client-contact">
-                    <p>Adresse du client: <strong>{{$ligne->paiement->client->user->adresse}}</strong></p>
-                    <p>Téléphone du client: <strong>{{$ligne->paiement->client->contact1}}</strong></p>
+                    <p>Adresse du client: <strong>{{$ligne->paiement?->client?->user?->adresse}}</strong></p>
+                    <p>Téléphone du client: <strong>{{$ligne->paiement?->client?->contact1}}</strong></p>
                 </td>
                 <td class="field-label">N° DE REÇU</td>
-                <td colspan="2" class="field-value"><strong>{{$ligne->paiement->code}}</strong></td>
+                <td colspan="2" class="field-value"><strong>{{$ligne->paiement?->code}}</strong></td>
             </tr>
 
             <tr>
                 <td colspan="3"></td>
                 <td class="field-label">Moyen de paiement</td>
-                <td colspan="2" class="field-value"><strong>{{$ligne->modePaiement->description}}</strong></td>
+                <td colspan="2" class="field-value"><strong>{{$ligne->modePaiement?->description}}</strong></td>
             </tr>
 
             <tr>
@@ -200,8 +200,8 @@ strong {
 
             <tr>
                 <td colspan="3" class="client-location">
-                    <p>Ville du client: <strong>{{$client->user->ville->nom}}</strong></p>
-                    <p>Pays du client: <strong>{{$ligne->paiement->client->user->ville->pays->nom}}</strong></p>
+                    <p>Ville du client: <strong>{{$client->user?->ville?->nom}}</strong></p>
+                    <p>Pays du client: <strong>{{$ligne->paiement?->client?->user?->ville?->pays?->nom}}</strong></p>
                 </td>
                 <td class="field-label">MONTANT PAYÉ</td>
                 <td colspan="2" class="field-value"><strong>{{number_format($ligne->montant,'0','',' ')}} FCFA</strong></td>

@@ -30,7 +30,14 @@ class LignePaiement extends Model
         else return new LignePaiement();
     }
 
-    public static function listeSurCode($code)
+    /**
+     * $clientId : restreint le résultat aux paiements de CE client. Paramètre optionnel
+     * (null = pas de filtre) pour ne pas modifier les appels internes côté serveur
+     * (callback de la passerelle, vérification de paiement), qui n'ont pas de contexte
+     * utilisateur. Les endpoints exposés à l'application mobile, eux, DOIVENT le passer :
+     * ces requêtes renvoient nom, e-mail, contact et adresse du client.
+     */
+    public static function listeSurCode($code, $clientId = null)
     {
         return LignePaiement::distinct()->selectRaw('ligne_paiement.*, paiement.libelle, client.nom, client.email, paiement.client_id, client.parrain_id, client.client_a_terme,
         client.contact1, users.adresse, pays.nom as pays, ville.nom as ville, gestionnaire.nom_prenoms as gestionnaire')
@@ -41,10 +48,13 @@ class LignePaiement extends Model
             ->leftJoin('pays', 'users.pays_id', 'pays.id')
             ->leftJoin('ville', 'users.ville_id', 'ville.id')
             ->where('ligne_paiement.code_paiement', $code)
+            ->when($clientId, function ($q) use ($clientId) {
+                $q->where('paiement.client_id', $clientId);
+            })
             ->get();
     }
 
-    public static function listeSurIdPaiement($idPaiement)
+    public static function listeSurIdPaiement($idPaiement, $clientId = null)
     {
         return LignePaiement::distinct()->selectRaw('ligne_paiement.*, paiement.libelle, client.nom, client.email, paiement.client_id, client.parrain_id, client.client_a_terme,
         client.contact1, users.adresse, pays.nom as pays, ville.nom as ville, gestionnaire.nom_prenoms as gestionnaire')
@@ -55,6 +65,9 @@ class LignePaiement extends Model
             ->leftJoin('pays', 'users.pays_id', 'pays.id')
             ->leftJoin('ville', 'users.ville_id', 'ville.id')
             ->where('ligne_paiement.paiement_id', $idPaiement)
+            ->when($clientId, function ($q) use ($clientId) {
+                $q->where('paiement.client_id', $clientId);
+            })
             ->get();
     }
 

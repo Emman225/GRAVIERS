@@ -382,3 +382,11 @@ CrossAxisAlignment crossCenter = CrossAxisAlignment.center;
 CrossAxisAlignment crossEnd = CrossAxisAlignment.end;
 CrossAxisAlignment crossStretch = CrossAxisAlignment.stretch;
 
+/// VERSION DE L'APPLICATION, affichée sur l'écran de connexion.
+///
+/// Rien n'indiquait à l'écran quelle version était installée : deux APK
+/// portant le même numéro et un contenu différent étaient impossibles à
+/// distinguer, et personne ne pouvait dire ce qu'il testait.
+///
+/// À tenir en accord avec le champ `version:` du pubspec.yaml.
+const String kVersionApplication = '1.0.5';

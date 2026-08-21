@@ -1,7 +1,7 @@
 <x-mail::message>
 
 <div style="text-align:center; margin-bottom: 20px;">
-    <img src="https://graviers.fneconnect.net/backend/assets/imgs/theme/logoAvecFond.jpg" alt="Logo Granite" width="180" style="max-width:180px; height:auto;">
+    <img src="https://graviers.fneconnect.net/frontend/assets/imgs/logo/dalakoun-blanc.png" alt="Logo Granite" width="180" style="max-width:180px; height:auto;">
 </div>
 
 Bonjour M./Mme {{$client->prenom}}, veuillez utiliser ce code pour récupérer votre commande chez le fournisseur. <br>
@@ -23,9 +23,9 @@ Bonjour M./Mme {{$client->prenom}}, veuillez utiliser ce code pour récupérer v
             <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$produit->nom}}</td>
             <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$enlevement->qte}} </td>
             <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$enlevement->code_enleve}} </td>
-            <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$enlevement->fournisseur->user->nom_prenoms}} </td>
-            <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$enlevement->fournisseur->adresse_geo}} </td>
-            <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$enlevement->livraison->date_livraison}} </td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$enlevement->fournisseur?->user?->nom_prenoms}} </td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$enlevement->fournisseur?->adresse_geo}} </td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$enlevement->livraison?->date_livraison}} </td>
         </tr>
     </tbody>
 </table>

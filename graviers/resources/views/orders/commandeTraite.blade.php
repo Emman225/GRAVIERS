@@ -47,11 +47,10 @@
                                     <tr>
                                         <td  > {{ $commande->numero }} </td>
 
-                                        <td  class="text-center"><b>{{ $commande->client?->nom }}
-                                                {{ $commande->client?->prenom }}</b></td>
+                                        <td  class="text-center"><b>{{ $commande->client?->display_name }}</b></td>
 
 
-                                        <td  class="text-center">{{ Help::formatNombre($commande->montant_total + $commande->cout_livraison_client + $commande->TvaCommande->montant - $commande->remise, true)}} </td>
+                                        <td  class="text-center">{{ Help::formatNombre($commande->montantAPayer(), true)}}</td>
                                         <td  class="text-center">{{ Help::formatNombre($commande->cout_livraison_client, true)}} </td>
 
 

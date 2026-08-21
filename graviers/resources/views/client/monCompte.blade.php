@@ -465,7 +465,7 @@
                                                             <th>Date commande</th>
                                                             <th>Statut</th>
 
-                                                            <th>Total</th>
+                                                            <th>Total à payer</th>
                                                             <th>Déjà enlevé</th>
                                                             <th>Reste à enlever</th>
 
@@ -516,19 +516,26 @@
                                                                 {{number_format($commande->montantAPayer(),0,'',' ')}} fcfa
                                                             </td>
 
-                                                            {{-- total env --}}
-                                                            <td>
-                                                                @if (Help::totalEnleveSurCommande($commande) == 0)
-                                                                    {{number_format(Help::totalEnleveSurCommande($commande),'0','',' ')}} fcfa
-                                                                @else
-                                                                    {{number_format(Help::totalEnleveSurCommande($commande),'0','',' ')}} fcfa
-                                                                @endif
+                                                            {{-- Déjà enlevé : la MARCHANDISE retirée, prix de la ligne
+                                                                 × quantité servie.
 
+                                                                 La colonne affichait auparavant totalEnleveSurCommande(),
+                                                                 qui part de « TVA + livraison − remise » : une commande dont
+                                                                 rien n'avait été retiré annonçait 4 900 F enlevés (900 de TVA
+                                                                 + 4 000 de livraison). --}}
+                                                            @php
+                                                                $dejaEnleve = Help::marchandiseEnleveeSurCommande($commande);
+                                                                $resteAEnlever = max(0, $commande->montantHT() - $dejaEnleve);
+                                                            @endphp
+                                                            <td>
+                                                                {{number_format($dejaEnleve,0,'',' ')}} fcfa
                                                             </td>
 
-                                                            {{-- difference --}}
+                                                            {{-- Reste à enlever. Les deux colonnes s'additionnent désormais
+                                                                 pour donner le montant HT de la marchandise commandée ; le
+                                                                 « Total », lui, ajoute la livraison et la TVA. --}}
                                                             <td>
-                                                                {{number_format($commande->montantAPayer() - Help::totalEnleveSurCommande($commande),'0','',' ')}} fcfa
+                                                                {{number_format($resteAEnlever,0,'',' ')}} fcfa
                                                             </td>
 
                                                             <td>

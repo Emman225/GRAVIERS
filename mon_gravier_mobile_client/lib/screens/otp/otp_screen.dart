@@ -21,18 +21,26 @@ class OtpScreen extends StatefulWidget {
 }
 
 class _OtpScreenState extends State<OtpScreen> {
-  int niveau = Get.arguments;
+  // Niveau 1 = finalisation d'une INSCRIPTION, niveau 2 = mot de passe oublié.
+  // Repli sur 1 si l'écran est ouvert sans argument : l'ancienne écriture
+  // « int niveau = Get.arguments » plantait sur une valeur nulle.
+  int niveau = (Get.arguments is int) ? Get.arguments as int : 1;
+
   @override
   void initState() {
-    niveau = Get.arguments;
+    if (Get.arguments is int) {
+      niveau = Get.arguments as int;
+    }
     super.initState();
   }
+
+  bool get estInscription => niveau == 1;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("OTP Verification"),
+        title: Text(estInscription ? "Finaliser l'inscription" : "Vérification du code"),
       ),
       body: SizedBox(
         width: double.infinity,
@@ -43,25 +51,65 @@ class _OtpScreenState extends State<OtpScreen> {
               children: [
                 Image.asset('assets/images/otp.webp'),
                 const SizedBox(height: 16),
-                const Text(
-                  "OTP Verification",
+
+                // Le message qui s'affichait auparavant dans une fenêtre après
+                // l'inscription est repris ICI : le client le lit au moment où il
+                // en a besoin, devant le champ à remplir.
+                Text(
+                  estInscription ? "Plus qu'une étape" : "Vérification du code",
                   style: headingStyle,
+                  textAlign: TextAlign.center,
                 ),
-                const Text("Un code à été envoyé sur votre adresse email"),
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text("Veuillez le saisir pour continuer "),
-                    // TweenAnimationBuilder(
-                    //   tween: Tween(begin: 30.0, end: 0.0),
-                    //   duration: const Duration(seconds: 30),
-                    //   builder: (_, dynamic value, child) => Text(
-                    //     "00:${value.toInt()}",
-                    //     style: const TextStyle(color: kPrimaryColor),
-                    //   ),
-                    // ),
-                  ],
-                ),
+                const SizedBox(height: 12),
+
+                if (estInscription)
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      // Teintes fixes plutôt que withOpacity() : cette méthode est
+                      // dépréciée sur les SDK récents, et sa remplaçante n'existe
+                      // pas sur les plus anciens. Une couleur littérale compile
+                      // dans les deux cas. Valeurs = bleu de la charte éclairci.
+                      color: const Color(0xFFEDEFF7),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFC7CCE2)),
+                    ),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.mark_email_unread_outlined,
+                            color: kPrimaryColor, size: 26),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Votre compte a bien été créé.",
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                "Un code de validation vient de vous être envoyé par e-mail. "
+                                "Saisissez-le ci-dessous pour finaliser votre inscription.",
+                              ),
+                              SizedBox(height: 6),
+                              Text(
+                                "Pensez à regarder vos courriers indésirables si vous ne le voyez pas.",
+                                style: TextStyle(fontSize: 12, color: Colors.black54),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else ...[
+                  const Text("Un code à été envoyé sur votre adresse email"),
+                  const Text("Veuillez le saisir pour continuer "),
+                ],
+
+                const SizedBox(height: 8),
                 OtpForm(niveau: niveau),
                 const SizedBox(height: 20),
                 GestureDetector(
@@ -102,21 +150,25 @@ class _OtpScreenState extends State<OtpScreen> {
         var datas = jsonDecode(retourHttp.body);
         if (retourHttp.statusCode == 200) {
           if (datas['code'] == 200) {
-            EasyLoading.showSuccess(datas['message']);
+            afficherSucces(datas['message']);
           }else{
-            EasyLoading.showError(datas['message']);
+            afficherErreur(datas['message']);
           }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
         user.code = 500;
-        user.message = "Une erreur s'est produite veuillez reesayer plus tard";
+        user.message = messageErreurTechnique(e);
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 }

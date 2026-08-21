@@ -1,0 +1,417 @@
+/* ==========================================================================
+   Service après-vente — espace client
+   --------------------------------------------------------------------------
+   Feuille partagée par les deux écrans SAV :
+     - « Ticket de service après vente » (choix du produit concerné)
+     - « Mes tickets SAV » (suivi)
+   Placée dans un fichier plutôt que dupliquée en <style> dans chaque vue :
+   les deux pages doivent rester identiques d'aspect, et le style des tableaux
+   DataTables est long.
+
+   Reprend le langage visuel des autres écrans « premium » du site
+   (dégradé foncé -> bleu -> orange, cartes blanches à coins arrondis).
+   ========================================================================== */
+
+:root {
+    --sav-bleu: #134380;
+    --sav-bleu-fonce: #0a2540;
+    --sav-orange: #c2410c;
+    --sav-gris: #6b7280;
+    --sav-bordure: #e5e7eb;
+    --sav-fond: #f7f8fa;
+}
+
+/* ===== Bandeau de tête ===== */
+.sav-hero {
+    position: relative;
+    background: linear-gradient(135deg, #0a2540 0%, #134380 60%, #c2410c 100%);
+    color: #fff;
+    padding: 40px 20px 44px;
+    overflow: hidden;
+    isolation: isolate;
+}
+
+.sav-hero::after {
+    content: "";
+    position: absolute;
+    right: -60px;
+    top: -60px;
+    width: 260px;
+    height: 260px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.07);
+    z-index: -1;
+}
+
+.sav-hero__inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.sav-hero__title {
+    font-size: 1.9rem;
+    font-weight: 700;
+    margin: 0 0 6px;
+    color: #fff;
+}
+
+.sav-hero__subtitle {
+    margin: 0;
+    opacity: 0.85;
+    font-size: 0.95rem;
+}
+
+.sav-hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.sav-hero__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 20px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-decoration: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    white-space: nowrap;
+}
+
+.sav-hero__btn--plein {
+    background: #fff;
+    color: var(--sav-bleu);
+}
+
+.sav-hero__btn--vide {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.sav-hero__btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+    text-decoration: none;
+}
+
+.sav-hero__btn--plein:hover { color: var(--sav-bleu-fonce); }
+.sav-hero__btn--vide:hover  { color: #fff; }
+
+/* ===== Compteurs ===== */
+.sav-chiffres {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 16px;
+    margin: -26px auto 30px;
+    max-width: 1200px;
+    position: relative;
+    z-index: 2;
+}
+
+.sav-chiffre {
+    background: #fff;
+    border: 1px solid var(--sav-bordure);
+    border-radius: 14px;
+    padding: 18px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+
+.sav-chiffre__icone {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+    color: #fff;
+}
+
+.sav-chiffre__icone--total    { background: var(--sav-bleu); }
+.sav-chiffre__icone--attente  { background: #6b7280; }
+.sav-chiffre__icone--cours    { background: #d97706; }
+.sav-chiffre__icone--resolu   { background: #16a34a; }
+
+.sav-chiffre__valeur {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.1;
+    color: #0f172a;
+}
+
+.sav-chiffre__libelle {
+    font-size: 0.82rem;
+    color: var(--sav-gris);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+/* ===== Carte contenant le tableau ===== */
+.sav-carte {
+    background: #fff;
+    border: 1px solid var(--sav-bordure);
+    border-radius: 16px;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
+    overflow: hidden;
+    margin-bottom: 40px;
+}
+
+.sav-carte__entete {
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--sav-bordure);
+    background: var(--sav-fond);
+}
+
+.sav-carte__titre {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.sav-carte__aide {
+    margin: 4px 0 0;
+    font-size: 0.86rem;
+    color: var(--sav-gris);
+}
+
+.sav-carte__corps { padding: 18px 22px 22px; }
+
+/* ===== Tableau ===== */
+table.sav-table {
+    width: 100% !important;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.9rem;
+}
+
+table.sav-table thead th {
+    background: var(--sav-bleu);
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 12px 14px;
+    border: none;
+    white-space: nowrap;
+}
+
+table.sav-table thead th:first-child { border-top-left-radius: 10px; }
+table.sav-table thead th:last-child  { border-top-right-radius: 10px; }
+
+table.sav-table tbody td {
+    padding: 13px 14px;
+    border-bottom: 1px solid #f1f3f5;
+    vertical-align: middle;
+    color: #1f2937;
+}
+
+table.sav-table tbody tr:hover td { background: #f8fafc; }
+
+.sav-ref {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.82rem;
+    background: #eef2f7;
+    color: var(--sav-bleu);
+    padding: 3px 8px;
+    border-radius: 6px;
+    white-space: nowrap;
+}
+
+.sav-produit  { font-weight: 600; color: #0f172a; }
+.sav-secondaire { color: var(--sav-gris); font-size: 0.82rem; }
+
+/* Texte long (objet, solution) : lisible sans faire exploser la largeur. */
+.sav-texte-long {
+    display: block;
+    max-width: 320px;
+    white-space: normal;
+    word-break: break-word;
+}
+
+/* ===== Pastilles de statut ===== */
+.sav-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.sav-badge--nouveau { background: #eef2f7; color: #475569; }
+.sav-badge--cours   { background: #fef3c7; color: #92400e; }
+.sav-badge--resolu  { background: #dcfce7; color: #166534; }
+.sav-badge--aucun   { background: #f8fafc; color: #94a3b8; }
+
+/* ===== Bouton d'action dans le tableau ===== */
+.sav-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    background: var(--sav-bleu);
+    color: #fff !important;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background 0.15s ease;
+    white-space: nowrap;
+}
+
+.sav-action:hover { background: var(--sav-bleu-fonce); text-decoration: none; }
+.sav-action--fait { background: #e2e8f0; color: #64748b !important; cursor: default; }
+.sav-action--fait:hover { background: #e2e8f0; }
+
+/* ===== État vide ===== */
+.sav-vide {
+    text-align: center;
+    padding: 50px 20px;
+}
+
+.sav-vide__icone {
+    width: 70px;
+    height: 70px;
+    margin: 0 auto 16px;
+    border-radius: 50%;
+    background: #eef2f7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.7rem;
+    color: var(--sav-bleu);
+}
+
+.sav-vide__titre { font-size: 1.05rem; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+.sav-vide__texte { color: var(--sav-gris); font-size: 0.9rem; margin-bottom: 18px; }
+
+/* ===== Encadré d'explication ===== */
+.sav-note {
+    display: flex;
+    gap: 14px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-left: 4px solid var(--sav-bleu);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 26px;
+}
+
+.sav-note__icone { color: var(--sav-bleu); font-size: 1.2rem; flex: 0 0 auto; }
+.sav-note__titre { font-weight: 700; color: #0f172a; margin: 0 0 4px; font-size: 0.95rem; }
+.sav-note p      { margin: 0; color: #334155; font-size: 0.88rem; }
+
+/* ==========================================================================
+   Habillage des contrôles DataTables
+   Le paquet livré est stylé pour Bootstrap 5, dont le site public n'embarque
+   qu'une partie : sans ces règles, la recherche, le sélecteur de longueur et
+   la pagination s'affichent sans mise en forme.
+   ========================================================================== */
+.sav-carte__corps .dt-layout-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.sav-carte__corps .dt-search,
+.sav-carte__corps .dt-length {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.86rem;
+    color: var(--sav-gris);
+}
+
+.sav-carte__corps .dt-search input,
+.sav-carte__corps .dt-length select {
+    border: 1px solid var(--sav-bordure);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.86rem;
+    color: #1f2937;
+    background: #fff;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sav-carte__corps .dt-search input { min-width: 220px; }
+
+.sav-carte__corps .dt-search input:focus,
+.sav-carte__corps .dt-length select:focus {
+    border-color: var(--sav-bleu);
+    box-shadow: 0 0 0 3px rgba(19, 67, 128, 0.12);
+}
+
+.sav-carte__corps .dt-info {
+    font-size: 0.84rem;
+    color: var(--sav-gris);
+    padding-top: 12px;
+}
+
+.sav-carte__corps .dt-paging {
+    padding-top: 12px;
+}
+
+.sav-carte__corps .dt-paging .pagination {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    justify-content: flex-end;
+}
+
+.sav-carte__corps .dt-paging .page-link {
+    display: inline-block;
+    border: 1px solid var(--sav-bordure);
+    border-radius: 8px;
+    padding: 7px 13px;
+    font-size: 0.85rem;
+    color: var(--sav-bleu);
+    background: #fff;
+    text-decoration: none;
+}
+
+.sav-carte__corps .dt-paging .page-item.active .page-link {
+    background: var(--sav-bleu);
+    border-color: var(--sav-bleu);
+    color: #fff;
+}
+
+.sav-carte__corps .dt-paging .page-item.disabled .page-link {
+    color: #cbd5e1;
+    background: #f8fafc;
+}
+
+/* ===== Écrans étroits ===== */
+@media (max-width: 767px) {
+    .sav-hero { padding: 30px 16px 36px; }
+    .sav-hero__title { font-size: 1.45rem; }
+    .sav-hero__actions { width: 100%; }
+    .sav-hero__btn { flex: 1 1 auto; justify-content: center; }
+    .sav-chiffres { margin-top: -18px; }
+    .sav-carte__corps { padding: 14px; }
+    .sav-carte__corps .dt-search input { min-width: 0; width: 100%; }
+    .sav-carte__corps .dt-paging .pagination { justify-content: center; }
+    .sav-texte-long { max-width: 200px; }
+}

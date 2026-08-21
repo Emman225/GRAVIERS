@@ -124,22 +124,22 @@
                                             <tr>
                                                 <td class="image product-thumbnail">
 
-                                                    @foreach ($detail->produit->image as $image)
+                                                    @foreach ($detail->produit?->image as $image)
                                                         <img
                                                             src="storage/{{ $image->image }}" alt="#"></td>
 
                                                     @endforeach
                                                 <td>
                                                     <h6 class="w-160 mb-5"><a href="shop-product-full.html"
-                                                            class="text-heading">{{ $detail->produit->nom }}</a></h6></span>
+                                                            class="text-heading">{{ $detail->produit?->nom }}</a></h6></span>
                                                     <div class="product-rate-cover">
                                                         <div class="product-rate d-inline-block">
                                                             <div class="product-rating"
-                                                                style="width :{{ $detail->produit->meilleur_note }}%">
+                                                                style="width :{{ $detail->produit?->meilleur_note }}%">
                                                             </div>
                                                         </div>
                                                         <span class="font-small ml-5 text-muted">
-                                                            ({{ round(($detail->produit->meilleur_note * 5) / 100, 1) }})</span>
+                                                            ({{ round(($detail->produit?->meilleur_note * 5) / 100, 1) }})</span>
                                                     </div>
                                                 </td>
                                                 <td>
@@ -147,10 +147,10 @@
                                                 </td>
                                                 <td>
                                                     <h4 class="text-brand">
-                                                        @if(isset($prixPerso[$detail->produit->id]))
-                                                            {{ number_format($prixPerso[$detail->produit->id], 0, '', ' ') }} fcfa
+                                                        @if(isset($prixPerso[$detail->produit?->id]))
+                                                            {{ number_format($prixPerso[$detail->produit?->id], 0, '', ' ') }} fcfa
                                                         @else
-                                                            {{ number_format($detail->produit->prix_moyen, 0, '', ' ') }} fcfa
+                                                            {{ number_format($detail->produit?->prix_moyen, 0, '', ' ') }} fcfa
                                                         @endif
                                                     </h4>
                                                 </td>

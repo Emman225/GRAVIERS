@@ -181,6 +181,7 @@ class FneTemplate {
     required double totalTtc,
     double autresTaxes = 0,
     double totalAPayer = 0,
+    double remise = 0,
     required List<FneResumeFiscal> resumeFiscal,
     String? vendeur,
     String? modePaiement,
@@ -231,7 +232,7 @@ class FneTemplate {
           pw.SizedBox(height: 5),
 
           // ===== TOTAUX =====
-          _buildTotaux(totalHt, totalTva, totalTtc, autresTaxes, totalAPayer),
+          _buildTotaux(totalHt, totalTva, totalTtc, autresTaxes, totalAPayer, remise),
           pw.SizedBox(height: 10),
 
           // ===== RÉSUMÉ FISCAL =====
@@ -477,9 +478,10 @@ class FneTemplate {
     double totalTva,
     double totalTtc,
     double autresTaxes,
-    double totalAPayer,
-  ) {
-    pw.Widget ligneTotaux(String label, double montant, {bool bold = false}) {
+    double totalAPayer, [
+    double remise = 0,
+  ]) {
+    pw.Widget ligneTotaux(String label, double montant, {bool bold = false, bool negatif = false}) {
       return pw.Container(
         padding: const pw.EdgeInsets.symmetric(vertical: 2, horizontal: 8),
         decoration: pw.BoxDecoration(
@@ -499,7 +501,7 @@ class FneTemplate {
             pw.Expanded(
               flex: 25,
               child: pw.Text(
-                formaterMontant(montant),
+                '${negatif ? '-' : ''}${formaterMontant(montant)}',
                 textAlign: pw.TextAlign.right,
                 style: pw.TextStyle(
                   fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
@@ -514,6 +516,8 @@ class FneTemplate {
 
     return pw.Column(children: [
       ligneTotaux('TOTAL HT', totalHt),
+      // La remise s'affiche AVANT la TVA (même ordre que le site web).
+      if (remise > 0) ligneTotaux('Remise', remise, negatif: true),
       ligneTotaux('TVA', totalTva),
       ligneTotaux('TOTAL TTC', totalTtc),
       ligneTotaux('AUTRES TAXES', autresTaxes),

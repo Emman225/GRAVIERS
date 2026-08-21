@@ -233,7 +233,7 @@ class LigneLivraison {
   LigneLivraison.fromJson(Map<String, dynamic> json) {
     id = json['id'];
     nomProduit = json['nom_produit'];
-    qte = double.parse(json['qte'].toString());
+    qte = double.parse(json['qte'] == null ? '0' : json['qte'].toString());
     unite = json['unite'];
     description = json['description'];
     poidsVehiculeSouhaite = json['poids_vehicule_souhaite'];
@@ -256,7 +256,7 @@ class LigneLivraison {
     complementAdresseDest = json['complement_adresse_dest'];
     longitudeDest = json['longitude_dest'];
     latitudeDest = json['latitude_dest'];
-    montantTotal = double.parse(json['montantTotal'].toString());
+    montantTotal = double.parse(json['montantTotal'] == null ? '0' : json['montantTotal'].toString());
     etatCommande = json['etat_commande'];
     dateLivraison = json['date_livraison'];
     dateFinLivraison = json['date_fin_livraison'];

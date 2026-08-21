@@ -51,6 +51,10 @@ class _DevisListeWidgetState extends State<DevisListeWidget> {
                 GestureDetector(
                   onTap: () async {
                     await Get.toNamed(DetailsDevisScreen.routeName, arguments: c);
+                    // Un devis transformé en commande depuis l'écran de détail
+                    // peut renvoyer l'utilisateur ailleurs qu'ici : au retour,
+                    // cette liste n'existe alors plus.
+                    if (!mounted) return;
                     setState(() {});
                   },
                   child: Padding(

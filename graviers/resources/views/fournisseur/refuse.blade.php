@@ -32,10 +32,10 @@
                                 @foreach ($enlevements as $enlevement)
                                     <tr>
                                         <td> {{ $enlevement->id }} </td>
-                                        <td><b> {{ $enlevement->livraison->livreur->user->nom_prenoms}} </b></td>
-                                        <td>{{ $enlevement->produit->nom }}</td>
+                                        <td><b> {{ $enlevement->livraison?->livreur?->user?->nom_prenoms}} </b></td>
+                                        <td>{{ $enlevement->produit?->nom }}</td>
                                         <td>{{ $enlevement->qte }}</td>
-                                        <td>{{ $enlevement->livraison->date_livraison }}</td>
+                                        <td>{{ $enlevement->livraison?->date_livraison }}</td>
                                         <td class="text-end">
                                         {{-- <a href="" class="btn btn-success rounded font-sm">Res</a> --}}
                                         {{-- <a href="" class="btn btn-danger rounded font-sm">Refuser</a> --}}

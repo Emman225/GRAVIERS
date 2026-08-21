@@ -193,7 +193,7 @@
         <div class="confetti" style="left: 80%; animation-delay: 3.5s;"></div>
         <div class="confetti" style="left: 90%; animation-delay: 4s;"></div>
 
-        <img src="https://graviers.fneconnect.net/backend/assets/imgs/theme/logoAvecFond.jpg" alt="Mon Gravier"
+        <img src="https://graviers.fneconnect.net/frontend/assets/imgs/logo/dalakoun-blanc.png" alt="DALAKOUN"
             style="max-width: 200px; width: 100%; height: auto; margin: 0 auto 20px; display: block;" />
 
         <div class="icon-container">

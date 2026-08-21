@@ -24,7 +24,7 @@
                     <!--  col.// -->
                     <div class="col-xl col-lg">
                         <h3> {{ $fournisseur->nom_prenoms }} </h3>
-                        <p>{{ $fournisseur->user->login }}, {{ $fournisseur->user->email }} </p>
+                        <p>{{ $fournisseur->user?->login }}, {{ $fournisseur->user?->email }} </p>
                     </div>
                     <!--  col.// -->
                     {{-- <div class="col-xl-4 text-md-end">
@@ -112,11 +112,11 @@
                                     @foreach ($enlevements as $enlevement)
                                         <tr>
                                             <td>{{ $enlevement->code_enleve}}</td>
-                                            <td>{{ $enlevement->produit->nom }}</td>
+                                            <td>{{ $enlevement->produit?->nom }}</td>
                                             <td class="text-center"><b> {{ $enlevement->qte }}  </b></td>
-                                            <td class="text-center"><b> {{ $enlevement->livraison->livreur->user->nom_prenoms }}  </b></td>
+                                            <td class="text-center"><b> {{ $enlevement->livraison?->livreur?->user?->nom_prenoms }}  </b></td>
                                             <td class="text-center">
-                                                {{ $enlevement->livraison->date_livraison }}
+                                                {{ $enlevement->livraison?->date_livraison }}
                                             {{-- <a href="" class="btn btn-success rounded font-sm">Accepter</a>
                                             <a href="" class="btn btn-danger rounded font-sm">Refuser</a> --}}
                                         </td>

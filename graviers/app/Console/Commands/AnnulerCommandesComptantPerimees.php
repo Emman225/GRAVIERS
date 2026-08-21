@@ -50,7 +50,7 @@ class AnnulerCommandesComptantPerimees extends Command
                 $c->numero ?? "ID#{$c->id}",
                 $c->client_id,
                 $c->date_commande,
-                $c->montant_total
+                $c->montantAPayer()
             ));
         }
 

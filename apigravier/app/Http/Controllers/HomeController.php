@@ -58,7 +58,7 @@ class HomeController extends Controller
             'categories' => Categorie::liste(),
             'bannieres' => Banniere::liste(),
             'produits' => $prods,
-            'mode_paiements' => ModePaiement::liste(),
+            'mode_paiements' => ModePaiement::listePourClient(),
             'type_livraisons' => TypeLivraison::liste(),
             'unites' => UniteProduit::liste(),
             'pays' => Pays::liste(),

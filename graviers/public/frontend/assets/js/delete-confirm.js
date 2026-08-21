@@ -182,7 +182,13 @@
 
         var msg = el.dataset.confirmMsg || 'Confirmer cette action ?';
         var href = el.getAttribute('href');
-        var form = el.closest('form');
+        // el.form est le formulaire PROPRIETAIRE du bouton : il respecte
+        // l'attribut « form », qui permet de piloter un formulaire situe
+        // ailleurs dans la page. closest() ne voyait que le formulaire
+        // ENGLOBANT — un bouton place dans un formulaire mais rattache a un
+        // autre soumettait donc le mauvais. Repli sur closest() pour les liens,
+        // qui n'ont pas de propriete form.
+        var form = el.form || el.closest('form');
 
         // Si c'est juste # ou vide, on ne fait rien (probablement déjà géré ailleurs)
         if (el.tagName === 'A' && (!href || href === '#' || href === 'javascript:void(0)')) {

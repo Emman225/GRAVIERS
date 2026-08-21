@@ -169,6 +169,32 @@
                                     <label class="form-label">Coût livraison minimum ({{ $config->devise }})</label>
                                     <input class="form-control" name="cout_livraison_min" required
                                         value="{{ $config->cout_livraison_min }}" />
+                                    <small class="text-muted">
+                                        Plancher appliqué quelle que soit la distance. C'est lui qui doit
+                                        couvrir le forfait versé au livreur sur les courses courtes.
+                                    </small>
+                                </div>
+
+                                {{-- Choix du mode de tarification du transport pour les VENTES et les
+                                     LOCATIONS. Un interrupteur plutôt qu'un déploiement : la grille
+                                     doit d'abord être complète, et le basculement change les prix
+                                     facturés dans des proportions importantes. --}}
+                                <div class="col-lg-12 mb-3">
+                                    <label class="form-label">Tarification du transport (ventes et locations)</label>
+                                    <select class="form-control" name="livraison_sur_grille">
+                                        <option value="0" {{ (int) ($config->livraison_sur_grille ?? 0) === 0 ? 'selected' : '' }}>
+                                            Formule kilométrique — distance × prix par km, avec plancher
+                                        </option>
+                                        <option value="1" {{ (int) ($config->livraison_sur_grille ?? 0) === 1 ? 'selected' : '' }}>
+                                            Grille tarifaire — forfait par unité, quantité et distance
+                                        </option>
+                                    </select>
+                                    <small class="text-muted">
+                                        La grille est celle des demandes de livraison. Avant de basculer,
+                                        lancez <code>php artisan grille:auditer</code> : une unité non
+                                        tarifée fait retomber ses produits sur la formule kilométrique,
+                                        et deux régimes de prix coexisteraient.
+                                    </small>
                                 </div>
 
                             </div>
@@ -775,7 +801,26 @@
         .onglets-defilants.a-gauche::before { opacity: 1; }
         .onglets-defilants.a-droite::after  { opacity: 1; }
 
+        /* Le contenu des onglets s'appuie sur des grilles Bootstrap. Une « .row »
+           porte une gouttière négative de 12px de chaque côté, qui suppose un
+           parent lui offrant 12px de retrait — ce que « .tab-pane » ne fait pas.
+           Le contenu débordait donc de 12px hors de son panneau, ce qui ouvrait
+           un défilement horizontal à l'intérieur de l'onglet : mesuré à 320px de
+           contenu pour 308px de place sur un écran de 375px, où il n'existe
+           aucune marge à sacrifier. Sélecteur limité aux panneaux de PREMIER
+           niveau : les onglets imbriqués gardent leur propre mise en page. */
+        #parametreTabsContent > .tab-pane {
+            padding-left: 12px;
+            padding-right: 12px;
+        }
+
         @media (max-width: 575px) {
+            /* Les boutons du thème sont en « nowrap » : un libellé long, comme
+               « Enregistrer les termes & conditions », ne peut pas se replier et
+               dépasse alors la largeur de l'écran. Sur mobile on l'autorise à
+               passer à la ligne plutôt que de rogner la page. */
+            #parametreTabsContent .btn { white-space: normal; }
+
             .onglets-defilants .nav-tabs .nav-link { padding: 10px 13px; font-size: 13px; }
             .onglets-defilants__fleche { width: 28px; height: 28px; }
             .onglets-defilants::before { left: 34px; }

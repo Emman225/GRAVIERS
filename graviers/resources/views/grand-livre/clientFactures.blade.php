@@ -12,7 +12,7 @@
 
     <div class="content-header">
         <div>
-            <h2 class="content-title card-title">Liste des factures du client {{ $client->nom . ' ' . $client->prenom }} </h2>
+            <h2 class="content-title card-title">Liste des factures du client {{ $client->display_name }} </h2>
 
         </div>
     </div>
@@ -57,7 +57,7 @@
                                 @endphp
                                 @foreach ($factures as $key => $facture)
                                     @php
-                                        $supplement = $facture->commande->cout_livraison_client + $facture->commande->TvaCommande->montant - $facture->commande->remise;
+                                        $supplement = $facture->commande?->cout_livraison_client + ($facture->commande?->TvaCommande?->montant ?? 0) - $facture->commande?->remise;
                                         // dd($supplement, $facture->montant);
                                     @endphp
 

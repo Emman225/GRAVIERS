@@ -59,11 +59,11 @@
                 <tbody>
                     @foreach ($notes as $note )
                         <tr>
-                            <td>{{$note->produit->abreviation}}</td>
+                            <td>{{$note->produit?->abreviation}}</td>
 
-                            <td><b>{{$note->produit->nom}}</b></td>
+                            <td><b>{{$note->produit?->nom}}</b></td>
 
-                            <td> {{$note->client->nom.' '.$note->client->prenom}} </td>
+                            <td> {{$note->client?->display_name}} </td>
 
                             <td> {{$note->avis}} </td>
 

@@ -55,6 +55,8 @@
                             <th class="text-center">Mode de paiement</th>
                             <th class="text-center">Référence transaction</th>
                             <th class="text-center">Notes</th>
+                            <th class="text-center">Initié par</th>
+                            <th class="text-center">Validé par</th>
                             <th class="text-center">Reçu</th>
                         </tr>
                     </thead>
@@ -79,6 +81,8 @@
                                 <td class="text-center">{{ $l->mode_paiement }}</td>
                                 <td class="text-center">{{ $l->reference_transaction ?? '-' }}</td>
                                 <td>{{ $l->notes ?? '-' }}</td>
+                                <td class="text-center small">{{ $l->initie_par ?? '-' }}</td>
+                                <td class="text-center small">{{ $l->valide_par ?? '-' }}</td>
                                 <td class="text-center">
                                     @if ($l->peut_valider ?? false)
                                         <form action="{{ route('show.creancesTerme.paiements.valider', $l->paiement_id) }}"
@@ -107,7 +111,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="9" class="text-center text-muted">
+                                <td colspan="11" class="text-center text-muted">
                                     Aucun paiement enregistré pour les clients à terme.
                                 </td>
                             </tr>
@@ -183,6 +187,24 @@
                                     <option value="">— Sélectionner —</option>
                                     @foreach ($modesPaiement as $mp)<option value="{{ $mp->id }}">{{ $mp->libelle }}</option>@endforeach
                                 </select>
+                            </div>
+                            <div class="col-md-6">
+                                {{-- L'agence n'est plus CHOISIE : c'est celle de la personne
+                                     connectée. Tant qu'elle était sélectionnée dans une liste,
+                                     un caissier pouvait imputer sa recette à un autre guichet
+                                     que le sien, et la caisse d'une agence se retrouvait
+                                     créditée d'un versement qu'elle n'avait jamais reçu. --}}
+                                <label class="form-label">Agence</label>
+                                @if ($monAgence)
+                                    <input type="text" class="form-control" value="{{ $monAgence->nom }}" readonly>
+                                    <small class="text-muted">Votre agence de rattachement.</small>
+                                @else
+                                    <input type="text" class="form-control" value="Aucune agence" readonly>
+                                    <small class="text-danger">
+                                        Vous n'êtes rattaché à aucune agence : un administrateur doit vous
+                                        affecter à un guichet avant que vous puissiez encaisser.
+                                    </small>
+                                @endif
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Référence transaction</label>

@@ -8,8 +8,6 @@ import 'package:http/http.dart' as http;
 import 'package:mon_gravier_com_apporteur/constants.dart';
 import 'package:mon_gravier_com_apporteur/globale.dart';
 import 'package:mon_gravier_com_apporteur/models/retour_liste_commission.dart';
-import 'package:mon_gravier_com_apporteur/models/retour_liste_commission.dart';
-import 'package:mon_gravier_com_apporteur/models/retour_liste_commission.dart';
 import 'package:mon_gravier_com_apporteur/models/retour_liste_filleule.dart';
 import 'package:mon_gravier_com_apporteur/screens/filleule/paiements/paiement_screen.dart';
 import 'package:searchable_listview/searchable_listview.dart';
@@ -17,7 +15,9 @@ import 'package:searchable_listview/searchable_listview.dart';
 import '../../helper/constants.dart';
 
 class CommissionScreen extends StatefulWidget {
-  static String routeName = "/filleule";
+  // Cet écran déclarait la même route que FilleuleScreen ("/filleule") : une
+  // navigation nommée vers l'un aurait pu ouvrir l'autre.
+  static String routeName = "/commission";
 
   const CommissionScreen({super.key});
 
@@ -44,7 +44,7 @@ class _CommissionScreenState extends State<CommissionScreen> {
       }
 
       try {
-        retourHttp = await http
+        final http.Response retourHttp = await http
             .post(Uri.parse('${lienAPI()}liste-commissions'),
             headers: {"Content-Type": "application/json"},
             body: jsonEncode(param))
@@ -62,22 +62,27 @@ class _CommissionScreenState extends State<CommissionScreen> {
             commissions = retCommission.data ?? [];
 
             if (commissions.isNotEmpty) {
-              print(commissions.first.toJson());
+              if (kDebugMode) {
+                print(commissions.first.toJson());
+              }
             }
           });
         } else {
-          EasyLoading.showError("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
         user.code = 500;
         user.message = "Une erreur s'est produite veuillez reesayer plus tard";
+        // Ce bloc de secours n.affichait RIEN : l.ecran restait muet en cas de
+        // coupure reseau ou de reponse illisible.
+        afficherErreur("Impossible de contacter le serveur. Verifiez votre connexion et reessayez.");
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 

@@ -60,10 +60,30 @@ return [
         //  - TVAD : 0%  (exonération légale)
         'tax' => env('FNE_DEFAULT_TAX', 'TVA'),
 
+        // Code de taxe de la ligne « Frais de livraison ».
+        //
+        // L'application facture aujourd'hui la livraison HORS TVA : le montant à
+        // payer vaut htNet + tva + cout_livraison, la livraison étant ajoutée
+        // APRÈS le calcul de la taxe (cf. ClientController). La valeur par défaut
+        // reflète donc cette pratique, avec un code à 0 %.
+        //
+        // À FAIRE VALIDER PAR LE COMPTABLE avant d'activer FNE_ENABLED :
+        //   TVAC : exonération conventionnelle (0 %)
+        //   TVAD : exonération légale (0 %)
+        //   TVA  : 18 % — ce choix NE SUFFIRAIT PAS ici : il faudrait aussi
+        //          intégrer la livraison à la base de TVA de la commande et de la
+        //          facture, ce qui augmenterait le montant payé par les clients.
+        //
+        // Le réglage se fait par le fichier .env, sans modification du code.
+        'delivery_tax' => env('FNE_DELIVERY_TAX', 'TVAC'),
+
+        // Libellé de cette même ligne sur la facture normalisée.
+        'delivery_label' => env('FNE_DELIVERY_LABEL', 'Frais de livraison'),
+
         // Identifiants point de vente / établissement (configurés
         // côté FNE par la DGI lors de l'inscription de l'entreprise).
         'point_of_sale' => env('FNE_POINT_OF_SALE', 'PDV-01'),
-        'establishment' => env('FNE_ESTABLISHMENT', 'GRAVIERS'),
+        'establishment' => env('FNE_ESTABLISHMENT', 'DALAKOUN'),
 
         // Messages affichés sur la facture certifiée (facultatifs).
         'commercial_message' => env('FNE_COMMERCIAL_MESSAGE', ''),

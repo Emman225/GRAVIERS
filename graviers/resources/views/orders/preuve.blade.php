@@ -15,7 +15,7 @@
 @endphp
 @if ($commande->preuve->statut == 1)
     <div class="alert alert-success text-center">
-        Cette preuve a été validée par {{$commande->preuve->user->nom_prenoms}}
+        Cette preuve a été validée par {{$commande->preuve->user?->nom_prenoms}}
     </div>
 @endif
 {{-- @dd($fournisseur->user) --}}

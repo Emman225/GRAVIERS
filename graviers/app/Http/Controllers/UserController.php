@@ -20,6 +20,7 @@ use App\Models\CoutLivraison;
 use App\Models\DemandeCompteClientATerme;
 use App\Models\DemandeLivraison;
 use App\Models\DemandePaiement;
+use App\Models\PaiementFournisseur;
 use App\Models\DetailLivraison;
 use App\Models\Enlevement;
 use App\Models\Facture;
@@ -42,6 +43,7 @@ use App\Models\RetourProduit;
 use App\Models\StockProduit;
 use App\Models\TicketSAV;
 use App\Models\TypeUser;
+use App\Models\Audit;
 use App\Models\User;
 use App\Models\Vehicule;
 use App\Models\Ville;
@@ -112,6 +114,10 @@ class UserController extends Controller
             return back()->with('info', 'Aucun changement : le plafond et le délai sont inchangés.');
         }
 
+        // Encours relevé AVANT l'écriture : il ne dépend pas du plafond, mais le
+        // lire d'abord évite toute ambiguïté sur ce qui est comparé à quoi.
+        $encours = (float) $client->encoursCredit();
+
         $client->update([
             'plafond_credit' => $nouveauPlafond,
             'delai_paiement' => $nouveauDelai,
@@ -119,7 +125,7 @@ class UserController extends Controller
 
         \Help::ecrireLog(
             'modifierPlafondCredit',
-            'Révision du plafond de crédit — ' . trim($client->nom . ' ' . $client->prenom),
+            'Révision du plafond de crédit — ' . $client->display_name,
             sprintf(
                 'Client #%d : plafond %s -> %s FCFA ; délai %d -> %d jours.%s',
                 $client->id,
@@ -128,12 +134,37 @@ class UserController extends Controller
                 $ancienDelai,
                 $nouveauDelai,
                 $request->filled('motif') ? ' Motif : ' . $request->motif : ''
-            ),
+            )
+            // L'encours du jour est consigné avec la révision : sans lui, on ne
+            // peut plus dire après coup si le plafond accordé couvrait ou non ce
+            // que le client devait déjà.
+            . sprintf(' Encours à la révision : %s FCFA.', number_format($encours, 0, ',', ' ')),
             Auth::id()
         );
 
-        return back()->with('success', 'Plafond de crédit mis à jour : '
-            . number_format($nouveauPlafond, 0, ',', ' ') . ' FCFA sur ' . $nouveauDelai . ' jours.');
+        $confirmation = 'Plafond de crédit mis à jour : '
+            . number_format($nouveauPlafond, 0, ',', ' ') . ' FCFA sur ' . $nouveauDelai . ' jours.';
+
+        // Ramener le plafond SOUS l'encours déjà consommé est une décision
+        // légitime — c'est même le geste attendu face à un mauvais payeur : on
+        // ferme la ligne de crédit sans effacer ce qui est dû. La révision est
+        // donc enregistrée telle quelle. Mais elle a une conséquence immédiate
+        // que le gestionnaire doit connaître avant de quitter la page : le
+        // disponible tombe à zéro et le client ne pourra plus rien commander à
+        // terme tant qu'il n'aura pas réglé la différence.
+        //
+        // Clé « avertissement_plafond » et non « warning » : Flasher intercepte
+        // warning/success/info/error pour les rejouer en bulle flottante, qui
+        // s'efface d'elle-même. Ce message-ci doit rester affiché.
+        if ($nouveauPlafond > 0 && $nouveauPlafond < $encours) {
+            return back()->with('avertissement_plafond', $confirmation
+                . ' Attention : ce plafond est inférieur à l\'encours déjà engagé ('
+                . number_format($encours, 0, ',', ' ') . ' FCFA). Le crédit disponible du client est donc nul, '
+                . 'et il ne pourra plus commander à terme tant qu\'il n\'aura pas réglé au moins '
+                . number_format($encours - $nouveauPlafond, 0, ',', ' ') . ' FCFA.');
+        }
+
+        return back()->with('success', $confirmation);
     }
 
     public function welcome(Request $request){
@@ -291,7 +322,7 @@ class UserController extends Controller
                 // client
                 // $route = $user->client->statut == 3  ? 'listClientATerme' : 'listClient';
                 $route = $user->client->client_a_terme == 1  ? 'listClientATerme' : 'listClient';
-                $nomPrenom = strtoupper($user->client->nom).' '.strtoupper($user->client->prenom);
+                $nomPrenom = strtoupper($user->client->display_name);
                 $theUser = $user->client;
                 break;
 
@@ -346,6 +377,14 @@ class UserController extends Controller
                     return redirect()->route('show.'.$route)->with('success',"vous avez débloqué le compte de ".strtoupper($nomPrenom));
                     break;
             }
+
+            // Aucun cas ne correspond : le compte n'est ni actif ni bloqué —
+            // une inscription encore en attente, par exemple. On ne le bascule
+            // pas au hasard, mais on ne peut pas non plus sortir sans réponse :
+            // la méthode retournait alors NULL, et l'écran restait blanc.
+            return redirect()->route('show.'.$route)
+                ->with('error', "Le compte de " . strtoupper($nomPrenom)
+                    . " n'est ni actif ni bloqué : son état ne permet pas cette action.");
 
         }else{
             // $user->update([
@@ -424,12 +463,59 @@ class UserController extends Controller
     }
 
     public function traiteLivraisonPage(DemandeLivraison $demandeLivraison, Request $request){
-        // dd($demandeLivraison->detailLivraison);
+
+        // Une demande réglée EN AGENCE doit être soldée avant d'être traitée :
+        // on n'envoie pas un camion pour un transport que le client n'a pas payé.
+        // Les demandes réglées en ligne ne sont pas concernées — la passerelle
+        // encaisse avant même que la demande n'arrive ici.
+        $blocage = $this->reglementBloquantDemandeLivraison($demandeLivraison);
+
+        if ($blocage) {
+            return redirect()->route('show.demandeLivraisonlist')->with('blocage_reglement', $blocage);
+        }
+
         return view('gestionnaire.traiteLivraison',[
             'livraisons' => $demandeLivraison,
             'vehicules' => Vehicule::orderByDesc('capacite')->get()
         ]);
 
+    }
+
+    /**
+     * Message de blocage si la demande n'est pas soldée, null si elle peut être
+     * traitée. Une seule règle, appelée par l'écran ET par l'enregistrement :
+     * bloquer uniquement l'affichage laisserait passer un envoi direct du
+     * formulaire.
+     */
+    private function reglementBloquantDemandeLivraison(DemandeLivraison $demandeLivraison): ?string
+    {
+        // Un CLIENT À TERME paie après, c'est le sens même de son compte : lui
+        // demander de régler avant le départ du camion viderait sa ligne de
+        // crédit de sa substance. Les ventes font la même séparation — la caisse
+        // comptant ne traite que les clients ordinaires, les clients à terme
+        // relèvent des créances.
+        if ((int) ($demandeLivraison->client?->client_a_terme ?? 0) === 1) {
+            return null;
+        }
+
+        if (!$demandeLivraison->reglementEnAgence()) {
+            return null;
+        }
+
+        $reste = $demandeLivraison->montantRestantDu();
+
+        if ($reste <= 0) {
+            return null;
+        }
+
+        return sprintf(
+            'La demande %s ne peut pas être traitée : elle est réglée en agence et il reste %s FCFA à encaisser sur %s FCFA. '
+            . 'Rendez-vous dans Caisse → « Encaissements demandes de livraison ». '
+            . 'Un encaissement ne compte qu\'une fois validé par un second administrateur.',
+            $demandeLivraison->numero,
+            number_format($reste, 0, ',', ' '),
+            number_format($demandeLivraison->montantAPayer(), 0, ',', ' ')
+        );
     }
 
     public function selectionneVehicule($id,$detail){
@@ -541,7 +627,14 @@ class UserController extends Controller
 
         $estRetrait = $request->mode_livraison === 'retrait';
 
-        if ($location->etatLibelle() !== Help::$LOCATION_EN_ATTENTE) {
+        // Une location dont le livreur a REFUSÉ la course doit pouvoir être
+        // reconfiée. Le verrou sur EN ATTENTE l'interdisait : l'affectation fait
+        // passer la location EN COURS, si bien qu'un refus la laissait dans un
+        // état d'où l'on ne pouvait plus rien faire — matériel jamais livré, et
+        // « Cette location est déjà traitée » pour toute réponse.
+        $lignesARefaire = $location->lignesALivrerDeNouveau();
+
+        if ($location->etatLibelle() !== Help::$LOCATION_EN_ATTENTE && $lignesARefaire->isEmpty()) {
             return redirect()->route('show.listeLocationEnAttente')
                 ->with('info', 'Cette location est déjà traitée.');
         }
@@ -563,11 +656,18 @@ class UserController extends Controller
         }
 
         $livraisonsCreees = [];
-        \DB::transaction(function () use ($location, $request, $livreur, $conf, $distance, $estRetrait, &$livraisonsCreees) {
+        \DB::transaction(function () use ($location, $request, $livreur, $conf, $distance, $estRetrait, $lignesARefaire, &$livraisonsCreees) {
             // Retrait sur place : aucune livraison à créer. En créer une serait une
             // livraison fantôme, qui polluerait la tournée du livreur et enverrait au
             // client un code de validation pour une livraison qui n'aura jamais lieu.
-            foreach ($estRetrait ? [] : $location->detailLocation as $detail) {
+            // Réaffectation : on ne recrée QUE les courses refusées. Repasser
+            // sur toutes les lignes enverrait un second livreur sur du matériel
+            // déjà pris en charge, et un second code de validation au client.
+            $lignes = $estRetrait
+                ? collect()
+                : ($lignesARefaire->isNotEmpty() ? $lignesARefaire : $location->detailLocation);
+
+            foreach ($lignes as $detail) {
                 // LOCATION : le matériel loué n'est pas mesuré en tonnes. Le repli de
                 // rémunération est le coût d'UN déplacement (distance × coût fixe), SANS
                 // facteur "voyages/tonnage" (qui n'a de sens que pour le gravier en vrac).
@@ -704,9 +804,28 @@ class UserController extends Controller
     public function modifierPrixLivraison(Livreur $livreur, Request $request){
 
         // Le livreur (ou l'admin) choisit son mode de tarification :
-        //  - 'base' : un tarif forfaitaire (cout_livraison)
-        //  - 'km'   : un tarif par kilomètre (tarif_km)
-        $mode = in_array($request->mode_tarification, ['base', 'km']) ? $request->mode_tarification : 'base';
+        //  - 'base'  : un tarif forfaitaire (cout_livraison)
+        //  - 'km'    : un tarif par kilomètre (tarif_km)
+        //  - 'mixte' : un fixe (tarif_forfait_base) PLUS le kilométrage
+        $mode = in_array($request->mode_tarification, ['base', 'km', 'mixte']) ? $request->mode_tarification : 'base';
+
+        if ($mode === 'mixte') {
+            // Les deux parts peuvent être nulles séparément — un fixe sans
+            // kilométrage reste un forfait, un kilométrage sans fixe reste du
+            // kilométrique — mais pas les deux : le livreur ne serait pas payé.
+            if ((int) $request->tarif_forfait_base < 1 && (int) $request->tarif_km < 1) {
+                return redirect()->route('show.profile', $livreur->id)
+                    ->with('error', 'Tarif mixte : renseignez au moins le fixe ou le tarif par kilomètre.');
+            }
+
+            $livreur->update([
+                'mode_tarification'  => 'mixte',
+                'tarif_forfait_base' => max(0, (int) $request->tarif_forfait_base),
+                'tarif_km'           => max(0, (int) $request->tarif_km),
+            ]);
+
+            return redirect()->route('show.profile', $livreur->id)->with('success', 'Modification effectuée');
+        }
 
         if ($mode === 'km') {
             if ($request->tarif_km < 1) {
@@ -764,16 +883,24 @@ class UserController extends Controller
 
     public function traitelivraison(DemandeLivraison $demandeLivraison, DetailLivraison $detail, Request $request){
 
+        // Même contrôle qu'à l'affichage : bloquer seulement l'écran laisserait
+        // passer un envoi direct du formulaire, qui affecterait un camion à une
+        // course impayée.
+        $blocage = $this->reglementBloquantDemandeLivraison($demandeLivraison);
+
+        if ($blocage) {
+            return redirect()->route('show.demandeLivraisonlist')->with('blocage_reglement', $blocage);
+        }
+
         // dd($deman+deLivraison,$detail);
         // $statut = [];
-        // $statut = HELP::listeStatutLivraison();
+        // $statut = Help::listeStatutLivraison();
         // dd($demandeLivraison->detailLivraison->cout_livraison_id);
         $date = $request->date;
-        $qt = $detail->qte;
 
-        if(!$detail->livraisons->isEmpty()){
-            $qt = $detail->qte - $detail->livraisons->sum('qte');
-        }
+        // Refus exclus : une course refusee n'a rien transporte, elle ne
+        // consomme donc pas la quantite de la ligne (cf. DetailLivraison).
+        $qt = $detail->qteRestanteAAffecter();
 
         // dd($qt,$detail->qte,$detail->livraisons->sum('qte'));
         // dd(!$demandeLivraison->livraisons->isEmpty(),$qt,$detail);
@@ -782,7 +909,26 @@ class UserController extends Controller
             $date = $demandeLivraison->date_livraison;
         }
 
+        // Rémunération du livreur.
+        //
+        // Elle repose sur forfait_base + frais_km (cf. DetteLivreurController) et
+        // était laissée à zéro pour les demandes de livraison : un livreur ayant
+        // effectué une course de transport apparaissait dû à ZÉRO dans
+        // « Dettes livreur ». Les ventes et les locations, elles, la calculent
+        // dès l'affectation.
+        //
+        // La distance retenue est celle réellement parcourue : de la PRISE EN
+        // CHARGE à la DESTINATION. Les autres flux mesurent l'adresse du client
+        // depuis la région — c'est le même trajet chez eux, la marchandise
+        // partant du dépôt. Ici elle part de chez le client : mesurer depuis la
+        // région n'aurait aucun rapport avec la route parcourue.
+        $conf = Configuration::first();
+        $pec  = $demandeLivraison->priseEnCharge;
+        $dest = $demandeLivraison->destination;
 
+        $distance = ($pec && $dest)
+            ? Help::distance($pec->longitude, $pec->latitude, $dest->longitude, $dest->latitude)
+            : 0;
 
         foreach ($request->id as $camionId) {
 
@@ -797,6 +943,21 @@ class UserController extends Controller
 
             //dd($camion);
 
+            // Rotations arrondies au supérieur : un quart de chargement demande
+            // un déplacement complet. Et le tarif du livreur est multiplié par
+            // ce nombre — trois rotations, c'est trois fois le carburant.
+            $voyages    = \App\Models\Livreur::nombreDeVoyages(
+                (float) $qt1,
+                (float) ($camion->capacite ?? 0),
+                (float) ($conf->tonne_moyenne ?? 0)
+            );
+            $coutGlobal = (float) $distance * (float) ($conf->cout_liv_fixe ?? 0) * $voyages;
+
+            $livreurCamion = $camion->livreur;
+            $tarif = $livreurCamion
+                ? $livreurCamion->tarificationLivraison((float) $distance, $coutGlobal, $voyages)
+                : ['forfait_base' => $coutGlobal, 'frais_km' => 0.0, 'total' => $coutGlobal];
+
             // array_push($lesqte,$qt1);
 
             //$detail = $demandeLivraison->detailLivraison;
@@ -809,19 +970,53 @@ class UserController extends Controller
                 'adresse_livraison_id' => $demandeLivraison->destination->id,
                // 'cout_livraison_id' => $detail->cout_livraison_id,
                 'date_livraison' => $demandeLivraison->date_livraison,
-                'provenance' => 2,
+                // « LIVRAISON » en toutes lettres : provenance est un ENUM, où un
+                // entier désigne la POSITION de la valeur. « 2 » tombe juste
+                // aujourd'hui, et c'est sur cette colonne que l'API distingue une
+                // course de transport d'une vente — s'y tromper est silencieux.
+                'provenance' => Help::$LIVRAISON,
                 'detail_livraison_id' => $detail->id,
                 'type_livraison_id' => $demandeLivraison->type_livraison_id,
                 'qte' => $qt1,
                 'gestionnaire_id' => Auth::user()->id,
                 'vehicule_id' => intval($camionId),
                 'accepte' => 1,
+                // Part de course confiée à CE camion : la quantité qu'il emporte
+                // rapportée à sa capacité. Même calcul que la commande de
+                // recalcul (RecalcCoutLivraison), pour que les deux ne se
+                // contredisent pas. Les modes de tarification propres au livreur
+                // (au kilomètre ou au forfait) priment de toute façon ; ce coût
+                // global n'est qu'un repli quand rien n'est configuré.
+                'cout_livraison' => $tarif['total'],
+                'forfait_base'   => $tarif['forfait_base'],
+                'frais_km'       => $tarif['frais_km'],
+                'distance_km'    => round((float) $distance, 2),
             ];
 
 
             $l = Livraison::create($livraison);
 
-            // dd($livraison, $l);
+            // Envoi au client du CODE de validation (= numéro de la livraison),
+            // qu'il communiquera au livreur pour clore la course.
+            //
+            // Les ventes et les locations envoyaient déjà ce courriel ; les
+            // demandes de livraison, non. Le client n'avait donc AUCUN moyen
+            // d'obtenir son code, et l'application livreur — qui refuse la
+            // validation tant que le numéro saisi ne correspond pas — laissait
+            // la course ouverte indéfiniment.
+            //
+            // NON bloquant : un échec d'envoi ne doit pas empêcher le
+            // traitement de la demande, déjà enregistré ci-dessus.
+            try {
+                Mail::send(new \App\Mail\receptionCodeDemandeLivraison(
+                    $l,
+                    $demandeLivraison,
+                    $demandeLivraison->client,
+                    $detail
+                ));
+            } catch (\Throwable $e) {
+                \Log::warning('Email code validation demande de livraison non envoyé: ' . $e->getMessage());
+            }
         }
 
         // États écrits en toutes lettres, jamais par leur rang. Ces deux colonnes
@@ -914,7 +1109,7 @@ class UserController extends Controller
         ->selectRaw("livraison.*,
         users.nom_prenoms as nom_livreur,
         users.contact as contact_livreur,
-        concat(client.nom,' ',client.prenom) as nom_client,
+        " . \App\Models\Client::sqlNomAffiche() . " as nom_client,
         client.contact1 as contact_client,
         adresse_livraison.affichage as adresse,
         adresse_livraison.complement_adresse,
@@ -1141,32 +1336,107 @@ class UserController extends Controller
                 break;
         }
 
-        $demandes = DemandePaiement::where('user_id', $authUser->id)
-            ->with('modePaiement')
-            ->orderByDesc('created_at')
-            ->limit(10)
-            ->get();
+        $mouvements = $this->mouvementsDuTiers($authUser, $user);
 
-        $totalDemandes  = DemandePaiement::where('user_id', $authUser->id)->count();
-        $totalEnAttente = DemandePaiement::where('user_id', $authUser->id)
-            ->where(function($q){ $q->whereNull('paye')->orWhere('paye', 0); })
-            ->count();
-        $totalPayees    = DemandePaiement::where('user_id', $authUser->id)
-            ->where('paye', 1)->count();
-        $montantEnAttente = (float) DemandePaiement::where('user_id', $authUser->id)
-            ->where(function($q){ $q->whereNull('paye')->orWhere('paye', 0); })
-            ->sum('montant');
+        $recus   = $mouvements->where('statut', 1);
+        $attente = $mouvements->where('statut', 0);
 
         return view('livreur.demandeDePaie', [
             'user'              => $user,
             'profilLabel'       => $profilLabel,
             'modesPaie'         => ModePaiement::liste(),
-            'demandes'          => $demandes,
-            'totalDemandes'     => $totalDemandes,
-            'totalEnAttente'    => $totalEnAttente,
-            'totalPayees'       => $totalPayees,
-            'montantEnAttente'  => $montantEnAttente,
+            'mouvements'        => $mouvements,
+            'totalDemandes'     => $mouvements->count(),
+            'totalEnAttente'    => $attente->count(),
+            'totalPayees'       => $recus->count(),
+            'montantEnAttente'  => (float) $attente->sum('montant'),
+            'montantRecu'       => (float) $recus->sum('montant'),
         ]);
+    }
+
+    /**
+     * Tout ce qu'un tiers a touché, quelle qu'en soit l'origine.
+     *
+     * L'entreprise le paie par DEUX chemins : la demande qu'il initie
+     * lui-même, et le règlement qu'un administrateur saisit sur une de ses
+     * pièces — un bon pour le fournisseur, une course pour le livreur, une
+     * commission pour l'apporteur.
+     *
+     * Cet écran ne montrait que le premier. Le tiers ne voyait donc nulle part
+     * les sommes versées à l'initiative de l'entreprise, et son historique ne
+     * retombait pas sur ce qu'il avait réellement reçu.
+     *
+     * Les règlements issus d'une demande sont EXCLUS : ils portent
+     * `demande_paiement_id` et sont déjà listés sous leur demande. Sans cette
+     * exclusion, le même versement apparaîtrait deux fois.
+     */
+    private function mouvementsDuTiers($authUser, $tier)
+    {
+        $demandes = DemandePaiement::where('user_id', $authUser->id)
+            ->with('modePaiement')
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn (DemandePaiement $d) => (object) [
+                'reference'     => $d->numero ?: ('#' . $d->id),
+                'date'          => $d->created_at,
+                'montant'       => (float) $d->montant,
+                // 1 = acceptée, 2 = refusée, NULL/0 = en attente.
+                'statut'        => (int) ($d->paye ?? 0),
+                'mode'          => $d->modePaiement?->libelle,
+                'origine'       => 'Vous',
+                'detail'        => 'Demande de paiement',
+            ]);
+
+        // La table des règlements dépend du profil, et la colonne de liaison
+        // vient d'une migration : sans elle, l'écran du tiers tomberait en
+        // erreur. On s'en passe plutôt que de le priver de sa page.
+        $config = match ((int) $authUser->type_user_id) {
+            5 => ['table' => 'paiement_fournisseur', 'modele' => \App\Models\PaiementFournisseur::class,
+                  'cle' => 'fournisseur_id', 'lien' => 'enlevement', 'libelle' => 'Bon'],
+            6 => ['table' => 'paiement_apporteur',   'modele' => \App\Models\PaiementApporteur::class,
+                  'cle' => 'apporteur_id',   'lien' => 'commission',  'libelle' => 'Commission'],
+            8 => ['table' => 'paiement_livreur',     'modele' => \App\Models\PaiementLivreur::class,
+                  'cle' => 'livreur_id',     'lien' => 'livraison',   'libelle' => 'Course'],
+            default => null,
+        };
+
+        $reglements = collect();
+
+        if ($config && $tier && isset($tier->id)) {
+            $reglements = $config['modele']::with(['modePaiement', $config['lien']])
+                ->where($config['cle'], $tier->id)
+                ->where('statut', 1)
+                ->when(
+                    \Illuminate\Support\Facades\Schema::hasColumn($config['table'], 'demande_paiement_id'),
+                    fn ($q) => $q->whereNull('demande_paiement_id')
+                )
+                ->orderByDesc('date_paiement')
+                ->get()
+                ->map(function ($p) use ($config) {
+                    $piece = $p->{$config['lien']};
+
+                    $numero = $piece?->code_enleve
+                        ?? $piece?->numero
+                        ?? ($piece ? '#' . $piece->id : null);
+
+                    return (object) [
+                        'reference' => $p->reference ?: ('#' . $p->id),
+                        'date'      => $p->date_paiement ?? $p->created_at,
+                        'montant'   => (float) $p->montant,
+                        // Un règlement enregistré est un versement fait.
+                        'statut'    => 1,
+                        'mode'      => $p->modePaiement?->libelle,
+                        'origine'   => "L'entreprise",
+                        'detail'    => $numero
+                            ? $config['libelle'] . ' ' . $numero
+                            : $config['libelle'],
+                    ];
+                });
+        }
+
+        return $demandes->concat($reglements)
+            ->sortByDesc(fn ($m) => $m->date)
+            ->values();
     }
 
     public function demandeDepaie(Request $request){
@@ -1184,50 +1454,60 @@ class UserController extends Controller
             return redirect()->route('show.demandeDepaiePage')->with('error','0fcfa n\'est pas autorisé comme montant');
         }
 
-        if($user->type_user_id == 8) {
-            //livreur
-            $livreur = Livreur::where('user_id', $user->id)->first();
-            if($montant > $livreur->solde){
+        // Le tiers concerné, selon son profil. Un solde insuffisant arrête tout
+        // avant la moindre écriture.
+        $tier = match ((int) $user->type_user_id) {
+            8 => Livreur::where('user_id', $user->id)->first(),
+            6 => Apporteur::where('user_id', $user->id)->first(),
+            5 => Fournisseur::where('user_id', $user->id)->first(),
+            default => null,
+        };
 
-                return redirect()->route('show.demandeDepaiePage')->with('error','Veuillez entrer un montant inférieur ou égale à votre solde');
-            }
-
-            $livreur->update([
-                'solde' => $livreur->solde - $montant
-            ]);
-
-        }elseif($user->type_user_id == 6){
-            $apporteur = Apporteur::where('user_id', $user->id)->first();
-            if($montant > $apporteur->solde){
-                return redirect()->route('show.demandeDepaiePage')->with('error','Veuillez entrer un montant inférieur ou égale à votre solde');
-            }
-
-            $apporteur->update([
-                'solde' => $apporteur->solde - $montant
-            ]);
-        }elseif($user->type_user_id == 5){
-            $frs = Fournisseur::where('user_id', $user->id)->first();
-            if($montant > $frs->solde){
-                return redirect()->back()->with('error','Veuillez entrer un montant inférieur ou égale à votre solde');
-            }
-
-            $frs->update([
-                'solde' => $frs->solde - $montant
-            ]);
+        if (!$tier) {
+            return redirect()->back()->with('error', "Votre profil ne permet pas de demander un paiement.");
         }
 
-        $demande = demandePaiement::create([
-           'numero' => Help::getCommandeNo(),
-            'montant' => $montant,
-            'user_id' => $user->id,
-            'numero_compte' => $request->numero,
-            "mode_paiement_id" => $request->modePaie,
-            // Le solde vient d'être débité ci-dessus (réservation) : la 2e validation
-            // ne doit PAS re-débiter (cf. valideDemande).
-            'solde_debite_initiation' => 1,
-        ]);
+        if ($montant > (float) $tier->solde) {
+            return redirect()->back()->with('error', 'Veuillez entrer un montant inférieur ou égale à votre solde');
+        }
 
-        // dd($demande);
+        // LE DÉBIT ET LA DEMANDE, OU NI L'UN NI L'AUTRE.
+        //
+        // Le solde était débité d'abord, la demande créée ensuite. Si la
+        // création échouait — une colonne absente en base a suffi — le tiers
+        // repartait avec un solde amputé et aucune demande en face : l'argent
+        // disparaissait de son tableau de bord sans que personne ne puisse le
+        // lui verser, et rien ne le signalait.
+        try {
+            DB::transaction(function () use ($tier, $montant, $request, $user) {
+                $tier->update([
+                    'solde' => (float) $tier->solde - $montant,
+                ]);
+
+                DemandePaiement::create([
+                    'numero'           => Help::getCommandeNo(),
+                    'montant'          => $montant,
+                    'user_id'          => $user->id,
+                    'numero_compte'    => $request->numero,
+                    'mode_paiement_id' => $request->modePaie,
+                    // Le solde vient d'être débité ci-dessus (réservation) : la 2e
+                    // validation ne doit PAS re-débiter (cf. valideDemande).
+                    'solde_debite_initiation' => 1,
+                ]);
+            });
+        } catch (\Throwable $e) {
+            // La transaction a été annulée : le solde est intact. On le dit,
+            // plutôt que de renvoyer une page blanche.
+            \Illuminate\Support\Facades\Log::error('Demande de paiement impossible', [
+                'user_id' => $user->id,
+                'montant' => $montant,
+                'erreur'  => $e->getMessage(),
+            ]);
+
+            return redirect()->back()->with('error',
+                "Votre demande n'a pas pu être enregistrée. Votre solde n'a pas été modifié. "
+                . "Signalez-le à l'administrateur.");
+        }
 
         return redirect()->back()->with('success','Votre demande a été envoyée');
 
@@ -1511,6 +1791,8 @@ class UserController extends Controller
         // Type de fournisseur + produit principal (colonnes affichées dans la liste).
         $fournisseur->type_fournisseur  = $request->type_fournisseur;
         $fournisseur->produit_principal = $request->produit_principal;
+        // Régime de TVA : commande le montant reversé au fournisseur (Enlevement::montantDu).
+        $fournisseur->assujetti_tva     = $request->boolean('assujetti_tva');
         $fournisseur->save();
 
         $user = User::where('id',$fournisseur->user_id)->first();
@@ -1972,6 +2254,22 @@ class UserController extends Controller
             default       => 'show.listeDeDemandeLivreur',
         };
 
+        // Les demandes des fournisseurs se valident aussi depuis le journal des
+        // paiements : on y renvoie l'administrateur qui en vient, plutôt que de
+        // le déposer sur un autre écran sans qu'il l'ait demandé.
+        //
+        // Liste fermée : une route reçue en paramètre et suivie telle quelle
+        // ouvrirait une redirection vers n'importe où.
+        $retoursAutorises = [
+            'show.fournisseurs.paiements',
+            'show.livreurs.paiements',
+            'show.apporteurs.paiements',
+        ];
+
+        if (in_array(request('retour'), $retoursAutorises, true)) {
+            $routeRetour = request('retour');
+        }
+
         // Demande déjà finalisée : on ne fait rien.
         if ($demande->user_valide_id && $demande->user_valide2_id) {
             return redirect()->route($routeRetour)->with('error', 'Cette demande a déjà été finalisée.');
@@ -2032,6 +2330,42 @@ class UserController extends Controller
                     // Acceptation → débiter UNIQUEMENT si l'initiation ne l'a pas déjà fait.
                     if (!$dejaDebite) {
                         $tier->update(['solde' => max(0, (float) $tier->solde - (float) $demande->montant)]);
+                    }
+
+                    // LE TIERS EST PAYÉ : SES PIÈCES DOIVENT LE SAVOIR.
+                    //
+                    // Ce chemin n'écrivait rien dans `paiement_fournisseur`.
+                    // Les bons restaient donc entièrement dus après avoir été
+                    // payés : le popup « Enregistrer un paiement fournisseur »
+                    // proposait encore la totalité, et un administrateur
+                    // pouvait régler une seconde fois ce qui l'était déjà.
+                    // La colonne de liaison vient d'une migration. Tant qu'elle
+                    // manque, l'imputation échoue sur une erreur SQL brute. On
+                    // refuse la validation — plutôt que de l'accepter sans
+                    // solder les bons, ce qui rouvrirait le double paiement —
+                    // mais on dit pourquoi.
+                    $table = match ($type) {
+                        'fournisseur' => 'paiement_fournisseur',
+                        'livreur'     => 'paiement_livreur',
+                        'apporteur'   => 'paiement_apporteur',
+                        default       => null,
+                    };
+
+                    if ($table
+                        && !\Illuminate\Support\Facades\Schema::hasColumn($table, 'demande_paiement_id')) {
+                        throw new \RuntimeException(
+                            "La base n'est pas à jour : la colonne `{$table}.demande_paiement_id` "
+                            . "n'existe pas. Lancez « php artisan migrate --force » sur le serveur, "
+                            . "puis recommencez. Aucune modification n'a été enregistrée."
+                        );
+                    }
+
+                    if ($type === 'fournisseur') {
+                        $tier->imputerDemandeSurLesBons($demande, Auth::id());
+                    } elseif ($type === 'livreur') {
+                        $tier->imputerDemandeSurLesCourses($demande, Auth::id());
+                    } elseif ($type === 'apporteur') {
+                        $tier->imputerDemandeSurLesCommissions($demande, Auth::id());
                     }
                 }
             }
@@ -2243,7 +2577,7 @@ class UserController extends Controller
             'nb_paiements_valides'=> $nbPaiementsValides,
             'montant_paye'        => $montantPaye,
             'taux_paiement'       => $tauxPaiement,
-            'client_nom'          => trim(($client->nom ?? '').' '.($client->prenom ?? '')),
+            'client_nom'          => ($client?->display_name ?? ''),
             'client_email'        => $client->user->email ?? $client->email ?? '',
             'client_contact'      => $client->contact1 ?? '',
         ]);
@@ -2306,7 +2640,7 @@ class UserController extends Controller
 
     public function enregistrementDeCodePromo (Request $request){
         $data = [
-            'code' => help::ChaineAleatoire(5),
+            'code' => Help::ChaineAleatoire(5),
             'libelle'=> $request->libelle,
             'debut' => $request->debut,
             'fin' => $request->fin,
@@ -2434,6 +2768,13 @@ class UserController extends Controller
 
     public function logout(){
         $type = Auth::user()?->type_user_id;
+
+        // Avant Auth::logout() : ensuite, plus personne n'est identifié et la
+        // trace serait anonyme.
+        if (in_array((int) $type, [1, 2, 3, 7], true)) {
+            Audit::log('Déconnexion — utilisateur');
+        }
+
         Auth::logout();
 
         switch($type){
@@ -2529,6 +2870,13 @@ class UserController extends Controller
                 $test = $request->session()->regenerate();
 
                 Auth::login($user);
+
+                // Trace de connexion. Le middleware d'audit ne peut pas la
+                // produire : il ne saurait pas distinguer une identification
+                // réussie d'un mot de passe refusé.
+                if (in_array((int) $user->type_user_id, [1, 2, 3, 7], true)) {
+                    Audit::log('Connexion — utilisateur', ['login' => $user->login], $request);
+                }
 
                 // Redirection selon le type d'utilisateur
                 $typeId = $user->type_user_id;
@@ -3597,12 +3945,48 @@ class UserController extends Controller
         return redirect()->route('show.mesTicketsSAV')->with('success', 'Ticket clôturé : solution enregistrée.');
     }
 
+    /**
+     * Etat de livraison : les bons d'enlevement et ce qui a ete servi.
+     *
+     * La vue traverse, pour chaque bon, la livraison, la ligne de commande, la
+     * commande, le client, le livreur et le fournisseur avec leurs comptes.
+     * Rien n'etait precharge : chaque ligne du tableau declenchait sept
+     * requetes, sur la totalite des bons jamais emis.
+     *
+     * Les bons annules n'ont rien a faire dans un etat de livraison.
+     */
     public function reapprovisionnement(){
 
-        $enlevement = Enlevement::all();
+        $enlevements = Enlevement::with([
+                'livraison.detailCommande.commande',
+                'livraison.client',
+                'livreur.user',
+                'fournisseur.user',
+            ])
+            ->where('statut', Help::$STATUT_ACTIF)
+            ->orderByDesc('created_at')
+            ->get();
+
+        // LE RÉAPPROVISIONNEMENT, qui donne son nom à l'écran et n'y figurait
+        // pas : ni stock, ni seuil d'alerte. Le seuil est pourtant saisi sur
+        // chaque ligne de stock, et 51 des 56 lignes actives en portent un.
+        //
+        // Un produit retiré du catalogue ne se réapprovisionne pas : son stock
+        // n'est plus vendable, l'alerter n'apprendrait rien.
+        $aReapprovisionner = StockProduit::with(['produit', 'fournisseur'])
+            ->where('statut', Help::$STATUT_ACTIF)
+            ->whereColumn('qte', '<=', 'seuil_alert')
+            ->whereHas('produit', fn ($q) => $q->where('statut', Help::$STATUT_ACTIF))
+            ->get()
+            // Les ruptures d'abord, puis le plus gros manque : c'est l'ordre
+            // dans lequel on passe les commandes.
+            ->sortBy(fn ($s) => [$s->estEnRupture() ? 0 : 1, -$s->manquePourAtteindreLeSeuil()])
+            ->values();
 
         return view('admin.livraisonR',[
-            'enlevements' => $enlevement
+            'enlevements'       => $enlevements,
+            'aReapprovisionner' => $aReapprovisionner,
+            'nbRuptures'        => $aReapprovisionner->filter->estEnRupture()->count(),
         ]);
     }
 
@@ -3679,140 +4063,357 @@ class UserController extends Controller
         return view('admin.recapLivraison',compact('enlevements'));
     }
 
+    /**
+     * État de parrainage : ce que les filleuls ont payé, regroupé par apporteur.
+     *
+     * L'écran listait une ligne par client sans jamais totaliser par apporteur —
+     * alors que c'est la seule question qu'on lui pose : combien chaque
+     * apporteur a-t-il fait entrer. Il n'avait pas davantage de total général.
+     *
+     * Sans période demandée, on montre tout l'historique : c'est ce que
+     * l'écran faisait déjà, son filtre étant resté en commentaire.
+     */
     public function etatParrainage(Request $request){
-        $du = $request->du ?? date('Y-01-01');
-        $au = $request->au ?? date('Y-m-d');
-        $paiements = Paiement::statPaiementFilleule($du, $au);
-        return view('admin.etatparrainage',[
-            'paiements' => $paiements
-        ]);
-    }
-
-    public function CAParFamille(){
-
-        $data['produits'] = Produit::all();
-        $data['qteTotal'] = StockProduit::sum('qte');
-
-        $data['enlevements'] = Enlevement::all();
-        $data['totalMontant'] = 0;
-        foreach($data['produits'] as $produit){
-            $montantProduit = 0;
-            foreach($produit->enlevements as $enlevement){
-                // Utiliser le prix unitaire effectivement facturé sur la ligne de commande,
-                // qui contient déjà le prix personnalisé du client si applicable.
-                $prixUnitaire = optional(optional($enlevement->livraison)->detailCommande)->prix
-                                ?? $produit->prix_moyen;
-                $montantProduit += $prixUnitaire * $enlevement->qte;
-            }
-            $data['totalMontant'] += $montantProduit;
-
-        }
-        // $data['montantTotal'] = Enlevement::sum('qte');
-
-        // dd($qteTotal,$qteVendue);
-
-        // foreach($produits as $produit){
-        //     $qte = 0;
-        //     foreach($produit->fournisseurs as $frs){
-        //         $qte += $frs->pivot->qte;
-        //     }
-        //     $qtee = 0;
-        //     foreach($produit->enlevements as $enlevement){
-        //         $qtee += $enlevement->qte;
-        //     }
-        //     dd('produit'.$produit->nom.' = '. $qtee);
-
-
-        // }
-        return view('admin.chiffreDaffaire',$data);
-    }
-
-    public function CADetaille(Request $request){
-        // Filtre de dates (le formulaire envoie du/au en GET). Auparavant ignoré.
         $du = $request->input('du') ?: null;
         $au = $request->input('au') ?: null;
 
-        $where  = "commande.statut = 1";
-        $params = [];
-        if ($du) { $where .= " AND commande.created_at >= ?"; $params[] = $du . ' 00:00:00'; }
-        if ($au) { $where .= " AND commande.created_at <= ?"; $params[] = $au . ' 23:59:59'; }
+        $lignes = Paiement::statPaiementFilleule($du, $au);
 
-        // La quantité dispo est calculée en SOUS-REQUÊTE (et non via un INNER JOIN
-        // stock_produit) : un produit ayant plusieurs lignes de stock dupliquait les
-        // lignes de la jointure et gonflait artificiellement qteVendu/prixVente/prixFournisseur.
-        $data['stats'] = DB::select("
-        SELECT
-            ( SELECT COALESCE(SUM(sp.qte),0) FROM stock_produit sp WHERE sp.produit_id = produit.id AND sp.statut = 1 ) AS qteDispo,
-            sum( detail_commande.qte ) AS qteVendu,
-            sum( detail_commande.qte * detail_commande.prix ) AS prixVente,
-            sum( detail_commande.qte * detail_commande.prix_fournisseur ) AS prixFournisseur,
-            produit.nom,
-            (
-            SELECT
-                GROUP_CONCAT( categorie.nom SEPARATOR ', ' )
-            FROM
-                categorie
-                INNER JOIN categorie_produit ON ( categorie.id = categorie_produit.categorie_id AND categorie_produit.produit_id = produit.id AND categorie_produit.statut = 1 )
-            ) AS categories
-        FROM
-            commande
-            INNER JOIN detail_commande ON detail_commande.commande_id = commande.id
-            INNER JOIN produit ON ( produit.id = detail_commande.produit_id AND detail_commande.statut = 1 )
-        WHERE
-            $where
-        GROUP BY
-            produit.nom,
-            produit.id
-        ", $params);
+        $parApporteur = $lignes->groupBy('apporteurId')->map(function ($clients) {
+            $premier = $clients->first();
 
-        return view('admin.CAdetaille', $data);
+            return (object) [
+                'id'      => $premier->apporteurId,
+                'code'    => $premier->codeApporteur,
+                'nom'     => $premier->apporteur,
+                'clients' => $clients->sortByDesc(fn ($c) => (float) $c->total)->values(),
+                'total'   => (float) $clients->sum(fn ($c) => (float) $c->total),
+            ];
+        })
+            ->sortByDesc('total')
+            ->values();
+
+        return view('admin.etatparrainage', [
+            'apporteurs'   => $parApporteur,
+            'du'           => $du,
+            'au'           => $au,
+            'nbFilleuls'   => $lignes->count(),
+            'totalGeneral' => (float) $lignes->sum(fn ($l) => (float) $l->total),
+        ]);
     }
+
     /**
-     * Construit les lignes de créance des clients à terme : pour chaque facture
-     * d'un client à terme actif, on calcule le total à payer (HT + TVA + livraison,
-     * repli sur facture.montant), le total réglé (paiements validés), le reste dû,
-     * l'échéance et les jours de retard. Sert aux états « client à terme » et
-     * « balance âgée ».
+     * Chiffre d'affaires par famille de produits.
+     *
+     * L'écran s'appelle « par famille » : il regroupe donc par famille, avec un
+     * sous-total par famille dont la somme retombe sur le total général.
+     *
+     * UN PRODUIT N'EST COMPTÉ QU'UNE FOIS. Vingt produits appartiennent à
+     * plusieurs familles ; les faire figurer dans chacune ferait des sous-totaux
+     * dont la somme dépasserait le chiffre d'affaires réel. Chaque produit est
+     * donc rattaché à sa PREMIÈRE famille par ordre alphabétique — la colonne
+     * « Famille » les cite toutes, pour que le rattachement reste lisible.
+     *
+     * CE QUI EST COMPTÉ. Seuls les bons VALIDÉS par le fournisseur, encore
+     * actifs, à leur quantité SERVIE (Enlevement::quantiteAPayer) et au prix
+     * réellement facturé — celui de la ligne de commande, qui porte le prix
+     * personnalisé du client ; le prix moyen du produit ne sert que de repli.
+     *
+     * LA TVA. Elle était écrite en dur à 0 % dans la vue, et le « Montant TTC »
+     * recopiait le HT : l'écran annonçait 16 750 F de TTC là où le taux
+     * configuré (18 %) en donne 19 765. Le taux vient maintenant de la
+     * configuration, comme partout ailleurs.
+     *
+     * UNE SEULE SOURCE PAR CHIFFRE. Le bandeau sommait `stock_produit` pendant
+     * que la colonne « Quantité » sommait le pivot `produit_fournisseur` sans
+     * filtrer ni le statut ni les lignes supprimées : les deux divergeaient dès
+     * la première ligne de stock désactivée. Tout part désormais d'une seule
+     * requête filtrée, et le bandeau est littéralement la somme des lignes.
+     *
+     * QUELS PRODUITS. Les produits actifs, plus tout produit désactivé ayant
+     * vendu sur la période — un produit retiré du catalogue garde son chiffre
+     * d'affaires, et le filtrer ferait disparaître de l'argent réellement
+     * encaissé.
+     */
+    public function CAParFamille(Request $request){
+
+        // Le fait générateur du chiffre d'affaires est le SERVICE du bon, pas sa
+        // création : on filtre donc sur la date de validation du fournisseur.
+        $du = $request->input('du') ?: null;
+        $au = $request->input('au') ?: null;
+
+        $tauxTva = (float) (Configuration::first()?->tva ?? 18);
+
+        $bonsServis = Enlevement::with(['livraison.detailCommande', 'produit'])
+            ->whereNotNull('fournisseur_validation')
+            ->where('statut', Help::$STATUT_ACTIF)
+            ->when($du, function ($q) use ($du) {
+                $q->where('fournisseur_validation', '>=', $du . ' 00:00:00');
+            })
+            ->when($au, function ($q) use ($au) {
+                $q->where('fournisseur_validation', '<=', $au . ' 23:59:59');
+            })
+            ->get();
+
+        $ventes = [];
+
+        foreach ($bonsServis as $bon) {
+            if (!$bon->produit_id) {
+                continue;
+            }
+
+            $qte = $bon->quantiteAPayer();
+
+            $prix = optional(optional($bon->livraison)->detailCommande)->prix
+                ?? ($bon->produit?->prix_moyen ?? 0);
+
+            $id = $bon->produit_id;
+
+            $ventes[$id] = [
+                'qte'     => ($ventes[$id]['qte'] ?? 0) + $qte,
+                'montant' => ($ventes[$id]['montant'] ?? 0) + $qte * (float) $prix,
+            ];
+        }
+
+        // Le stock en une requête, filtré, et servant à la fois au bandeau et à
+        // la colonne : impossible qu'ils se contredisent.
+        $stockParProduit = StockProduit::where('statut', Help::$STATUT_ACTIF)
+            ->selectRaw('produit_id, SUM(qte) AS qte')
+            ->groupBy('produit_id')
+            ->pluck('qte', 'produit_id');
+
+        $produits = Produit::with('categories')
+            ->where(function ($q) use ($ventes) {
+                $q->where('statut', Help::$STATUT_ACTIF)
+                    ->orWhereIn('id', array_keys($ventes));
+            })
+            ->orderBy('nom')
+            ->get();
+
+        $familles = [];
+
+        foreach ($produits as $produit) {
+            $noms = $produit->categories->pluck('nom')->filter()->sort()->values();
+
+            // Les produits sans famille ne disparaissent pas : ils sont
+            // regroupés à part, faute de quoi leur chiffre d'affaires
+            // manquerait au total.
+            $principale = $noms->first() ?: 'Sans famille';
+
+            $vente     = $ventes[$produit->id] ?? ['qte' => 0, 'montant' => 0];
+            $qteStock  = (float) ($stockParProduit[$produit->id] ?? 0);
+            $ht        = (float) $vente['montant'];
+
+            if (!isset($familles[$principale])) {
+                $familles[$principale] = [
+                    'nom'       => $principale,
+                    'lignes'    => [],
+                    'qte'       => 0.0,
+                    'qteVendue' => 0.0,
+                    'ht'        => 0.0,
+                ];
+            }
+
+            $familles[$principale]['lignes'][] = (object) [
+                'id'        => $produit->id,
+                'nom'       => $produit->nom,
+                'familles'  => $noms->isEmpty() ? '—' : $noms->implode(', '),
+                'qte'       => $qteStock,
+                'qteVendue' => (float) $vente['qte'],
+                'ht'        => $ht,
+                'tva'       => $ht * $tauxTva / 100,
+                'ttc'       => $ht * (1 + $tauxTva / 100),
+            ];
+
+            $familles[$principale]['qte']       += $qteStock;
+            $familles[$principale]['qteVendue'] += (float) $vente['qte'];
+            $familles[$principale]['ht']        += $ht;
+        }
+
+        ksort($familles, SORT_NATURAL | SORT_FLAG_CASE);
+
+        foreach ($familles as $nom => $f) {
+            $familles[$nom]['tva'] = $f['ht'] * $tauxTva / 100;
+            $familles[$nom]['ttc'] = $f['ht'] * (1 + $tauxTva / 100);
+        }
+
+        $totalHt = array_sum(array_column($familles, 'ht'));
+
+        return view('admin.chiffreDaffaire', [
+            'familles'   => $familles,
+            'du'         => $du,
+            'au'         => $au,
+            'tauxTva'    => $tauxTva,
+            'qteTotal'   => array_sum(array_column($familles, 'qte')),
+            'qteVendue'  => array_sum(array_column($familles, 'qteVendue')),
+            'totalHt'    => $totalHt,
+            'totalTva'   => $totalHt * $tauxTva / 100,
+            'totalTtc'   => $totalHt * (1 + $tauxTva / 100),
+        ]);
+    }
+
+    /**
+     * Chiffre d'affaires détaillé, produit par produit, avec la marge.
+     *
+     * L'écran comptait les COMMANDES, à leur quantité DEMANDÉE, sans jamais
+     * regarder si la marchandise était sortie. Il annonçait 910 255 F pour 56
+     * unités là où « CA par famille » — qui, lui, ne compte que le servi — en
+     * annonçait 16 750 pour 8. Deux écrans de chiffre d'affaires, un facteur 54
+     * entre les deux. Les deux partent maintenant des mêmes bons servis.
+     *
+     * LA MARGE ÉTAIT UNE FICTION. Le coût fournisseur venait de
+     * `detail_commande.prix_fournisseur`, colonne renseignée sur 2 lignes sur
+     * 38 : trente-cinq lignes ressortaient donc en bénéfice intégral. Et l'une
+     * des deux lignes renseignées porte 258 020 F l'unité pour un produit vendu
+     * 50 F, ce qui écrasait à elle seule le total. Le coût vient désormais du
+     * BON lui-même (Enlevement::montantHt), c'est-à-dire de ce que l'entreprise
+     * doit réellement au fournisseur, à la quantité qu'il a servie.
+     *
+     * LA QUANTITÉ DEMANDÉE RESTE VISIBLE, en face de la quantité servie :
+     * l'écart entre les deux est l'information que l'ancien écran noyait.
+     *
+     * Le tout HORS TAXES, et hors transport : le transport est facturé pour le
+     * compte de l'entreprise et ne relève pas de la marge produit.
+     */
+    public function CADetaille(Request $request){
+
+        // Même axe de temps que « CA par famille » : la date à laquelle le
+        // fournisseur a servi le bon, et non celle de la prise de commande.
+        $du = $request->input('du') ?: null;
+        $au = $request->input('au') ?: null;
+
+        $bonsServis = Enlevement::with(['livraison.detailCommande', 'produit.categories'])
+            ->whereNotNull('fournisseur_validation')
+            ->where('statut', Help::$STATUT_ACTIF)
+            ->when($du, function ($q) use ($du) {
+                $q->where('fournisseur_validation', '>=', $du . ' 00:00:00');
+            })
+            ->when($au, function ($q) use ($au) {
+                $q->where('fournisseur_validation', '<=', $au . ' 23:59:59');
+            })
+            ->get();
+
+        $lignes = [];
+
+        foreach ($bonsServis as $bon) {
+            if (!$bon->produit_id) {
+                continue;
+            }
+
+            $qteServie = $bon->quantiteAPayer();
+
+            // Le prix réellement facturé au client, qui porte son prix
+            // personnalisé quand il en a un ; le prix moyen n'est qu'un repli.
+            $prix = optional(optional($bon->livraison)->detailCommande)->prix
+                ?? ($bon->produit?->prix_moyen ?? 0);
+
+            $id = $bon->produit_id;
+
+            if (!isset($lignes[$id])) {
+                $lignes[$id] = [
+                    'id'          => $id,
+                    'nom'         => $bon->produit?->nom ?? '—',
+                    'categories'  => $bon->produit
+                        ? ($bon->produit->categories->pluck('nom')->filter()->sort()->implode(', ') ?: '—')
+                        : '—',
+                    'qteDemandee' => 0.0,
+                    'qteServie'   => 0.0,
+                    'vente'       => 0.0,
+                    'cout'        => 0.0,
+                ];
+            }
+
+            $lignes[$id]['qteDemandee'] += (float) $bon->qte;
+            $lignes[$id]['qteServie']   += $qteServie;
+            $lignes[$id]['vente']       += $qteServie * (float) $prix;
+            // Ce que le fournisseur est en droit de réclamer sur ce bon.
+            $lignes[$id]['cout']        += $bon->montantHt();
+        }
+
+        // Le stock, filtré comme partout ailleurs : statut actif et lignes
+        // vivantes. La requête brute ignorait `deleted_at`.
+        $stock = StockProduit::where('statut', Help::$STATUT_ACTIF)
+            ->selectRaw('produit_id, SUM(qte) AS qte')
+            ->groupBy('produit_id')
+            ->pluck('qte', 'produit_id');
+
+        foreach ($lignes as $id => $ligne) {
+            $lignes[$id]['dispo'] = (float) ($stock[$id] ?? 0);
+            $lignes[$id]['marge'] = $ligne['vente'] - $ligne['cout'];
+        }
+
+        $lignes = array_values($lignes);
+        usort($lignes, fn ($a, $b) => strnatcasecmp($a['nom'], $b['nom']));
+
+        $stats = array_map(fn ($l) => (object) $l, $lignes);
+
+        $totalVente = array_sum(array_column($lignes, 'vente'));
+        $totalCout  = array_sum(array_column($lignes, 'cout'));
+
+        return view('admin.CAdetaille', [
+            'stats'            => $stats,
+            'du'               => $du,
+            'au'               => $au,
+            'totalQteDemandee' => array_sum(array_column($lignes, 'qteDemandee')),
+            'totalQteServie'   => array_sum(array_column($lignes, 'qteServie')),
+            'totalDispo'       => array_sum(array_column($lignes, 'dispo')),
+            'totalVente'       => $totalVente,
+            'totalCout'        => $totalCout,
+            'totalMarge'       => $totalVente - $totalCout,
+        ]);
+    }
+
+    /**
+     * Lignes de créance des clients à terme, pour l'état « Client à terme » et
+     * la « Balance âgée ».
+     *
+     * LE DÛ EST CELUI DE LA FACTURE. Il était recalculé ici depuis TOUTE la
+     * commande — quantité COMMANDÉE × prix, plus la totalité des frais de
+     * livraison, remise ignorée. Or une facture est émise sur les enlèvements
+     * réellement SERVIS, et une commande peut en produire plusieurs. La
+     * créance dépassait donc ce qui avait été réclamé au client, se comptait
+     * autant de fois que la commande avait de factures, et un reste subsistait
+     * quoi qu'il paie : sa dette était insoldable.
+     *
+     * Le correctif existait déjà sur l'écran « Créances / Factures » sans avoir
+     * jamais été reporté ici. Les deux écrans appellent désormais la même
+     * méthode, Facture::totalAPayer(), pour qu'ils ne puissent plus diverger.
+     *
+     * LES CLIENTS SUSPENDUS RESTENT DUS. Le filtre sur le statut du client
+     * faisait disparaître de l'état la créance d'un client désactivé : le
+     * suspendre effaçait sa dette de la balance.
      */
     private function lignesCreanceTerme()
     {
-        $clientsTerme = Client::where('client_a_terme', 1)->where('statut', 1)->pluck('id');
-        $tauxTva = (float) (Configuration::first()?->tva ?? 18);
+        $clientsTerme = Client::where('client_a_terme', 1)->pluck('id');
 
-        $factures = Facture::with(['commande.detailCommande', 'commande.client.user', 'paiements'])
+        $factures = Facture::with(['client.user', 'commande.detailCommande', 'commande.client.user', 'paiements'])
             ->whereIn('client_id', $clientsTerme)
             ->orderByDesc('created_at')
             ->get();
 
-        return $factures->map(function (Facture $f) use ($tauxTva) {
-            $commande = $f->commande;
-            $client   = $commande?->client;
-            $details  = $commande ? $commande->detailCommande : collect();
+        return $factures->map(function (Facture $f) {
+            // Le client vient de la FACTURE : sur une facture de location,
+            // `service_id` désigne une location et la relation commande()
+            // ramènerait une commande sans rapport.
+            $client = $f->client ?? $f->commande?->client;
 
-            $montantHt  = (float) $details->sum(fn($d) => (float) $d->qte * (float) $d->prix);
-            $tva        = $montantHt * ($tauxTva / 100);
-            $montantTtc = $montantHt + $tva;
-            $frais      = (float) ($commande?->cout_livraison_client ?? 0);
-            $totalAPayer = $montantTtc + $frais;
-            if ($montantHt == 0 && (float) $f->montant > 0) {
-                $totalAPayer = (float) $f->montant;
-            }
-
-            $totalPaye = (float) $f->paiements->where('statut', 1)->sum('montant_total');
-            $reste     = max(0, $totalAPayer - $totalPaye);
+            $totalAPayer = $f->totalAPayer();
+            $totalPaye   = $f->montantPaye();
 
             return (object) [
                 'facture'       => $f,
                 'date'          => $f->created_at,
                 'client'        => $client,
-                'client_nom'    => $client ? trim($client->nom . ' ' . $client->prenom) : '-',
+                'client_nom'    => $client?->display_name ?? '-',
                 'client_id'     => $client?->id,
                 'numero'        => $f->numero,
                 'total_a_payer' => $totalAPayer,
                 'montant_paye'  => $totalPaye,
-                'reste'         => $reste,
-                'date_echeance' => $f->date_echeance,
+                'reste'         => max(0, $totalAPayer - $totalPaye),
+                'date_echeance' => $f->echeance(),
                 'jours_retard'  => $f->joursRetard(),
+                'est_echue'     => $f->estEchue(),
             ];
         });
     }
@@ -3828,17 +4429,49 @@ class UserController extends Controller
         ]);
     }
 
+    /** Les tranches d'ancienneté, dans l'ordre où elles s'affichent. */
+    private const TRANCHES_BALANCE = [
+        'non_echu', 't1_30', 't31_60', 't61_90', 't91_120', 't121_180', 't181_360', 't360_plus',
+    ];
+
+    /**
+     * Balance âgée : les créances ouvertes, ventilées par ancienneté du retard.
+     *
+     * TROIS DÉFAUTS CORRIGÉS.
+     *
+     * 1. LE NON ÉCHU ÉTAIT COMPTÉ COMME DU RETARD. Une facture pas encore due a
+     *    zéro jour de retard, tout comme une facture échue du jour : les deux
+     *    tombaient dans « 0 à 30 jours ». La première tranche mélangeait donc
+     *    ce qui est en souffrance et ce qui n'est même pas exigible. Le non
+     *    échu a désormais sa colonne, et la première tranche de retard
+     *    commence à 1 jour.
+     *
+     * 2. LE REGROUPEMENT SE FAISAIT SUR LE NOM DU CLIENT. Deux homonymes
+     *    fusionnaient en une seule ligne, et toutes les factures dont le client
+     *    est introuvable se retrouvaient agrégées sous « - ». On groupe sur
+     *    l'identifiant, seul discriminant fiable.
+     *
+     * 3. AUCUN TOTAL PAR TRANCHE. L'état ne disait pas combien dormait à plus
+     *    de 360 jours, ce qui est pourtant la question qu'on lui pose.
+     */
     public function balanceAgee(){
-        // On ne garde que les factures avec un reste à payer (créances ouvertes),
-        // puis on ventile par client dans des tranches d'ancienneté (jours de retard).
         $lignes = $this->lignesCreanceTerme()->filter(fn($l) => (float) $l->reste > 0);
 
-        $parClient = $lignes->groupBy('client_nom')->map(function ($items, $nom) {
-            $b = ['t0_30' => 0, 't31_60' => 0, 't61_90' => 0, 't91_120' => 0, 't121_180' => 0, 't181_360' => 0, 't360_plus' => 0];
+        $parClient = $lignes->groupBy('client_id')->map(function ($items) {
+            $b = array_fill_keys(self::TRANCHES_BALANCE, 0.0);
+
             foreach ($items as $it) {
-                $j = max(0, (int) $it->jours_retard);
                 $r = (float) $it->reste;
-                if ($j <= 30)        $b['t0_30']     += $r;
+
+                if (!$it->est_echue) {
+                    // Pas encore exigible : ce n'est pas du retard.
+                    $b['non_echu'] += $r;
+                    continue;
+                }
+
+                $j = max(1, (int) $it->jours_retard);
+
+                if ($j <= 30)        $b['t1_30']     += $r;
                 elseif ($j <= 60)    $b['t31_60']    += $r;
                 elseif ($j <= 90)    $b['t61_90']    += $r;
                 elseif ($j <= 120)   $b['t91_120']   += $r;
@@ -3846,13 +4479,30 @@ class UserController extends Controller
                 elseif ($j <= 360)   $b['t181_360']  += $r;
                 else                 $b['t360_plus'] += $r;
             }
-            $b['client'] = $nom;
-            $b['total']  = array_sum(array_intersect_key($b, array_flip(['t0_30','t31_60','t61_90','t91_120','t121_180','t181_360','t360_plus'])));
+
+            $premiere = $items->first();
+
+            $b['client']    = $premiere->client_nom;
+            $b['client_id'] = $premiere->client_id;
+            $b['total']     = array_sum(array_intersect_key($b, array_flip(self::TRANCHES_BALANCE)));
+
             return (object) $b;
-        })->values();
+        })
+            // Le plus gros débiteur en tête : c'est l'ordre dans lequel on lit
+            // une balance.
+            ->sortByDesc('total')
+            ->values();
+
+        // Total de chaque tranche : sans lui, l'état ne répond pas à la seule
+        // question qu'on lui pose vraiment.
+        $totaux = [];
+        foreach (self::TRANCHES_BALANCE as $tranche) {
+            $totaux[$tranche] = (float) $parClient->sum($tranche);
+        }
 
         return view('admin.balanceAgee', [
             'lignes'       => $parClient,
+            'totaux'       => $totaux,
             'totalGeneral' => (float) $parClient->sum('total'),
         ]);
     }
@@ -4111,7 +4761,7 @@ class UserController extends Controller
         // type_user_id = 2 (Admin) — utilise la constante au lieu d'une requête
         // qui pouvait renvoyer NULL si le libellé ne correspondait pas exactement.
         $typeUserId = Help::$USER_ADMIN;
-        $nom_prenom = trim($request->nom . ' ' . $request->prenom);
+        $nom_prenom = $request->display_name;
 
         // Construire le numéro complet SANS redoubler l'indicatif : si l'utilisateur
         // a déjà saisi le numéro au format international (+225...) ou avec l'indicatif
@@ -4291,6 +4941,8 @@ class UserController extends Controller
             'devise',
             'prixKm',
             'cout_livraison_min',
+            // Mode de tarification du transport des ventes et locations.
+            'livraison_sur_grille',
             'tonne_moyenne',
             'cout_liv_fixe',
             // Créances clients à terme

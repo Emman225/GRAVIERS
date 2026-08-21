@@ -1,8 +1,17 @@
 @php
     $isCommandesActive = request()->routeIs('orders.list', 'orders.commandesTraitees', 'show.listeRetourProduit', 'show.demandesAnnulation', 'orders.listeDesDevis', 'show.ticketSAV');
     $isLivraisonsActive = request()->routeIs('show.livraisonEnCours', 'show.livraisonValidees', 'show.livraisonHistorique');
-    $isLocationsActive = request()->routeIs('show.listeLocationEnAttente');
-    $isDemandeLivraisonActive = request()->routeIs('show.demandeLivraisonlist', 'show.demandeLivraisonTraitee');
+    $isLocationsActive = request()->routeIs(
+        'show.listeLocationEnAttente',
+        'show.locationsTraitees',
+        'show.encaissements.locations'
+    );
+    $isDemandeLivraisonActive = request()->routeIs(
+        'show.demandeLivraisonlist',
+        'show.demandeLivraisonTraitee',
+        'show.comptant.livraisons.encaissements',
+        'show.grilleTarifaire'
+    );
     $isFournisseursActive = request()->routeIs(
         'show.listSeller', 'show.registerSeller', 'show.listSellerPourBon',
         'show.fournisseurs.enlevements', 'show.fournisseurs.paiements', 'show.fournisseurs.synthese'
@@ -69,6 +78,10 @@
     <div class="submenu">
         <a class="{{ request()->routeIs('show.listeLocationEnAttente') ? 'active' : '' }}" href="{{ route('show.listeLocationEnAttente') }}">Location en attente</a>
         <a class="{{ request()->routeIs('show.locationsTraitees') ? 'active' : '' }}" href="{{ route('show.locationsTraitees') }}">Locations traitées</a>
+        {{-- La caisse des locations vit avec les locations, et non sous « Client
+             ordinaire » comme celles des ventes et des livraisons : elle sert
+             AUSSI les clients à terme, faute d'écran de créance pour ce service. --}}
+        <a class="{{ request()->routeIs('show.encaissements.locations') ? 'active' : '' }}" href="{{ route('show.encaissements.locations') }}">Encaissements locations</a>
     </div>
 </li>
 <li class="menu-item has-submenu {{ $isDemandeLivraisonActive ? 'active' : '' }}">
@@ -80,6 +93,13 @@
     <div class="submenu">
         <a class="{{ request()->routeIs('show.demandeLivraisonlist') ? 'active' : '' }}" href="{{ route('show.demandeLivraisonlist') }}">Demande en attente</a>
         <a class="{{ request()->routeIs('show.demandeLivraisonTraitee') ? 'active' : '' }}" href="{{ route('show.demandeLivraisonTraitee') }}">Demande traitée</a>
+        {{-- Ces deux entrées étaient rangées sous « Client ordinaire », ce qui
+             laissait croire qu'elles ne concernaient pas les clients à terme.
+             La grille chiffre le transport de tous les clients, et le guichet
+             les encaisse tous — une demande de livraison ne génère aucune
+             facture, elle n'entre donc pas dans les créances à terme. --}}
+        <a class="{{ request()->routeIs('show.comptant.livraisons.encaissements') ? 'active' : '' }}" href="{{ route('show.comptant.livraisons.encaissements') }}">Encaissements demandes de livraison</a>
+        <a class="{{ request()->routeIs('show.grilleTarifaire') ? 'active' : '' }}" href="{{ route('show.grilleTarifaire') }}">Grille tarifaire livraisons</a>
     </div>
 </li>
 

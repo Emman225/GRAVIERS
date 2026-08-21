@@ -36,21 +36,32 @@
                                     @foreach ($enlevements as $enlevement)
                                         <tr>
                                             <td> {{ $enlevement->code_enleve }} </td>
-                                            <td> {{ $enlevement->livraison->client->nom.' '.$enlevement->livraison->client->prenom }} </td>
+                                            <td> {{ $enlevement->livraison?->client?->display_name }} </td>
                                             <td>
-                                                <b> {{ $enlevement->fournisseur->nom_prenoms }} </b>
+                                                <b> {{ $enlevement->fournisseur?->nom_prenoms }} </b>
                                             </td>
                                             <td>
                                                 <b>
-                                                    @if ($enlevement->livraison->livre_par == 1)
-                                                        {{ $enlevement->livraison->livreur->user->nom_prenoms }}
+                                                    @if ($enlevement->livraison?->livre_par == 1)
+                                                        {{ $enlevement->livraison?->livreur?->user?->nom_prenoms }}
                                                     @else
-                                                        {{ $enlevement->livraison->clientLivreur->nom }}
+                                                        {{ $enlevement->livraison?->clientLivreur->nom }}
                                                     @endif
                                                 </b>
                                             </td>
-                                            <td>{{ $enlevement->produit->nom }}</td>
-                                            <td class="text-center">{{ $enlevement->qte }}</td>
+                                            <td>{{ $enlevement->produit?->nom }}</td>
+                                            <td class="text-center">
+                                                {{-- La quantité SERVIE par le fournisseur : c'est elle qui
+                                                     fait foi une fois le bon traité, et c'est elle qui est
+                                                     payée (cf. Enlevement::quantiteAPayer). --}}
+                                                {{ rtrim(rtrim(number_format($enlevement->quantiteAPayer(), 2, ',', ' '), '0'), ',') }}
+                                                @if ($enlevement->quantiteDiffereDeLaCommande())
+                                                    <br>
+                                                    <small class="text-muted">
+                                                        demandé : {{ rtrim(rtrim(number_format((float) $enlevement->qte, 2, ',', ' '), '0'), ',') }}
+                                                    </small>
+                                                @endif
+                                            </td>
                                             <td class="text-center">{{ $enlevement->gestionnaire?->nom_prenoms ?: '-' }}</td>
                                             <td>{{ $enlevement->created_at->format('d-m-Y')}}</td>
                                             <td class="text-center">

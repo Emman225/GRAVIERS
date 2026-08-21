@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\DetailCommande;
 use App\Models\Client;
+use App\Models\User;
 
 class TicketSAV extends Model
 {
@@ -34,5 +35,20 @@ class TicketSAV extends Model
 
     public function client(){
         return $this->belongsTo(Client::class)->withDefault(['nom'=>'','prenom'=>'','email'=>'','contact1'=>'','contact2'=>'','type_client'=>'','client_a_terme'=>0]);
+    }
+
+    /**
+     * Personne à qui le ticket est confié — agent SAV, administrateur ou
+     * gestionnaire.
+     *
+     * La liste des tickets n'affichait NULLE PART à qui un ticket avait été
+     * confié : passé l'assignation, elle ne montrait qu'un badge « En
+     * traitement », et plus personne ne savait qui l'avait.
+     *
+     * withDefault : un ticket non encore assigné n'a pas de destinataire, et la
+     * vue doit pouvoir lire le nom sans précaution.
+     */
+    public function agent(){
+        return $this->belongsTo(User::class, 'user_id')->withDefault(['nom_prenoms' => '']);
     }
 }

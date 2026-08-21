@@ -85,7 +85,10 @@
     <div class="gravel-image"></div>
     <h1 class="error-title">404</h1>
     <p class="error-message">Oups ! La page que vous cherchez est introuvable.</p>
-    {{-- <a href="/" class="btn-home">Retour à l'accueil</a> --}}
+    {{-- Ce bouton était commenté : la page 404 n'ayant ni menu ni lien, le
+         visiteur arrivait dans un cul-de-sac. Il est d'autant plus utile
+         maintenant qu'une adresse inconnue ne renvoie plus vers la connexion. --}}
+    <a href="{{ url('/') }}" class="btn-home">Retour à l'accueil</a>
   </div>
 
 </body>

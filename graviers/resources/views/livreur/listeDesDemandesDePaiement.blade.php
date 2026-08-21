@@ -1,5 +1,5 @@
 @extends('layout.main')
-@section('title','Mes demandes de paiement')
+@section('title','Mes paiements')
 
 @php
     use Illuminate\Support\Carbon;
@@ -13,8 +13,8 @@
     <div class="dash-welcome mb-4">
         <div class="dash-welcome-content">
             <div>
-                <h2 class="dash-welcome-title">Mes demandes de paiement</h2>
-                <p class="dash-welcome-subtitle">Historique de vos demandes de retrait sur votre solde.</p>
+                <h2 class="dash-welcome-title">Mes paiements</h2>
+                <p class="dash-welcome-subtitle">Tout ce que vous avez reçu : vos demandes de retrait, et les règlements que l'entreprise a effectués sur vos courses de sa propre initiative.</p>
             </div>
             <div class="dash-welcome-actions d-none d-md-flex gap-2">
                 <a href="{{ route('show.demandeDepaiePage') }}" class="btn btn-primary btn-sm">
@@ -53,7 +53,7 @@
             <div class="kpi-card kpi-card-success">
                 <div class="kpi-card-icon"><i class="material-icons md-paid"></i></div>
                 <div class="kpi-card-body">
-                    <div class="kpi-card-label">Payées</div>
+                    <div class="kpi-card-label">Reçus</div>
                     <div class="kpi-card-value">{{ $totalPayees }}</div>
                     <div class="kpi-card-meta"><span class="kpi-card-meta-text">{{ number_format($montantPaye, 0, ',', ' ') }} FCFA reçus</span></div>
                 </div>
@@ -64,7 +64,7 @@
             <div class="kpi-card kpi-card-info">
                 <div class="kpi-card-icon"><i class="material-icons md-receipt_long"></i></div>
                 <div class="kpi-card-body">
-                    <div class="kpi-card-label">Total demandes</div>
+                    <div class="kpi-card-label">Total paiements</div>
                     <div class="kpi-card-value">{{ $totalDemandes }}</div>
                     <div class="kpi-card-meta"><span class="kpi-card-meta-text">@if($totalRefusees) {{ $totalRefusees }} refusée{{ $totalRefusees > 1 ? 's' : '' }} @else historique cumulé @endif</span></div>
                 </div>
@@ -78,7 +78,7 @@
         <div class="card-header dash-card-header">
             <h5 class="dash-card-title mb-0">
                 <i class="material-icons md-list_alt text-primary"></i>
-                Historique des demandes
+                Historique de mes paiements
             </h5>
         </div>
         <div class="card-body p-0">
@@ -86,32 +86,47 @@
                 <table class="table table-hover align-middle mb-0" id="demandesTable">
                     <thead class="table-light">
                         <tr>
-                            <th>N°</th>
+                            <th>Référence</th>
                             <th>Date</th>
+                            <th>Origine</th>
                             <th class="text-end">Montant</th>
                             <th class="text-center">Statut</th>
                             <th>Mode de paiement</th>
-                            <th>Payée le</th>
+                            <th>Payé le</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @forelse($demandes as $demande)
+                        @forelse($mouvements as $m)
                             <tr>
-                                <td><strong class="text-primary">{{ $demande->numero }}</strong></td>
-                                <td>{{ Carbon::parse($demande->created_at)->format('d/m/Y') }}</td>
-                                <td class="text-end fw-bold">{{ number_format((float) $demande->montant, 0, ',', ' ') }} FCFA</td>
-                                <td class="text-center">
-                                    @switch((int) $demande->paye)
-                                        @case(0) <span class="badge bg-warning text-dark">En attente</span> @break
-                                        @case(1) <span class="badge bg-success">Payé</span> @break
-                                        @case(2) <span class="badge bg-danger">Refusé</span> @break
-                                        @default <span class="badge bg-light text-dark">—</span>
-                                    @endswitch
-                                </td>
-                                <td>{{ (int) $demande->paye === 1 ? ($demande->modePaiement?->libelle ?? '—') : '—' }}</td>
                                 <td>
-                                    @if((int) $demande->paye === 1)
-                                        <small>{{ Carbon::parse($demande->updated_at)->format('d/m/Y') }}</small>
+                                    <strong class="text-primary">{{ $m->reference }}</strong>
+                                    <br><small class="text-muted">{{ $m->detail }}</small>
+                                </td>
+                                <td>{{ $m->date ? Carbon::parse($m->date)->format('d/m/Y') : '—' }}</td>
+                                <td>
+                                    {{-- Qui a lancé le versement : vous, ou l'entreprise de sa
+                                         propre initiative. Les seconds n'étaient visibles nulle
+                                         part sur cet écran. --}}
+                                    @if ($m->origine === 'Vous')
+                                        <span class="badge bg-info">Votre demande</span>
+                                    @else
+                                        <span class="badge bg-secondary">L'entreprise</span>
+                                    @endif
+                                </td>
+                                <td class="text-end fw-bold">{{ number_format($m->montant, 0, ',', ' ') }} FCFA</td>
+                                <td class="text-center">
+                                    @if($m->statut === 1)
+                                        <span class="badge bg-success">Payé</span>
+                                    @elseif($m->statut === 2)
+                                        <span class="badge bg-danger">Refusé</span>
+                                    @else
+                                        <span class="badge bg-warning text-dark">En attente</span>
+                                    @endif
+                                </td>
+                                <td>{{ $m->statut === 1 ? ($m->mode ?? '—') : '—' }}</td>
+                                <td>
+                                    @if($m->date_paiement)
+                                        <small>{{ Carbon::parse($m->date_paiement)->format('d/m/Y') }}</small>
                                     @else
                                         <span class="text-muted">—</span>
                                     @endif
@@ -119,12 +134,9 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="6" class="text-center text-muted py-5">
+                                <td colspan="7" class="text-center text-muted py-5">
                                     <i class="material-icons md-inbox" style="font-size:48px;opacity:0.3"></i>
-                                    <p class="mb-0 mt-2">Aucune demande de paiement.</p>
-                                    <a href="{{ route('show.demandeDepaiePage') }}" class="btn btn-sm btn-primary mt-2">
-                                        <i class="material-icons md-add"></i> Faire une demande
-                                    </a>
+                                    <p class="mb-0 mt-2">Aucun paiement pour le moment.</p>
                                 </td>
                             </tr>
                         @endforelse

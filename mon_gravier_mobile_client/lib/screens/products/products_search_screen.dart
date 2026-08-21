@@ -68,17 +68,21 @@ class _ProductsSearchScreenState extends State<ProductsSearchScreen> {
           if (kDebugMode) {
             print("-------------${produits.length}");
           }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
         user.code = 500;
-        user.message = "Une erreur s'est produite veuillez reesayer plus tard";
+        user.message = messageErreurTechnique(e);
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -88,6 +92,7 @@ class _ProductsSearchScreenState extends State<ProductsSearchScreen> {
     var lig = paniers.indexWhere((p) => p.type == 2);
     if (lig >= 0) {
       paniers.clear();
+      devisRepris = null;
     }
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {

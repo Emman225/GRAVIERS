@@ -15,11 +15,18 @@ class BlClient extends Model
         'client_id',
         'montant',
         'fichier',
-        'commande_id'
-       
+        'commande_id',
+        // Un bon peut être rattaché à une COMMANDE ou à une DEMANDE DE
+        // LIVRAISON. Deux colonnes distinctes, jamais une seule colonne
+        // polymorphe : chaque lien garde sa contrainte d'intégrité.
+        'demande_livraison_id',
     ];
 
     public function commande(){
         return $this->belongsTo(Commande::class,'commande_id');
+    }
+
+    public function demandeLivraison(){
+        return $this->belongsTo(DemandeLivraison::class,'demande_livraison_id');
     }
 }

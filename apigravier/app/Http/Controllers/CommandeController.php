@@ -173,15 +173,30 @@ class CommandeController extends Controller
                     $livTotal = ($request->meFaireLivre == true || $request->meFaireLivre == 1) ? (float) $request->coutLivraison : 0;
                     $qteTotaleDevis = 0;
                     foreach ($request->lignes as $l) { $qteTotaleDevis += (float) $l[('qte')]; }
+
+                    // Prix arrêtés par le SERVEUR, comme pour une commande : prix
+                    // personnalisé du client s'il en a un, sinon prix catalogue.
+                    // On reprenait ici le prix envoyé par l'application — un devis
+                    // se transforme ensuite en commande, et ce prix aurait suivi
+                    // jusqu'à la facture.
+                    $prixPersoDevis = PrixPersonnalise::listeSurClient($client->id);
+                    $catalogueDevis = Produit::prixCatalogue(
+                        array_map(fn ($l) => $l['produit_id'] ?? null, $request->lignes)
+                    );
+
                     foreach ($request->lignes as $l) {
 
                         $cl = ($qteTotaleDevis > 0) ? ((float) $l[('qte')] / $qteTotaleDevis) * $livTotal : 0;
+
+                        $idProduitDevis = (int) ($l['produit_id'] ?? 0);
+                        $prixDevis = (float) ($prixPersoDevis[$idProduitDevis]
+                            ?? ($catalogueDevis[$idProduitDevis] ?? 0));
 
                         $ligne = new DetailDevis();
                         $ligne->produit_id = $l['produit_id'];
                         $ligne->devis_id = $devis->id;
                         $ligne->qte = $l['qte'];
-                        $ligne->prix = $l['prix'];
+                        $ligne->prix = $prixDevis;
                         $ligne->statut = Help::$STATUT_ACTIF;
                         $ligne->cout_livraison = $cl;
                         $ligne->debut_location = $l['dateDebut'];
@@ -715,14 +730,14 @@ class CommandeController extends Controller
                                 'prenom_usager' => $lePrenom,
                                 'telephone' => $client->contact1,
                                 'email' => $user->email,
-                                'libelle_article' => "Paiement IMLOD",
+                                'libelle_article' => "Paiement DALAKOUN",
                                 'quantite' => 1,
                                 // Montant réellement prélevé : celui calculé par le
                                 // serveur. C'est le point central de la faille :
                                 // l'application pouvait sinon faire payer 100 F une
                                 // commande de 1 000 000 F.
                                 'montant' => ceil($totalServeur),
-                                'lib_order' => "Paiement commande de produit IMLOD",
+                                'lib_order' => "Paiement commande de produit DALAKOUN",
                                 'Url_Retour' => Help::urlPaiement(route("ouvreApp", ['codePaiement' => $codePaiement])),
                                 'Url_Callback' => Help::urlPaiement(route('callBackPaiement')),
                             ],
@@ -770,7 +785,7 @@ class CommandeController extends Controller
                     try {
                         $com = Commande::lire($commande->id);
                         $lis = DetailCommande::liste(null, $commande->id);
-                        Mail::to($user->email)->send(new EnvoieCommandeMail($com, $lis, $request->montantTva, $client->nom . ' ' . $client->prenom, $client->email, $client->contact1, Help::$VENTE));
+                        Mail::to($user->email)->send(new EnvoieCommandeMail($com, $lis, $request->montantTva, $client->display_name, $client->email, $client->contact1, Help::$VENTE));
                     } catch (\Throwable $mailEx) {
                         Log::error('Email commande non envoyé (commande ' . $commande->id . '): ' . $mailEx->getMessage());
                     }

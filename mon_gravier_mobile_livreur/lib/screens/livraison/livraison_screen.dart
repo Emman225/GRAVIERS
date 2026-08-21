@@ -44,7 +44,7 @@ class LivraisonScreenState extends State<LivraisonScreen> {
       }
 
       try {
-        retourHttp = await http
+        final http.Response retourHttp = await http
             .post(Uri.parse('${lienAPI()}liste-livraison'),
                 headers: {"Content-Type": "application/json"},
                 body: jsonEncode(param))
@@ -71,17 +71,21 @@ class LivraisonScreenState extends State<LivraisonScreen> {
                   .where((c) => c.etatLivraison == LIVRAISON_LIVREE)
                   .toList();
               pages = [
-                LivraisonListeScreen(livraisons: livraisonEnAttente),
-                LivraisonListeScreen(livraisons: livraisonEnTraitement),
-                LivraisonListeScreen(livraisons: livraisonEffectue),
+                LivraisonListeScreen(livraisons: livraisonEnAttente, onRetour: () => chargerLivraison(sansLoader: true)),
+                LivraisonListeScreen(livraisons: livraisonEnTraitement, onRetour: () => chargerLivraison(sansLoader: true)),
+                LivraisonListeScreen(livraisons: livraisonEffectue, onRetour: () => chargerLivraison(sansLoader: true)),
               ];
             });
           } else {
-            EasyLoading.showError(liv.message ?? '');
+            afficherErreur(liv.message ?? '');
           }
+        } else {
+          // Sans cette branche, une reponse serveur en erreur ne produisait
+          // AUCUNE reaction a l'ecran.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez reessayer.");
         }
       } catch (e) {
-        EasyLoading.showError(
+        afficherErreur(
             "Une erreur s'est produite veuillez reesayer plus tard");
         if (kDebugMode) {
           print(e.toString());
@@ -91,16 +95,16 @@ class LivraisonScreenState extends State<LivraisonScreen> {
         fermerChargement();
       }
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
   @override
   void initState() {
     pages = [
-      LivraisonListeScreen(livraisons: livraisonEnAttente),
-      LivraisonListeScreen(livraisons: livraisonEnTraitement),
-      LivraisonListeScreen(livraisons: livraisonEffectue),
+      LivraisonListeScreen(livraisons: livraisonEnAttente, onRetour: () => chargerLivraison(sansLoader: true)),
+      LivraisonListeScreen(livraisons: livraisonEnTraitement, onRetour: () => chargerLivraison(sansLoader: true)),
+      LivraisonListeScreen(livraisons: livraisonEffectue, onRetour: () => chargerLivraison(sansLoader: true)),
     ];
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {

@@ -52,7 +52,12 @@ class DemandeAnnulationController extends Controller
                 $d->infos = (object) [
                     'numero'        => $service->numero ?? '(introuvable)',
                     'etat'          => $etat,
-                    'montant'       => (float) ($service->montant_total ?? 0),
+                    // Pour une COMMANDE, montant_total est ambigu (HT côté site, NET côté
+                    // mobile) : on recalcule le net depuis les lignes. Pour une LOCATION,
+                    // la colonne n'est pas ambiguë.
+                    'montant'       => $estLocation
+                        ? (float) ($service->montant_total ?? 0)
+                        : (float) ($service ? $service->montantAPayer() : 0),
                     'paye'          => $paye,
                     'en_traitement' => $enTraitement,
                     'existe'        => (bool) $service,
@@ -141,7 +146,7 @@ class DemandeAnnulationController extends Controller
         try {
             $email = $demande->client?->user?->email ?: $demande->client?->email;
             if ($email) {
-                $nom = trim(($demande->client->nom ?? '') . ' ' . ($demande->client->prenom ?? ''));
+                $nom = ($demande->client?->display_name ?? '');
                 if ((int) $request->rep === 1) {
                     $texte = "Bonjour $nom,\n\nVotre demande d'annulation de la $libelle N° $numero a été APPROUVÉE. La $libelle est annulée."
                         . ($paye > 0 ? "\n\nUn paiement de " . number_format($paye, 0, ',', ' ') . " FCFA ayant été enregistré sur cette $libelle, notre équipe vous contactera pour le remboursement." : '')

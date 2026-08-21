@@ -155,7 +155,7 @@ class _OtpFormState extends State<OtpForm> {
                 }
 
                 try {
-                  retourHttp = await http
+                  final http.Response retourHttp = await http
                       .post(Uri.parse('${lienAPI()}verifierOtp'),
                           headers: {"Content-Type": "application/json"},
                           body: jsonEncode(param))
@@ -183,22 +183,24 @@ class _OtpFormState extends State<OtpForm> {
                       }
 
                     } else {
-                      EasyLoading.showError(datas['message']);
+                      afficherErreur(datas['message']);
                     }
                   } else {
-                    EasyLoading.showError("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
+                    afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
                   }
                 } catch (e) {
                   user.code = 500;
                   user.message =
                       "Une erreur s'est produite veuillez reesayer plus tard";
+                  // Ce bloc de secours n.affichait RIEN : ecran muet en cas de coupure reseau.
+                  afficherErreur("Impossible de contacter le serveur. Verifiez votre connexion et reessayez.");
                   if (kDebugMode) {
                     print(e.toString());
                   }
                 }
                 fermerChargement();
               } else {
-                EasyLoading.showInfo(
+                afficherInfo(
                     "Veuillez vérifier votre connexion internet");
               }
             },

@@ -64,7 +64,7 @@
                                             @if ($detail->etat_livraison == 'LIVREE')
                                                 <tr>
                                                     <td class="text-center fw-bold">{{ $i }}</td>
-                                                    <td><strong class="retour-produit-name">{{ $detail->produit->nom }}</strong></td>
+                                                    <td><strong class="retour-produit-name">{{ $detail->produit?->nom }}</strong></td>
                                                     <td class="text-center">
                                                         <span class="retour-produit-qte-badge">{{ $detail->qte }}</span>
                                                     </td>
@@ -89,8 +89,31 @@
                                                         @endif
                                                     </td>
                                                     <td>
-                                                        @if($detail->retour && $detail->retour->observation_reception)
-                                                            <small>{{ $detail->retour->observation_reception }}</small>
+                                                        {{-- Le client ne voyait QUE l'observation du service, remplie au
+                                                             traitement. Son propre motif — ce qu'il avait écrit, et quand —
+                                                             n'apparaissait nulle part : impossible pour lui de se rappeler
+                                                             ce qu'il avait demandé, ni depuis combien de temps. --}}
+                                                        @if($detail->retour)
+                                                            <div class="retour-produit-motif">
+                                                                <span class="retour-produit-motif__intitule">Votre motif</span>
+                                                                <small>{{ $detail->retour->motif }}</small>
+                                                                <span class="retour-produit-motif__date">
+                                                                    demandé le {{ Carbon::parse($detail->retour->created_at)->format('d/m/Y') }}
+                                                                </span>
+                                                            </div>
+                                                            @if($detail->retour->observation_reception)
+                                                                <div class="retour-produit-motif retour-produit-motif--service">
+                                                                    <span class="retour-produit-motif__intitule">Réponse du service</span>
+                                                                    <small>{{ $detail->retour->observation_reception }}</small>
+                                                                    @if($detail->retour->date_reception)
+                                                                        <span class="retour-produit-motif__date">
+                                                                            le {{ Carbon::parse($detail->retour->date_reception)->format('d/m/Y') }}
+                                                                        </span>
+                                                                    @endif
+                                                                </div>
+                                                            @elseif($detail->retour->statut == 3)
+                                                                <small class="text-muted">Refus sans commentaire</small>
+                                                            @endif
                                                         @else
                                                             <span class="text-muted">—</span>
                                                         @endif
@@ -99,6 +122,13 @@
                                                         @if(!$detail->retour)
                                                             <a href="{{ route('client.motifPage', $detail) }}" class="retour-produit-btn">
                                                                 <i class="fi-rs-refresh"></i> Demander
+                                                            </a>
+                                                        @elseif($detail->retour->statut == 3)
+                                                            {{-- Après un refus, le client restait bloqué : aucune action ne
+                                                                 lui était proposée, définitivement. Un refus n'est pourtant
+                                                                 pas une fin — il peut avoir un élément nouveau à apporter. --}}
+                                                            <a href="{{ route('client.motifPage', $detail) }}" class="retour-produit-btn">
+                                                                <i class="fi-rs-refresh"></i> Redemander
                                                             </a>
                                                         @endif
                                                     </td>
@@ -249,6 +279,25 @@
     .retour-produit-badge--attente { background: #fef3c7; color: #92400e; }
     .retour-produit-badge--approuve { background: #d1fae5; color: #065f46; }
     .retour-produit-badge--refuse { background: #fee2e2; color: #991b1b; }
+
+    /* Motif du client et réponse du service, l'un sous l'autre. */
+    .retour-produit-motif {
+        border-left: 3px solid #dfe3e8;
+        padding-left: 10px;
+        margin-bottom: 8px;
+        max-width: 320px;
+    }
+    .retour-produit-motif--service { border-left-color: #1c57a3; }
+    .retour-produit-motif__intitule {
+        display: block;
+        font-size: .68rem;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        color: #8b929c;
+        font-weight: 600;
+    }
+    .retour-produit-motif small { display: block; color: #3d444e; line-height: 1.35; }
+    .retour-produit-motif__date { display: block; font-size: .72rem; color: #a0a7b1; margin-top: 2px; }
     .retour-produit-badge i { font-size: 10px; }
 
     .retour-produit-btn {

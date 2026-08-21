@@ -4,7 +4,7 @@
 --}}
 @php
     use Illuminate\Support\Carbon;
-    $logoPath = public_path(config('constantes.logo'));
+    $logoPath = public_path(config('constantes.logo_pdf'));
     $logoSrc = '';
     if (file_exists($logoPath)) {
         $logoData = base64_encode(file_get_contents($logoPath));

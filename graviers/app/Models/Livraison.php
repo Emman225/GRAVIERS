@@ -25,6 +25,15 @@ class Livraison extends Model
     protected $table = 'livraison';
 
     /**
+     * Etats de la colonne `accepte`, jusqu'ici ecrits en clair un peu partout.
+     * 3 se lisait « accepte = 3 » sans que rien ne dise qu'il s'agit d'un refus.
+     */
+    public const ACCEPTEE   = 1;
+    public const A_ACCEPTER = 2;
+    public const REFUSEE    = 3;
+
+
+    /**
      * Retourne le nom de la colonne facture_id dans enlevement
      * (gère la typo fature_id vs facture_id selon la base)
      */
@@ -131,7 +140,7 @@ class Livraison extends Model
             ->selectRaw("livraison.*,
         users.nom_prenoms as nom_livreur,
         users.contact as contact_livreur,
-        concat(client.nom,' ',client.prenom) as nom_client,
+        " . \App\Models\Client::sqlNomAffiche() . " as nom_client,
         client.contact1 as contact_client,
         adresse_livraison.affichage as adresse,
         adresse_livraison.complement_adresse,
@@ -183,7 +192,7 @@ class Livraison extends Model
             ->selectRaw("livraison.*,
         users.nom_prenoms as nom_livreur,
         users.contact as contact_livreur,
-        concat(client.nom,' ',client.prenom) as nom_client,
+        " . \App\Models\Client::sqlNomAffiche() . " as nom_client,
         client.contact1 as contact_client,
         adresse_livraison.affichage as adresse,
         adresse_livraison.complement_adresse,
@@ -216,7 +225,7 @@ class Livraison extends Model
             users.nom_prenoms as nom_livreur,
             users.contact as contact_livreur,
             concat(gestionnaire.nom_prenoms,' - ',gestionnaire.contact) as gestionnaire,
-            concat(client.nom,' ',client.prenom) as nom_client,
+            " . \App\Models\Client::sqlNomAffiche() . " as nom_client,
             client.contact1 as contact_client,
             adresse_livraison.affichage as adresse,
             adresse_livraison.complement_adresse,
@@ -229,6 +238,8 @@ class Livraison extends Model
             facture.numero as numero_facture,
             enlevement.livraison_id as livraison_id,
             enlevement.qte as qte_enleve,
+            enlevement.qte_servi as qte_servie,
+            enlevement.fournisseur_validation as validation_fournisseur,
             fournisseur.nom_prenoms as nom_fournisseur,
             fournisseur.contact1 as tel_fournisseur,
             fournisseur.adresse_geo as adresse_fournisseur,
@@ -270,7 +281,7 @@ class Livraison extends Model
         return Livraison::distinct()
             ->selectRaw("livraison.*,
             concat(gestionnaire.nom_prenoms,' - ',gestionnaire.contact) as gestionnaire,
-            concat(client.nom,' ',client.prenom) as nom_client,
+            " . \App\Models\Client::sqlNomAffiche() . " as nom_client,
             client.contact1 as contact_client,
             type_livraison.libelle as type_livraison,
             enlevement.id as id_enlevement,
@@ -279,6 +290,8 @@ class Livraison extends Model
             facture.numero as numero_facture,
             enlevement.livraison_id as livraison_id,
             enlevement.qte as qte_enleve,
+            enlevement.qte_servi as qte_servie,
+            enlevement.fournisseur_validation as validation_fournisseur,
             fournisseur.nom_prenoms as nom_fournisseur,
             fournisseur.contact1 as tel_fournisseur,
             fournisseur.adresse_geo as adresse_fournisseur,

@@ -23,6 +23,12 @@ class _SignFormState extends State<SignForm> {
   String? email;
   String? password;
   bool? remember = false;
+
+  /// La case « Rester connecté » n'avait AUCUN effet : rien n'était relu au
+  /// démarrage. On mémorise désormais le login (jamais le mot de passe) et on
+  /// le repropose au lancement suivant.
+  final TextEditingController _loginController = TextEditingController();
+
   bool _isPasswordVisible = false;
   final List<String?> errors = [];
 
@@ -43,6 +49,25 @@ class _SignFormState extends State<SignForm> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    lireOuEcrireDonnee("login_memorise", '', 2).then((valeur) {
+      if (!mounted || valeur.isEmpty) return;
+      setState(() {
+        _loginController.text = valeur;
+        email = valeur;
+        remember = true;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _loginController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Form(
       key: _formKey,
@@ -51,6 +76,7 @@ class _SignFormState extends State<SignForm> {
           TextFormField(
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.next,
+            controller: _loginController,
             onSaved: (newValue) => email = newValue,
             onChanged: (value) {
               if (value.isNotEmpty) {
@@ -152,12 +178,14 @@ class _SignFormState extends State<SignForm> {
                 await signInCtrl(email, password);
 
                 if (user.code == 200) {
+                  lireOuEcrireDonnee(
+                      "login_memorise", remember == true ? (email ?? '') : '', 1);
                   lireOuEcrireDonnee("token", user.token.toString(), 1);
                   lireOuEcrireDonnee("type", user.type.toString(), 1);
                   lireOuEcrireDonnee("nom", user.nom.toString(), 1);
                   Get.toNamed(InitScreen.routeName, arguments: 1);
                 }else{
-                  EasyLoading.showError(user.message.toString());
+                  afficherErreur(user.message.toString());
                 }
 
               }

@@ -1,95 +1,175 @@
-@php
-    use Illuminate\Support\carbon;
-@endphp
-
-
 @extends('layout.main')
 @section('title','Chiffre d\'affaire détaillé')
 
+@php
+    $fmt = fn ($v) => number_format((float) $v, 0, ',', ' ');
+@endphp
+
 @section('contenu')
     <div class="content-header">
-        <h2 class="content-title">- Chiffre d'affaire détaillé - </h2>
-        {{-- <div>
-            <a href="{{ route('sellers.register') }}" class="btn btn-primary"><i class="material-icons md-plus"></i> Ajouter Nouveau</a>
-        </div> --}}
+        <h2 class="content-title">Chiffre d'affaire détaillé</h2>
     </div>
+
     <div class="card mb-4">
-        <form method="GET" action="" class="row">
-            @csrf
-            <div class="col-md-2 col-lg-2 col-xl-2">
-                <input type="date" class="form-control" name="du" id="du" placeholder="Date debut" value="{{ Request::get('du') ?? date("Y-01-01") }}">
+        {{-- Pas de @csrf ici : le formulaire est en GET, le jeton n'y sert à rien
+             et se retrouvait affiché dans l'URL. --}}
+        <form method="GET" action="" class="row gx-3 p-3 align-items-center">
+            <div class="col-md-3 col-lg-2">
+                <label for="du" class="form-label mb-1 small text-muted">Du</label>
+                <input type="date" class="form-control" name="du" id="du" value="{{ $du }}">
             </div>
-            <div class="col-md-2 col-lg-2 col-xl-2">
-                <input type="date" class="form-control" name="au" id="au" placeholder="Date debut" value="{{ Request::get('au') ?? date("Y-m-d") }}">
+            <div class="col-md-3 col-lg-2">
+                <label for="au" class="form-label mb-1 small text-muted">Au</label>
+                <input type="date" class="form-control" name="au" id="au" value="{{ $au }}">
             </div>
-            <div class="col-md-2 col-lg-2 col-xl-2">
-                <button type="submit" class="btn btn-primary ">Rechercher</button>
+            <div class="col-md-3 col-lg-3 pt-4">
+                <button type="submit" class="btn btn-primary">Rechercher</button>
+                @if($du || $au)
+                    <a href="{{ route('show.CADetaille') }}" class="btn btn-light">Tout l'historique</a>
+                @endif
+            </div>
+            <div class="col-md-3 col-lg-5 pt-4 text-md-end">
+                {{-- Les champs affichaient « du 1er janvier à aujourd'hui » alors que
+                     le tableau montrait tout l'historique : l'écran mentait sur sa
+                     propre période. Ils reflètent maintenant ce qui est réellement
+                     affiché. --}}
+                <span class="text-muted small">
+                    @if($du || $au)
+                        Bons servis {{ $du ? 'du ' . \Carbon\Carbon::parse($du)->format('d/m/Y') : '' }}
+                        {{ $au ? 'au ' . \Carbon\Carbon::parse($au)->format('d/m/Y') : '' }}
+                    @else
+                        Tout l'historique des bons servis
+                    @endif
+                </span>
             </div>
         </form>
-        {{-- <header class="card-header">
-            <div class="row gx-3">
-                <div style="width:100%" class="col-lg-4 col-md-6 me-auto">
-                    <p class="d-flex justify-content-between" >
-                        <span class="text-success h4" >T. Qté vendue : 0</span>
-                        <span class="text-success h4" >T. TVA : 50</span>
-                        <span class="text-success h4" >T. Montant : 0 fcfa</span>
-                    </p>
+
+        <header class="card-header">
+            <div class="row gx-3 text-center">
+                <div class="col-6 col-md">
+                    <div class="text-muted small">Quantité demandée</div>
+                    <div class="h5 mb-0">{{ $fmt($totalQteDemandee) }}</div>
+                </div>
+                <div class="col-6 col-md">
+                    <div class="text-muted small">Quantité servie</div>
+                    <div class="h5 mb-0 text-success">{{ $fmt($totalQteServie) }}</div>
+                </div>
+                <div class="col-6 col-md">
+                    <div class="text-muted small">Montant vendu HT</div>
+                    <div class="h5 mb-0 text-success">{{ $fmt($totalVente) }} fcfa</div>
+                </div>
+                <div class="col-6 col-md">
+                    <div class="text-muted small">Coût fournisseur HT</div>
+                    <div class="h5 mb-0">{{ $fmt($totalCout) }} fcfa</div>
+                </div>
+                <div class="col-12 col-md">
+                    <div class="text-muted small">Marge brute HT</div>
+                    <div class="h5 mb-0 {{ $totalMarge < 0 ? 'text-danger' : 'text-success' }}">
+                        {{ $fmt($totalMarge) }} fcfa
+                    </div>
                 </div>
             </div>
-        </header> --}}
-        <!-- card-header end// -->
+        </header>
+
         <div class="card-body">
             <x-export-buttons table-id="liste" filename="chiffre-d-affaire-detaille" title="Etat chiffre d'affaire détaillé" />
-            <div class="table-responsive">
-                <table class="table table-striped" id="liste">
-                    <thead style="background: gray">
 
-                        <th class="text-center" style="background-color: #1c57a3; color: white;">Désignation</th> {{--  --}}
+            <div class="table-responsive">
+                <table class="table table-striped align-middle" id="liste">
+                    <thead>
+                        {{-- Le <tr> manquait : les <th> flottaient directement dans le
+                             <thead>, ce que DataTables et l'export ne lisent pas de
+                             la même façon selon les navigateurs. --}}
+                        <tr>
+                            <th class="text-center" style="background-color: #1c57a3; color: white; border-top-left-radius:5px">Désignation</th>
                             <th class="text-center" style="background-color: #1c57a3; color: white;">Famille</th>
-                            <th class="text-center" style="background-color: #1c57a3; color: white;">Quantité vendue</th> {{--  --}}
-                            <th class="text-center" style="background-color: #1c57a3; color: white;">Quantité dispo</th> {{--  --}}
-                            <th class="text-center" style="background-color: #1c57a3; color: white;">Montant vendu</th> {{--  --}}
-                            <th class="text-center" style="background-color: #1c57a3; color: white;">Montant fournisseur</th>
-                            <th class="text-center" style="background-color: #1c57a3; color: white; border-top-right-radius:5px">Bénéfice</th>
+                            <th class="text-center" style="background-color: #1c57a3; color: white;">Quantité demandée</th>
+                            <th class="text-center" style="background-color: #1c57a3; color: white;">Quantité servie</th>
+                            <th class="text-center" style="background-color: #1c57a3; color: white;">Quantité dispo</th>
+                            <th class="text-center" style="background-color: #1c57a3; color: white;">Montant vendu HT</th>
+                            <th class="text-center" style="background-color: #1c57a3; color: white;">Coût fournisseur HT</th>
+                            <th class="text-center" style="background-color: #1c57a3; color: white; border-top-right-radius:5px">Marge brute HT</th>
+                        </tr>
                     </thead>
                     <tbody>
-
-                        @foreach ($stats as $s)
-                        
+                        @forelse ($stats as $s)
                             <tr>
-                                <td class="text-center" ><div class="info pl-3"><h6 class="mb-0 title">{{ $s->nom }}</h6></div></td>
+                                <td>{{ $s->nom }}</td>
                                 <td class="text-center">{{ $s->categories }}</td>
-                                <td class="text-center">{{ $s->qteVendu }}</td>
-                                <td class="text-center">{{ $s->qteDispo }}</td>
-                                <td class="text-center">{{ $s->prixVente }}</td>
-                                <td class="text-center">{{ $s->prixFournisseur }}</td>
-                                <td class="text-center">{{ $s->prixVente - $s->prixFournisseur }}</td>
+                                <td class="text-end">{{ $fmt($s->qteDemandee) }}</td>
+                                <td class="text-end">
+                                    {{ $fmt($s->qteServie) }}
+                                    @if($s->qteServie < $s->qteDemandee)
+                                        {{-- L'écart entre demandé et servi est l'information
+                                             que l'ancien écran ne montrait nulle part. --}}
+                                        <br><small class="text-danger">
+                                            &minus;{{ $fmt($s->qteDemandee - $s->qteServie) }} non servi
+                                        </small>
+                                    @endif
+                                </td>
+                                <td class="text-end">{{ $fmt($s->dispo) }}</td>
+                                <td class="text-end">{{ $fmt($s->vente) }} fcfa</td>
+                                <td class="text-end">{{ $fmt($s->cout) }} fcfa</td>
+                                <td class="text-end fw-bold {{ $s->marge < 0 ? 'text-danger' : '' }}">
+                                    {{ $fmt($s->marge) }} fcfa
+                                </td>
                             </tr>
-                        @endforeach
-
+                        @empty
+                            <tr>
+                                <td colspan="8" class="text-center text-muted py-5">
+                                    Aucun bon servi sur cette période.
+                                </td>
+                            </tr>
+                        @endforelse
                     </tbody>
+
+                    @if(count($stats))
+                        <tfoot>
+                            <tr style="background-color:#1c57a3; color:white">
+                                <td colspan="2" class="fw-bold text-end">Total</td>
+                                <td class="text-end fw-bold">{{ $fmt($totalQteDemandee) }}</td>
+                                <td class="text-end fw-bold">{{ $fmt($totalQteServie) }}</td>
+                                <td class="text-end fw-bold">{{ $fmt($totalDispo) }}</td>
+                                <td class="text-end fw-bold">{{ $fmt($totalVente) }} fcfa</td>
+                                <td class="text-end fw-bold">{{ $fmt($totalCout) }} fcfa</td>
+                                <td class="text-end fw-bold">{{ $fmt($totalMarge) }} fcfa</td>
+                            </tr>
+                        </tfoot>
+                    @endif
                 </table>
-                <!-- table-responsive.// -->
             </div>
+
+            <p class="text-muted small mt-3 mb-0">
+                Seuls les bons validés par le fournisseur sont comptés, à la quantité
+                réellement servie. Le coût fournisseur est celui du bon lui-même, c'est-à-dire
+                ce qui est réellement dû au fournisseur. Montants hors taxes et hors transport,
+                le transport étant facturé pour le compte de l'entreprise.
+            </p>
         </div>
-        <!-- card-body end// -->
     </div>
-    <!-- card end// -->
-
 @endsection
-
 
 @section('cssParts')
     <link rel="stylesheet" href="{{ asset('backend/plugins/DataTables/datatables.min.css') }}">
 @endsection
+
 @section('jsParts')
     <script src="{{ asset('backend/plugins/DataTables/datatables.min.js') }}"></script>
     <script type="text/javascript">
         $(function() {
-            var $table = $('#liste').DataTable({
+            // Sur une table vide, le corps ne contient qu'une ligne à colspan :
+            // DataTables la prend pour une ligne de données et lève
+            // « Requested unknown parameter ». On ne l'initialise pas.
+            var $corps = $('#liste tbody');
+            if ($corps.find('td[colspan]').length) {
+                return;
+            }
+
+            $('#liste').DataTable({
                 language: {
                     url: '{{ asset('backend/plugins/DataTables/i18n/fr-FR.json') }}',
                 },
+                columnDefs: [{ targets: '_all', defaultContent: '-' }],
             });
         });
     </script>

@@ -49,7 +49,7 @@
                                                     <span class="badge bg-danger">Non payé</span>
 
                                                 @endif
-                                            <td class="text-center">{{ $demande->paye == 1 ? $demande->modePaiement->libelle : '//' }}</td>
+                                            <td class="text-center">{{ $demande->paye == 1 ? $demande->modePaiement?->libelle : '//' }}</td>
 
                                         </tr>
                                         @php

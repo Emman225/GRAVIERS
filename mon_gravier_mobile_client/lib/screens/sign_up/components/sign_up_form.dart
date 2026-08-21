@@ -97,10 +97,16 @@ class _SignUpFormState extends State<SignUpForm> {
         if (retourHttp.statusCode == 200) {
           var datas = jsonDecode(retourHttp.body);
           user.configs = ConfigModel.fromJson(datas);
-          setState(() {
+          // Écran quitté pendant l'appel : la réponse revient sur un écran détruit
+          // et le rafraîchissement échoue (voir devis_screen.dart).
+          if (mounted) setState(() {
             pays = user.configs?.pays ?? [];
             villesTot = user.configs?.villes ?? [];
           });
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       }
     } catch (e) {
@@ -446,9 +452,9 @@ class _SignUpFormState extends State<SignUpForm> {
           ElevatedButton(
             onPressed: () async {
               if(pays_id <= 0 || ville_id <= 0){
-                EasyLoading.showError("Veuillez choisir votre pays et votre ville");
+                afficherErreur("Veuillez choisir votre pays et votre ville");
               } else if (type_client == "2" && (dfeFile == null || rcFile == null)) {
-                EasyLoading.showError("Veuillez uploader le DFE et le Registre de commerce");
+                afficherErreur("Veuillez uploader le DFE et le Registre de commerce");
               } else {
                 if (_formKey.currentState!.validate()) {
                   _formKey.currentState!.save();
@@ -546,34 +552,22 @@ class _SignUpFormState extends State<SignUpForm> {
             devise = user.devise.toString();
 
             fermerChargement();
-            await showDialog(
-              context: context,
-              barrierDismissible: false,
-              builder: (ctx) => AlertDialog(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                icon: const Icon(Icons.check_circle, color: Colors.green, size: 60),
-                title: const Text("Compte cree avec succes !"),
-                content: const Text(
-                  "Un email de validation a ete envoye a votre adresse. Veuillez saisir le code recu pour finaliser votre inscription.",
-                  textAlign: TextAlign.center,
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () {
-                      Navigator.of(ctx).pop();
-                      Get.toNamed(OtpScreen.routeName, arguments: 1);
-                    },
-                    child: const Text("Continuer", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              ),
-            );
+
+            // La fenêtre « Compte créé avec succès » a été retirée : elle
+            // n'apportait rien qu'un clic de plus, et son message est désormais
+            // affiché sur l'écran de saisie du code, là où il est utile.
+            // On y va donc directement.
+            Get.toNamed(OtpScreen.routeName, arguments: 1);
           }else{
-            EasyLoading.showError(user.message.toString());
+            afficherErreur(user.message.toString());
           }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
-        EasyLoading.showError("Une erreur s'est produite veuillez reesayer plus tard");
+        afficherErreur(messageErreurTechnique(e));
         if (kDebugMode) {
           print(e.toString());
         }
@@ -582,7 +576,7 @@ class _SignUpFormState extends State<SignUpForm> {
       fermerChargement();
 
     }else{
-      EasyLoading.showError("Veuillez vérifier votre connexion internet");
+      afficherErreur("Veuillez vérifier votre connexion internet");
     }
   }
 }

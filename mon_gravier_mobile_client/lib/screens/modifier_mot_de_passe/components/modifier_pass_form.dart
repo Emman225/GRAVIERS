@@ -98,7 +98,7 @@ class _ModifierPassFormState extends State<ModifierPassForm> {
               if (_validationSaisie()) {
                 modifierPass();
               }else{
-                EasyLoading.showError(msgErr);
+                afficherErreur(msgErr);
               }
             },
             child: const Text("Modifier mes accès"),
@@ -156,24 +156,28 @@ class _ModifierPassFormState extends State<ModifierPassForm> {
               newPassController.text = '';
               passwordController.text = '';
             });
-            EasyLoading.showSuccess(datas['message']);
+            afficherSucces(datas['message']);
             if (widget.niveau == 2) {
               Get.toNamed(SignInScreen.routeName);
             }
           }else{
-            EasyLoading.showError(datas['message']);
+            afficherErreur(datas['message']);
           }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
         user.code = 500;
-        user.message = "Une erreur s'est produite veuillez reesayer plus tard";
+        user.message = messageErreurTechnique(e);
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 }

@@ -34,7 +34,7 @@
                                 src="/storage/{{ $produit->options->image }}" alt="#"></td>
                         <td class="product-des product-name">
                             <h6 class="mb-5"><a class="product-name mb-10 text-heading"
-                                    href="shop-product-right.html"> {{ $produit->name }} </a></h6>
+                                    href="{{ route('client.produit.info', $produit->id) }}"> {{ $produit->name }} </a></h6>
                             <div class="product-rate-cover">
                                 <div class="product-rate d-inline-block">
                                     <div class="product-rating"

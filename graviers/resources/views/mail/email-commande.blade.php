@@ -12,7 +12,7 @@
           <tr>
             <td align="center" style="padding:20px;">
               <div style="width:80px;height:80px;border-radius:50%;background:#e9e9e9;line-height:80px;text-align:center;font-weight:bold;color:#0b71c8;margin:auto;">
-                <img src="https://graviers.fneconnect.net/backend/assets/imgs/theme/logoAvecFond.jpg" alt="Logo">
+                <img src="https://graviers.fneconnect.net/frontend/assets/imgs/logo/dalakoun-blanc.png" alt="Logo">
               </div>
               <h2 style="margin:10px 0 0;font-size:16px;font-weight:bold;">Mon Gravier -- Information de commande</h2>
             </td>
@@ -22,9 +22,9 @@
               <table width="100%" cellspacing="0" cellpadding="0" border="0">
                 <tr>
                   <td width="60%" style="vertical-align:top;">
-                    <strong>Client: {{$commande->client->nom.' '.$commande->client->prenom}}</strong><br>
-                    Tél: <a href="tel:+2250757638479" style="color:#0b71c8;text-decoration:none;">{{$commande->client->contact1}}</a><br>
-                    Email: {{$commande->client->user->email}}
+                    <strong>Client: {{$commande->client?->display_name}}</strong><br>
+                    Tél: <a href="tel:+2250757638479" style="color:#0b71c8;text-decoration:none;">{{$commande->client?->contact1}}</a><br>
+                    Email: {{$commande->client?->user?->email}}
                   </td>
                   <td width="40%" align="right" style="vertical-align:top;">
                     Numéro: <a href="#" style="color:#0b71c8;text-decoration:none;">{{$commande->numero}}</a><br>
@@ -57,16 +57,16 @@
               <table width="100%" cellspacing="0" cellpadding="0" border="0">
                 <tr>
                   <td width="25%" valign="top">
-                    <img src="{{asset('storage/'. $commande->produit->image)}}" alt="Produit" style="width:100%;max-width:120px;border-radius:6px;">
+                    <img src="{{asset('storage/'. $commande->produit?->image)}}" alt="Produit" style="width:100%;max-width:120px;border-radius:6px;">
                   </td>
                   <td width="50%" valign="top" style="padding-left:10px;">
-                    <strong>{{$commande->produit->nom}}</strong><br>
+                    <strong>{{$commande->produit?->nom}}</strong><br>
                     {{$commande->qte}}<br>
-                    {{Help::formatNombre($commande->produit->prix_moyen, true)}}
+                    {{Help::formatNombre($commande->produit?->prix_moyen, true)}}
                   </td>
                   <td width="25%" align="right" valign="top">
                     <span style="color:#777;font-size:12px;">Sous Total</span><br>
-                    <strong style="font-size:14px;">{{Help::formatNombre($commande->produit->prix_moyen * $commande->qte, true)}}</strong>
+                    <strong style="font-size:14px;">{{Help::formatNombre($commande->produit?->prix_moyen * $commande->qte, true)}}</strong>
                   </td>
                 </tr>
               </table>

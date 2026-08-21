@@ -21,7 +21,7 @@ class OtpScreen extends StatefulWidget {
 }
 
 class _OtpScreenState extends State<OtpScreen> {
-  int niveau = Get.arguments;
+  int niveau = (Get.arguments is int) ? Get.arguments as int : 1;
   @override
   void initState() {
     niveau = Get.arguments;
@@ -86,7 +86,7 @@ class _OtpScreenState extends State<OtpScreen> {
       }
 
       try {
-        retourHttp = await http
+        final http.Response retourHttp = await http
             .post(Uri.parse('${lienAPI()}renvoyerOtp'),
             headers: {"Content-Type": "application/json"},
             body: jsonEncode(param))
@@ -97,23 +97,26 @@ class _OtpScreenState extends State<OtpScreen> {
         if (retourHttp.statusCode == 200) {
           var datas = jsonDecode(retourHttp.body);
           if (datas['code'] == 200) {
-            EasyLoading.showSuccess(datas['message']);
+            afficherSucces(datas['message']);
           }else{
-            EasyLoading.showError(datas['message']);
+            afficherErreur(datas['message']);
           }
         } else {
-          EasyLoading.showError("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
         user.code = 500;
         user.message = "Une erreur s'est produite veuillez reesayer plus tard";
+        // Ce bloc de secours n.affichait RIEN : l.ecran restait muet en cas de
+        // coupure reseau ou de reponse illisible.
+        afficherErreur("Impossible de contacter le serveur. Verifiez votre connexion et reessayez.");
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 }

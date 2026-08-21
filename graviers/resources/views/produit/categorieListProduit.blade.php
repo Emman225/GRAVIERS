@@ -1,4 +1,9 @@
 @extends('client.main')
+
+{{-- Cette page affiche des vignettes de produit avec un bouton « vue rapide » :
+     elle a donc besoin des fenêtres générées par client.quickView. --}}
+@section('quickView', 'oui')
+
 @section('title','liste de produit')
 @section('content')
 
@@ -92,7 +97,11 @@
                                         <div class="product-action-1">
                                             <a aria-label="Ajouter aux favoris" title="Ajouter aux favoris" class="action-btn" href="{{route('client.like',$produit)}}"><i class="fi-rs-heart"></i></a>
                                             {{-- <a aria-label="Compare" class="action-btn" href="shop-compare.html"><i class="fi-rs-shuffle"></i></a> --}}
-                                            <a aria-label="Vue rapide" class="action-btn" data-bs-toggle="modal" data-bs-target="#quickViewModal{{$produit->id}}"><i class="fi-rs-eye"></i></a>
+                                            {{-- La fenêtre générée par client.quickView s'appelle « quickView{id} »,
+                                                 sans « Modal ». Le bouton visait « quickViewModal{id} » : Bootstrap ne
+                                                 trouvait aucune fenêtre de ce nom et le clic ne produisait rien, sur
+                                                 cette page uniquement — les quatre autres listes visent la bonne. --}}
+                                            <a aria-label="Vue rapide" class="action-btn" data-bs-toggle="modal" data-bs-target="#quickView{{$produit->id}}"><i class="fi-rs-eye"></i></a>
                                         </div>
                                         <div class="product-badges product-badges-position product-badges-mrg">
                                             @if($produit->prix_reduction > 0)<span class="hot">Promo</span>@endif

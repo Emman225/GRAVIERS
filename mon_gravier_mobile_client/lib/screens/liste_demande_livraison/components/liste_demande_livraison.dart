@@ -97,13 +97,17 @@ class ListeDemandeLivraison extends StatelessWidget {
                         }
                         Get.toNamed(DetailsDemandeLivraisonAfficheScreen.routeName, arguments: list);
                       } else {
-                        EasyLoading.showError(retDetLiv.message ?? '');
+                        afficherErreur(retDetLiv.message ?? '');
                       }
+                    } else {
+                      // Sans cette branche, une réponse serveur en erreur ne produisait
+                      // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+                      afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
                     }
                   } catch (e) {
                     user.code = 500;
                     user.message =
-                        "Une erreur s'est produite veuillez reesayer plus tard";
+                        messageErreurTechnique(e);
                     if (kDebugMode) {
                       print(e.toString());
                     }
@@ -111,7 +115,7 @@ class ListeDemandeLivraison extends StatelessWidget {
 
                   fermerChargement();
                 } else {
-                  EasyLoading.showInfo(
+                  afficherInfo(
                       "Veuillez vérifier votre connexion internet");
                 }
               },

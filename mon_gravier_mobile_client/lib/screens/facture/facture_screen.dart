@@ -58,7 +58,9 @@ class FactureScreenState extends State<FactureScreen> {
         if (retourHttp.statusCode == 200) {
           pai = ListePaiement.fromJson(datas);
           if (pai.code == 200) {
-            setState(() {
+            // Écran quitté pendant le chargement : la réponse revient sur un écran
+            // détruit et le rafraîchissement échoue (voir devis_screen.dart).
+            if (mounted) setState(() {
               paiements = pai.data ?? [];
               paiementAttente = paiements
                   .where((c) => (c.statut == 2))
@@ -75,19 +77,22 @@ class FactureScreenState extends State<FactureScreen> {
               ];
             });
           } else {
-            EasyLoading.showError(pai.message ?? '');
+            afficherErreur(pai.message ?? '');
           }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
-        EasyLoading.showError(
-            "Une erreur s'est produite veuillez reesayer plus tard");
+        afficherErreur(messageErreurTechnique(e));
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 

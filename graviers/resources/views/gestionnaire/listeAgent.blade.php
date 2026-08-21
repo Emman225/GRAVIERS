@@ -28,6 +28,7 @@
                                         <th style="background-color: rgb(195, 195, 195)" >Nom et image</th>
                                         <th style="background-color: rgb(195, 195, 195)">Email</th>
 
+                                        <th style="background-color: rgb(195, 195, 195)">Agence</th>
                                         <th style="background-color: rgb(195, 195, 195)">Enregistré le</th>
                                         <th style="background-color:  rgb(195, 195, 195)" class="text-end">Action</th>
                                     </tr>
@@ -47,6 +48,29 @@
                                         </td>
                                         <td> {{$agent->email}} </td>
 
+<td>
+    {{-- Rattachement à un guichet : c'est lui qui décide de l'agence à
+         laquelle les encaissements de cette personne seront imputés. Il
+         était auparavant choisi au moment de la saisie, ce qui permettait
+         d'imputer une recette à un autre guichet que le sien. --}}
+    <form method="POST" action="{{ route('show.affecterAgence', $agent->id) }}" class="d-flex gap-1 align-items-center">
+        @csrf
+        <select name="agence_id" class="form-control form-control-sm" style="min-width:150px">
+            <option value="">— Aucune —</option>
+            @foreach ($agences as $ag)
+                <option value="{{ $ag->id }}" {{ (int) $agent->agence_id === (int) $ag->id ? 'selected' : '' }}>
+                    {{ $ag->nom }}
+                </option>
+            @endforeach
+        </select>
+        <button type="submit" class="btn btn-sm btn-light rounded" title="Enregistrer l'affectation">
+            <i class="material-icons md-save"></i>
+        </button>
+    </form>
+    @if (!$agent->agence_id)
+        <small class="text-danger">ne peut pas encaisser</small>
+    @endif
+</td>
                                         <td>
 
                                             <span>{{ Carbon::parse($agent->created_at)->format('d-m-Y'); }}</span>

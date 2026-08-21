@@ -116,6 +116,12 @@ class LivreurController extends Controller
 
     public function actionBonEnlevement(Enlevement $enlevement, $action)
     {
+        // Enlèvement dont la livraison a été supprimée : ->livraison->update() sur null
+        // renvoyait une erreur 500 au livreur au moment d'accepter ou de refuser le bon.
+        if ($enlevement->livraison == null) {
+            return back()->with('error', "Ce bon n'est plus rattaché à une livraison. Contactez le gestionnaire.");
+        }
+
         if ($action == 'accepter') {
             $enlevement->livraison->update([
                 'accepte' => 1,
@@ -135,21 +141,78 @@ class LivreurController extends Controller
 
     public function listeDesDemandesDePaiement()
     {
-        $livreur  = Livreur::where('user_id', Auth::user()->id)->first();
+        $livreur = Livreur::where('user_id', Auth::user()->id)->first();
+
+        // L'entreprise paie le livreur par DEUX chemins : la demande qu'il
+        // initie, et le règlement qu'un administrateur saisit sur une de ses
+        // courses. Cet écran ne montrait que le premier — il ne voyait donc
+        // nulle part les sommes versées à notre propre initiative, et son
+        // historique ne retombait pas sur ce qu'il avait réellement reçu.
         $demandes = DemandePaiement::where('user_id', Auth::user()->id)
             ->with('modePaiement')
             ->orderByDesc('created_at')
-            ->get();
+            ->get()
+            ->map(fn (DemandePaiement $d) => (object) [
+                'reference'     => $d->numero ?: ('#' . $d->id),
+                'date'          => $d->created_at,
+                'montant'       => (float) $d->montant,
+                // 1 = acceptée, 2 = refusée, NULL/0 = en attente.
+                'statut'        => (int) ($d->paye ?? 0),
+                'mode'          => $d->modePaiement?->libelle,
+                'date_paiement' => (int) $d->paye === 1 ? $d->updated_at : null,
+                'origine'       => 'Vous',
+                'detail'        => 'Demande de paiement',
+            ]);
+
+        // Les règlements issus d'une demande sont EXCLUS : ils portent
+        // `demande_paiement_id` et sont déjà listés sous leur demande. Sans
+        // cette exclusion, le même versement apparaîtrait deux fois.
+        //
+        // La colonne vient d'une migration : sans elle, on s'en passe plutôt
+        // que de priver le livreur de sa page.
+        $reglements = collect();
+
+        if ($livreur) {
+            $reglements = \App\Models\PaiementLivreur::with(['modePaiement', 'livraison'])
+                ->where('livreur_id', $livreur->id)
+                ->where('statut', 1)
+                ->when(
+                    \Illuminate\Support\Facades\Schema::hasColumn('paiement_livreur', 'demande_paiement_id'),
+                    fn ($q) => $q->whereNull('demande_paiement_id')
+                )
+                ->orderByDesc('date_paiement')
+                ->get()
+                ->map(fn ($p) => (object) [
+                    'reference'     => $p->reference ?: ('#' . $p->id),
+                    'date'          => $p->date_paiement ?? $p->created_at,
+                    'montant'       => (float) $p->montant,
+                    // Un règlement enregistré est un versement fait.
+                    'statut'        => 1,
+                    'mode'          => $p->modePaiement?->libelle,
+                    'date_paiement' => $p->date_paiement ?? $p->created_at,
+                    'origine'       => "L'entreprise",
+                    'detail'        => $p->livraison
+                        ? 'Course ' . ($p->livraison->numero ?: '#' . $p->livraison->id)
+                        : 'Règlement de course',
+                ]);
+        }
+
+        $mouvements = $demandes->concat($reglements)
+            ->sortByDesc(fn ($m) => $m->date)
+            ->values();
+
+        $recus   = $mouvements->where('statut', 1);
+        $attente = $mouvements->where('statut', 0);
 
         return view('livreur.listeDesDemandesDePaiement', [
             'livreur'          => $livreur,
-            'demandes'         => $demandes,
-            'totalDemandes'    => $demandes->count(),
-            'totalEnAttente'   => $demandes->where('paye', 0)->count(),
-            'totalPayees'      => $demandes->where('paye', 1)->count(),
-            'totalRefusees'    => $demandes->where('paye', 2)->count(),
-            'montantEnAttente' => (float) $demandes->where('paye', 0)->sum('montant'),
-            'montantPaye'      => (float) $demandes->where('paye', 1)->sum('montant'),
+            'mouvements'       => $mouvements,
+            'totalDemandes'    => $mouvements->count(),
+            'totalEnAttente'   => $attente->count(),
+            'totalPayees'      => $recus->count(),
+            'totalRefusees'    => $mouvements->where('statut', 2)->count(),
+            'montantEnAttente' => (float) $attente->sum('montant'),
+            'montantPaye'      => (float) $recus->sum('montant'),
         ]);
     }
 
@@ -215,7 +278,23 @@ class LivreurController extends Controller
 
     public function login(Request $request)
     {
-        $user = User::where('login', $request->login)->where('type_user_id', 8)->first();
+        // Login OU e-mail, comme l'application mobile.
+        //
+        // Le site n'acceptait QUE le login : un livreur qui se connecte au
+        // mobile avec son adresse e-mail — ce que l'application autorise —
+        // recevait ici « Mot de passe ou login incorrect », avec les mêmes
+        // identifiants. Le message accusait le mot de passe alors que le
+        // compte n'avait tout simplement pas été trouvé.
+        //
+        // Le OU est ENTRE PARENTHÈSES : sans cela, la condition deviendrait
+        // « login = X OU (email = X ET type = livreur) », et n'importe quel
+        // utilisateur du système ayant ce login entrerait dans l'espace livreur.
+        $identifiant = $request->login;
+        $user = User::where(function ($q) use ($identifiant) {
+                $q->where('login', $identifiant)->orWhere('email', $identifiant);
+            })
+            ->where('type_user_id', 8)
+            ->first();
 
         if ($user) {
 
@@ -439,40 +518,70 @@ class LivreurController extends Controller
                 return back()->with('info', 'Vous avez déjà validé cette livraison');
             }
 
+            // La colonne etat_livraison contient des LIBELLÉS ("EN ATTENTE",
+            // "EN COURS LIVRAISON", "LIVREE") et non des numéros. Écrire 3 y plaçait
+            // la chaîne « 3 » : la livraison n'était donc reconnue comme livrée
+            // NULLE PART — ni dans le test « toutes les lignes sont-elles livrées ? »
+            // dix lignes plus bas (qui compare à 'LIVREE'), ni dans les grands livres,
+            // ni sur la fiche commande, qui affichait « Non livrée » indéfiniment.
             $livraison->update([
-                'etat_livraison' => 3,
+                'etat_livraison' => Help::$LIVRAISON_LIVREE,
                 'statut' => 1
                 //'statut' => 2
             ]);
 
             if ($livraison->provenance == 'COMMANDE') {
-                $livraison->detailCommande->update([
-                    'etat_livraison' => 3
+                $ligne = $livraison->detailCommande;
+
+                // Quantité livrée cumulée : seule l'application mobile du livreur
+                // la tenait à jour. Une validation faite depuis le site laissait la
+                // ligne à 0, d'où le statut « Non livrée » sur la fiche commande.
+                $qteLivree = min(
+                    (float) $ligne->qte,
+                    (float) ($ligne->qte_livree ?? 0) + (float) $livraison->qte
+                );
+
+                $ligne->update([
+                    // LIVREE seulement si la ligne est entièrement servie. On y
+                    // écrivait LIVREE quoi qu'il arrive : une livraison partielle
+                    // rendait donc la ligne éligible au retour alors que le client
+                    // n'avait pas encore tout reçu. Même règle que l'API.
+                    'etat_livraison' => ($qteLivree >= (float) $ligne->qte)
+                        ? Help::$LIVRAISON_LIVREE
+                        : Help::$LIVRAISON_EN_COURS,
+                    'qte_livree' => $qteLivree,
                 ]);
 
                 $commande = DB::select("select c.* from commande c, detail_commande d, livraison l where c.id = d.`commande_id` and d.`id`=l.`detail_commande_id` and l.id=$livraison->id")[0];
 
                 // $lesLivraisons = DB::select("select l.* from commande c, detail_commande d, livraison l where c.id = d.`commande_id` and d.`id`=l.`detail_commande_id` and c.id=$commande->id");
 
-                $lesLivraisons = Commande::join('detail_commande', 'detail_commande.commande_id', '=', 'commande.id')
-                    ->join('livraison', 'livraison.detail_commande_id', '=', 'detail_commande.id')
-                    ->where('commande.id', $commande->id)
-                    ->get();
+                // LA COMMANDE SE CLÔT SUR LES QUANTITÉS, PAS SUR UN COMPTE DE COURSES.
+                //
+                // On comptait ici les livraisons de la commande et on exigeait
+                // qu'elles soient TOUTES à l'état LIVREE. Une course REFUSÉE par
+                // le livreur entrait dans ce compte sans jamais pouvoir être
+                // livrée : la commande restait EN TRAITEMENT pour toujours, même
+                // une fois la marchandise reconfiée à un autre livreur et remise
+                // au client.
+                //
+                // C'est la règle de l'application mobile qui est juste, et c'est
+                // désormais la seule : une commande est terminée quand chacune de
+                // ses lignes a reçu la quantité commandée. Un refus jamais
+                // reconfié laisse la ligne incomplète — donc la commande ouverte,
+                // ce qui est le comportement voulu.
+                $toutLivre = DetailCommande::where('commande_id', $commande->id)
+                    ->where('statut', Help::$STATUT_ACTIF)
+                    ->get()
+                    ->every(fn ($d) => (float) ($d->qte_livree ?? 0) >= (float) $d->qte);
 
-                $total = $lesLivraisons->count();
+                if ($toutLivre) {
 
-                $cpte = 0;
-
-                foreach ($lesLivraisons as $livraison) {
-                    if ($livraison->etat_livraison == 'LIVREE') {
-                        $cpte++;
-                    }
-                }
-
-                if ($total == $cpte) {
-
-                    //finaliser la commande
-                    DB::update('update commande set etat_commande = 3 where id = ?', [$commande->id]);
+                    // Finaliser la commande. etat_commande contient lui aussi des
+                    // libellés ("EN ATTENTE", "TERMINEE"...) : l'ancien « = 3 » y
+                    // écrivait la chaîne « 3 », et la commande n'apparaissait donc
+                    // jamais dans la liste des commandes traitées.
+                    DB::update('update commande set etat_commande = ? where id = ?', [Help::$COMMANDE_TERMINE, $commande->id]);
                 }
 
                 //recuperer la quantité de tous les detailCommande
@@ -500,16 +609,23 @@ class LivreurController extends Controller
                 // $totals = $demandeLivraison->count();
                 $qteLivree = 0;
 
-                foreach ($demandeLivraison->livraisons as $livraison) {
-                    if ($livraison->etat_livraison == 'LIVREE') {
-                        $qteLivree += $livraison->qte;
+                // Variable de boucle NOMMÉE À PART. Elle s'appelait « $livraison »,
+                // comme la livraison en cours de clôture : la boucle l'écrasait, et
+                // tout ce qui suivait travaillait sur la DERNIÈRE livraison
+                // parcourue. Le livreur était donc crédité du coût de celle-là, pas
+                // de la sienne.
+                foreach ($demandeLivraison->livraisons as $uneLivraison) {
+                    if ($uneLivraison->etat_livraison == Help::$LIVRAISON_LIVREE) {
+                        $qteLivree += $uneLivraison->qte;
                     }
                 }
 
                 // dd($qteALivrer,$qteLivree);
-                if ($qteALivrer == $qteLivree) {
+                if ($qteLivree >= $qteALivrer) {
+                    // État écrit en toutes lettres : etat_commande est un ENUM, où
+                    // un entier désigne la POSITION de la valeur, pas la valeur.
                     $livraison->detailLivraison->demandeLivraison->update([
-                        'etat_commande' => 3
+                        'etat_commande' => Help::$COMMANDE_TERMINE
                     ]);
                 }
             }
@@ -517,6 +633,12 @@ class LivreurController extends Controller
             $livreur->update([
                 'solde' => $livreur->solde + $livraison->cout_livraison
             ]);
+
+            // Le véhicule redevient disponible dès qu'il n'a plus aucune course
+            // en cours. Il était mis à 0 à l'affectation sans jamais être
+            // libéré : après sa première course, il disparaissait définitivement
+            // de la liste proposée au gestionnaire.
+            Vehicule::libererSiPlusAucuneCourse($livraison->vehicule_id);
 
             // dd('ok');
 
@@ -528,12 +650,21 @@ class LivreurController extends Controller
 
     public function enRoute(Livraison $livraison)
     {
+        // Le livreur déclare qu'il PART : la livraison passe « en cours », elle
+        // n'est pas terminée. C'est validerLivraison() qui la clôturera.
+        //
+        // La colonne est une énumération MySQL :
+        //   enum('EN ATTENTE','EN TRAITEMENT','LIVREE','EN COURS LIVRAISON')
+        // Écrire un NOMBRE n'enregistre pas ce nombre mais la valeur à cette
+        // position. Le 3 écrit ici stockait donc « LIVREE » : le simple départ du
+        // livreur était comptabilisé comme une livraison effectuée, la commande
+        // pouvait apparaître soldée avant que la marchandise ne soit remise.
         $livraison->update([
-            'etat_livraison' => 3
+            'etat_livraison' => Help::$LIVRAISON_EN_COURS
         ]);
 
         $livraison->detailLivraison->demandeLivraison->update([
-            'etat_commande' => 2
+            'etat_commande' => Help::$COMMANDE_EN_TRAITEMENT
         ]);
 
         return redirect()->route('livreur.livraison')->with('info', 'Livraison en cours...');

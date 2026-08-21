@@ -39,12 +39,12 @@
                                             class="img-sm img-avatar" alt="Userpic" />
                                     </div> --}}
                                     <div class="info pl-3">
-                                        <h6 class="mb-0 title"> <a href="{{route('grandLivre.livreurDetail',$livreur)}}"> {{strtoupper($livreur->user->nom_prenoms)}}</a></h6>
-                                        <!-- <small class="text-muted">Login: {{$livreur->user->login}}</small><br> -->
+                                        <h6 class="mb-0 title"> <a href="{{route('grandLivre.livreurDetail',$livreur)}}"> {{strtoupper($livreur->user?->nom_prenoms)}}</a></h6>
+                                        <!-- <small class="text-muted">Login: {{$livreur->user?->login}}</small><br> -->
                                     </div>
                                 </a>
                             </td>
-                            <td>{{$livreur->user->email}}</td>
+                            <td>{{$livreur->user?->email}}</td>
                             {{-- <td>{{number_format($livreur->prix_livraison,'0','',' ')}}fcfa</td> --}}
                             <!-- <td><span class="badge rounded-pill text-success">Activé</span></td> -->
                             <td> {{$livreur->created_at}} </td>

@@ -38,7 +38,7 @@
                         @if($fautMettre)
                             <td rowspan="{{ $location->detailLocation->count() }}">{{ $location->numero }}</td>
                         @endif
-                        <td>{{ $detail->produit->nom }}</td>
+                        <td>{{ $detail->produit?->nom }}</td>
                         <td>{{ Carbon::parse($detail->debut)->format('d-m-Y') }}</td>
                         <td>{{ Carbon::parse($detail->fin)->format('d-m-Y') }}</td>
                         <td style="text-align:right">{{ number_format($detail->prix, 0, '', ' ') }} fcfa</td>

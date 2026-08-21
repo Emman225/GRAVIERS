@@ -11,12 +11,15 @@ use App\Models\Commande;
 use App\Models\TypeUser;
 use App\Models\Categorie;
 use App\Models\Enlevement;
+use App\Models\Livraison;
+use App\Models\DetailCommande;
 use App\Models\Fournisseur;
 use App\Models\ModePaiement;
 use App\Models\StockProduit;
 use Illuminate\Http\Request;
 use App\Models\Configuration;
 use App\Models\DemandePaiement;
+use App\Models\PaiementFournisseur;
 use Illuminate\Support\Facades\DB;
 use App\Http\Requests\sellerRequest;
 use Illuminate\Support\Facades\Auth;
@@ -289,19 +292,38 @@ class SellerController extends Controller
             return back()->with('error', 'La quantité servie (' . $request->qteServi . ') dépasse celle du bon (' . $bon->qte . ').');
         }
 
-        $commande = DB::select("select c.* from commande c, detail_commande d, livraison l where c.id = d.`commande_id` and d.`id`=l.`detail_commande_id` and l.id=" . $bon->livraison->id)[0];
-        // $d = Commande::find($commande->id)->detailCommande->sum('qte');
-        // dd($commande, $d, );
+        // Bon dont la livraison a disparu : la requête ci-dessous concaténait « null »
+        // puis lisait [0] d'un résultat vide -> erreur 500 au moment de valider le bon.
+        if ($bon->livraison == null || $bon->livraison->detailCommande == null) {
+            return back()->with('error', "Ce bon n'est plus rattaché à une livraison valide. Contactez le gestionnaire.");
+        }
 
-        $bon->livraison->detailCommande->update([
-            'etat_livraison' => 3
+        $lignesCommande = DB::select("select c.* from commande c, detail_commande d, livraison l where c.id = d.`commande_id` and d.`id`=l.`detail_commande_id` and l.id=" . $bon->livraison->id);
+        if (empty($lignesCommande)) {
+            return back()->with('error', "La commande liée à ce bon est introuvable. Contactez le gestionnaire.");
+        }
+        $commande = $lignesCommande[0];
+
+        // livre_par : 1 = LIVREUR, 2 = CLIENT (récupération par le client).
+        // Récupération par le client : la validation du bon vaut LIVRAISON EFFECTUÉE.
+        // Livraison par un livreur : la marchandise quitte le fournisseur, la
+        // livraison passe EN COURS ; c'est le livreur qui la clôturera.
+        // Avant : on écrivait les nombres 3 et 4 dans une colonne qui contient des
+        // LIBELLÉS ("EN ATTENTE", "EN COURS LIVRAISON", "LIVREE"). La livraison
+        // n'était donc jamais reconnue comme livrée, la fiche commande affichait
+        // « Non livrée » et les grands livres l'ignoraient.
+        $retraitParClient = $bon->livraison->livre_par == 2;
+
+        $ligneCommande = $bon->livraison->detailCommande;
+        $ligneCommande->update([
+            'etat_livraison' => $retraitParClient ? Help::$LIVRAISON_LIVREE : Help::$LIVRAISON_EN_COURS,
+            'qte_livree' => $retraitParClient
+                ? min((float) $ligneCommande->qte, (float) ($ligneCommande->qte_livree ?? 0) + (float) $request->qteServi)
+                : (float) ($ligneCommande->qte_livree ?? 0),
         ]);
 
         $bon->livraison->update([
-            //'etat_livraison' => 3
-            // livre_par est un entier : 1 = LIVREUR, 2 = CLIENT (récupération par le client).
-            // Pour une récupération client, la validation du bon = livraison LIVREE (3).
-            'etat_livraison' => $bon->livraison->livre_par == 2 ? 3 : 4,
+            'etat_livraison' => $retraitParClient ? Help::$LIVRAISON_LIVREE : Help::$LIVRAISON_EN_COURS,
         ]);
         $stock = StockProduit::where('fournisseur_id', $fournisseur->id)->where('produit_id', $bon->produit_id)->first();
 
@@ -327,7 +349,25 @@ class SellerController extends Controller
         $prixUnitaire = (float) ($bon->prix_fournisseur ?? 0) > 0
             ? (float) $bon->prix_fournisseur
             : (float) ($produit->prix ?? 0);
-        $nouveauSolde = $fournisseur->solde + ($request->qteServi * $prixUnitaire);
+
+        // LE SOLDE SUIT CE QUI SERA RÉELLEMENT VERSÉ (Enlevement::montantDu).
+        //
+        // Il était crédité TTC pour tout le monde. Or le client paie trois choses
+        // qui n'ont pas le même destinataire : le produit revient au fournisseur,
+        // la TVA à l'État, le transport à l'entreprise. Le fournisseur non
+        // assujetti ne touche donc que le coût du produit — et comme ce solde
+        // plafonne ses propres demandes de paiement, le créditer TTC l'autorisait
+        // à réclamer 18 % de plus que son dû.
+        //
+        // Seul le fournisseur DÉCLARÉ facture la TVA : elle s'ajoute pour lui seul.
+        // Même taux et même arrondi que le modèle, pour que solde et dette
+        // affichée ne divergent jamais d'un franc.
+        $tauxTva      = (float) (\App\Models\Configuration::first()?->tva ?? 18);
+        $montantHt    = (float) $request->qteServi * $prixUnitaire;
+        $montantCredite = $fournisseur->assujetti_tva
+            ? round($montantHt + ($montantHt * $tauxTva / 100))
+            : round($montantHt);
+        $nouveauSolde = (float) $fournisseur->solde + $montantCredite;
 
         // STOCK : NE PLUS re-décrémenter ici. La quantité du bon a DÉJÀ été retirée
         // du stock au traitement par le gestionnaire (traitementItem /
@@ -352,26 +392,36 @@ class SellerController extends Controller
             $totalQteALivrer = Commande::find($commande->id)->detailCommande->sum('qte');
 
 
-            $lesLivraisons = Commande::join('detail_commande', 'detail_commande.commande_id', '=', 'commande.id')
-                ->join('livraison', 'livraison.detail_commande_id', '=', 'detail_commande.id')
-                ->where('commande.id', $commande->id)
-                ->get();
+            // CE QUI A ÉTÉ SERVI, ET NON CE QUI A ÉTÉ DEMANDÉ.
+            //
+            // On additionnait la quantité des livraisons, c'est-à-dire la
+            // quantité DEMANDÉE. Or dès qu'un fournisseur sert moins que le bon,
+            // un reliquat est créé : la somme des quantités demandées dépasse
+            // alors celle de la commande. Une commande de 4 tonnes servie en
+            // trois bons (2 demandées / 1 servie, puis 1, puis 2) donnait 5 au
+            // lieu de 4 — l'égalité était fausse, la commande ne quittait jamais
+            // la liste des commandes en attente de traitement, alors que le
+            // client avait tout reçu.
+            //
+            // Comparaison en >= et non en == : une égalité stricte entre deux
+            // décimaux rate aussi la cible au moindre arrondi.
+            $qteServie = Livraison::with('enlevement')
+                ->whereIn(
+                    'detail_commande_id',
+                    DetailCommande::where('commande_id', $commande->id)->pluck('id')
+                )
+                ->where('etat_livraison', Help::$LIVRAISON_LIVREE)
+                ->get()
+                ->sum(fn ($uneLivraison) => $uneLivraison->enlevement
+                    ? $uneLivraison->enlevement->quantiteAPayer()
+                    : (float) $uneLivraison->qte);
 
-            $total = $lesLivraisons->count();
+            if ($qteServie >= (float) $totalQteALivrer) {
 
-            $qteLivree = 0;
-
-            foreach ($lesLivraisons as $livraison) {
-                if ($livraison->etat_livraison == 'LIVREE') {
-                    // $qteLivree++;
-                    $qteLivree += $livraison->qte;
-                }
-            }
-
-            if ($totalQteALivrer == $qteLivree) {
-
-                //finaliser la commande
-                DB::update('update commande set etat_commande = 3 where id = ?', [$commande->id]);
+                // Finaliser la commande : etat_commande contient un LIBELLÉ, pas un
+                // numéro. L'ancien « = 3 » empêchait la commande d'apparaître dans la
+                // liste des commandes traitées.
+                DB::update('update commande set etat_commande = ? where id = ?', [Help::$COMMANDE_TERMINE, $commande->id]);
             }
         }
 
@@ -383,23 +433,83 @@ class SellerController extends Controller
     // Afficher le formulaire d'enregistrement d'un fournisseur
 
 
+    /**
+     * L'historique COMPLET de ce que le fournisseur a touché.
+     *
+     * L'entreprise le paie par deux chemins : la demande qu'il initie lui-même,
+     * et le règlement qu'un administrateur saisit sur un de ses bons. Cet écran
+     * ne montrait que le premier — le fournisseur ne voyait donc nulle part les
+     * sommes qu'on lui avait versées de notre propre initiative, et son
+     * historique ne retombait pas sur ce qu'il avait réellement reçu.
+     *
+     * Les deux sources sont réunies en un seul tableau, du plus récent au plus
+     * ancien, chacune portant son origine.
+     */
     public function listePaiements()
     {
         $fournisseur = Fournisseur::where('user_id', Auth::user()->id)->first();
+
         $demandes = DemandePaiement::where('user_id', Auth::user()->id)
             ->with('modePaiement')
             ->orderByDesc('created_at')
             ->get();
 
+        // Les règlements saisis par l'entreprise. Ceux qui découlent d'une
+        // demande sont EXCLUS : ils portent `demande_paiement_id` et sont déjà
+        // dans la liste ci-dessus, sous leur demande. Sans cette exclusion, le
+        // même versement apparaîtrait deux fois et l'historique doublerait.
+        $reglements = collect();
+
+        if ($fournisseur) {
+            $reglements = PaiementFournisseur::with(['modePaiement', 'enlevement'])
+                ->where('fournisseur_id', $fournisseur->id)
+                ->where('statut', 1)
+                ->whereNull('demande_paiement_id')
+                ->orderByDesc('date_paiement')
+                ->get();
+        }
+
+        $mouvements = $demandes
+            ->map(fn (DemandePaiement $d) => (object) [
+                'reference'     => $d->numero ?: ('#' . $d->id),
+                'date'          => $d->created_at,
+                'montant'       => (float) $d->montant,
+                // 1 = acceptée, 2 = refusée, NULL/0 = en attente.
+                'statut'        => (int) ($d->paye ?? 0),
+                'mode'          => $d->modePaiement?->libelle,
+                'date_paiement' => (int) $d->paye === 1 ? $d->updated_at : null,
+                'origine'       => 'Vous',
+                'detail'        => 'Demande de paiement',
+            ])
+            ->concat(
+                $reglements->map(fn (PaiementFournisseur $p) => (object) [
+                    'reference'     => $p->reference ?: ('#' . $p->id),
+                    'date'          => $p->date_paiement ?? $p->created_at,
+                    'montant'       => (float) $p->montant,
+                    'statut'        => 1, // un règlement enregistré est un versement fait
+                    'mode'          => $p->modePaiement?->libelle,
+                    'date_paiement' => $p->date_paiement ?? $p->created_at,
+                    'origine'       => "L'entreprise",
+                    'detail'        => $p->enlevement?->code_enleve
+                        ? 'Bon ' . $p->enlevement->code_enleve
+                        : 'Règlement de bon',
+                ])
+            )
+            ->sortByDesc(fn ($m) => $m->date)
+            ->values();
+
+        $recus = $mouvements->where('statut', 1);
+        $attente = $mouvements->where('statut', 0);
+
         return view('fournisseur.listeDesPaiements', [
             'fournisseur'      => $fournisseur,
-            'demandes'         => $demandes,
+            'mouvements'       => $mouvements,
             'config'           => Configuration::first(),
-            'totalDemandes'    => $demandes->count(),
-            'totalPayees'      => $demandes->where('paye', 1)->count(),
-            'totalNonPayees'   => $demandes->where('paye', '!=', 1)->count(),
-            'montantPaye'      => (float) $demandes->where('paye', 1)->sum('montant'),
-            'montantEnAttente' => (float) $demandes->where('paye', '!=', 1)->sum('montant'),
+            'totalMouvements'  => $mouvements->count(),
+            'totalPayees'      => $recus->count(),
+            'totalNonPayees'   => $attente->count(),
+            'montantPaye'      => (float) $recus->sum('montant'),
+            'montantEnAttente' => (float) $attente->sum('montant'),
         ]);
     }
 
@@ -412,7 +522,15 @@ class SellerController extends Controller
     public function validLogin(Request $request)
     {
         // dd('jsjs');
-        $user = User::where('login', $request->login)->where('type_user_id', 5)->first();
+        // Login OU e-mail, comme l'application mobile — voir le commentaire
+        // détaillé dans LivreurController::login(). Le OU est entre parenthèses
+        // pour que le filtre sur le type reste appliqué aux deux branches.
+        $identifiant = $request->login;
+        $user = User::where(function ($q) use ($identifiant) {
+                $q->where('login', $identifiant)->orWhere('email', $identifiant);
+            })
+            ->where('type_user_id', 5)
+            ->first();
 
         if (!$user) {
             // dd('pas trouvé');
@@ -436,13 +554,24 @@ class SellerController extends Controller
 
     }
 
+    /**
+     * L'écran de demande de paiement du fournisseur.
+     *
+     * Il avait le sien : un simple encadré avec trois champs, sans historique
+     * ni état des demandes en cours. Le livreur et l'apporteur, eux, disposent
+     * déjà d'un écran complet — solde, demandes en attente, demandes payées,
+     * historique — dont le contrôleur traite DÉJÀ le profil fournisseur
+     * (UserController::demandeDepaiePage, cas 5).
+     *
+     * On y renvoie plutôt que d'entretenir deux écrans et deux traitements du
+     * même acte : le second débitait le solde de son côté, sans jamais donner
+     * au fournisseur la moindre trace de ce qu'il avait demandé.
+     *
+     * L'URL reste valable : un signet ou un lien du menu continue de marcher.
+     */
     public function demandeDepaieFournisseur()
     {
-
-        $data['modesPaie'] = ModePaiement::liste();
-        $data['frs'] = Fournisseur::where('user_id', Auth::user()->id)->first();
-
-        return view('fournisseur.fournisseurDemandePaiement', $data);
+        return redirect()->route('show.demandeDepaiePage');
     }
 
     public function demandeDepaieFournisseurTraitement(Request $request)
@@ -458,20 +587,42 @@ class SellerController extends Controller
             return redirect()->route('sellers.demandeDepaieFournisseur')->with('error', 'Veuillez entrer un montant inférieur ou égale à votre solde');
         }
 
-        $user->getFournisseur->update([
-            'solde' => $user->getFournisseur->solde - $request->montant
-        ]);
+        // LE DÉBIT ET LA DEMANDE, OU NI L'UN NI L'AUTRE.
+        //
+        // Le solde était débité d'abord, la demande créée ensuite. Si la
+        // création échouait — une colonne absente en base a suffi — le
+        // fournisseur repartait avec un solde amputé et aucune demande en
+        // face : l'argent disparaissait de son tableau de bord sans que
+        // personne ne puisse le lui verser.
+        try {
+            DB::transaction(function () use ($user, $request) {
+                $fournisseur = $user->getFournisseur;
 
+                $fournisseur->update([
+                    'solde' => (float) $fournisseur->solde - (float) $request->montant,
+                ]);
 
-        $demande = demandePaiement::create([
-            //  'numero' => Help::getCommandeNo(),
-            'montant' => $request->montant,
-            'numero_compte' => $request->numero,
-            'user_id' => $user->id,
-            'mode_paiement_id' => $request->modePaie,
-            // Le solde vient d'être débité ci-dessus : la 2e validation ne re-débite pas.
-            'solde_debite_initiation' => 1,
-        ]);
+                DemandePaiement::create([
+                    'montant'          => $request->montant,
+                    'numero_compte'    => $request->numero,
+                    'user_id'          => $user->id,
+                    'mode_paiement_id' => $request->modePaie,
+                    // Le solde vient d'être débité ci-dessus : la 2e validation
+                    // ne re-débite pas.
+                    'solde_debite_initiation' => 1,
+                ]);
+            });
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Demande de paiement fournisseur impossible', [
+                'user_id' => $user->id,
+                'montant' => $request->montant,
+                'erreur'  => $e->getMessage(),
+            ]);
+
+            return redirect()->route('sellers.demandeDepaieFournisseur')->with('error',
+                "Votre demande n'a pas pu être enregistrée. Votre solde n'a pas été modifié. "
+                . "Signalez-le à l'administrateur.");
+        }
 
         return redirect()->route('sellers.demandeDepaieFournisseur')->with('success', 'Votre demande a été envoyée');
     }

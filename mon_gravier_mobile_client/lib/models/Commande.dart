@@ -224,7 +224,7 @@ class DetailsCommande {
     modePaiementId = json['mode_paiement_id'];
     adresseLivraisonId = json['adresse_livraison_id'];
     dateCommande = json['date_commande'];
-    montantTotal = double.parse(json['montant_total'].toString());
+    montantTotal = double.parse(json['montant_total'] == null ? '0' : json['montant_total'].toString());
     etatCommande = json['etat_commande'];
     dateLivraison = json['date_livraison'];
     dateFinLivraison = json['date_fin_livraison'];
@@ -233,7 +233,7 @@ class DetailsCommande {
     deletedAt = json['deleted_at'];
     createdAt = json['created_at'];
     updatedAt = json['updated_at'];
-    remise = double.parse(json['remise'].toString());
+    remise = double.parse(json['remise'] == null ? '0' : json['remise'].toString());
     typeLivraisonId = json['type_livraison_id'];
     modePaiement = json['mode_paiement'];
     adresse = json['adresse'];
@@ -308,10 +308,10 @@ class DetailsLocation {
     modePaiementId = json['mode_paiement_id'];
     adresseLivraisonId = json['adresse_livraison_id'];
     dateLocation = json['date_location'];
-    montantTotal = double.parse(json['montant_total'].toString());
+    montantTotal = double.parse(json['montant_total'] == null ? '0' : json['montant_total'].toString());
     etatLocation = json['etat_location'];
     note = json['note'];
-    remise = double.parse(json['remise'].toString());
+    remise = double.parse(json['remise'] == null ? '0' : json['remise'].toString());
     statut = json['statut'];
     deletedAt = json['deleted_at'];
     createdAt = json['created_at'];

@@ -60,24 +60,24 @@
                                                     </td>
 
                                                     <td class="image product-thumbnail pt-40">
-                                                        @foreach($detail->produit->image as $image)
+                                                        @foreach($detail->produit?->image as $image)
                                                             <img src="/storage/{{$image->image}}" alt="#">
                                                         @endforeach
                                                     </td>
 
                                                     <td class="product-des product-name">
                                                         <h6 class="mb-5"><a class="product-name mb-10 text-heading"
-                                                                href="shop-product-right.html"> {{ $detail->produit->nom }} </a></h6>
+                                                                href="shop-product-right.html"> {{ $detail->produit?->nom }} </a></h6>
 
                                                                 {{-- <small class="text-muted"> {{$detail->livraisons->count()}} livraison{{($detail->livraisons->count() >1) ? 's' :'' }} prévu</small> --}}
                                                         <div class="product-rate-cover">
                                                             <div class="product-rate d-inline-block">
                                                                 <div class="product-rating"
-                                                                    style="width: {{ $detail->produit->meilleur_note }}%">
+                                                                    style="width: {{ $detail->produit?->meilleur_note }}%">
                                                                 </div>
                                                             </div>
                                                             <span class="font-small ml-5 text-muted">
-                                                                ({{ round(($detail->produit->meilleur_note * 5) / 100, 1) }})</span>
+                                                                ({{ round(($detail->produit?->meilleur_note * 5) / 100, 1) }})</span>
                                                         </div>
                                                     </td>
 

@@ -33,6 +33,90 @@ class Commande extends Model
         'numero_bl',
     ];
 
+    // ------------------------------------------------------------------
+    //  Montants d'une commande — PORTÉS À L'IDENTIQUE depuis le site
+    //  (graviers/app/Models/Commande.php).
+    //
+    //  Les deux projets partagent la même base. Le plafond de crédit d'un client
+    //  doit donc donner le même chiffre qu'on commande depuis le site ou depuis
+    //  l'application : deux calculs voisins mais différents produiraient deux
+    //  limites différentes selon le canal, ce qui n'est pas une limite.
+    //
+    //  Toute correction ici doit être reportée là-bas, et réciproquement.
+    // ------------------------------------------------------------------
+
+    public function detailCommande()
+    {
+        return $this->hasMany(DetailCommande::class, 'commande_id');
+    }
+
+    public function TvaCommande()
+    {
+        return $this->hasOne(TvaCommande::class, 'commande_id')->withDefault(['montant' => 0]);
+    }
+
+    public function factures()
+    {
+        return $this->hasMany(Facture::class, 'service_id');
+    }
+
+    /**
+     * HT marchandise, recalculé depuis les lignes.
+     *
+     * On ne lit PAS montant_total : cette colonne contient le HT pour une commande
+     * créée sur le site, mais le NET pour une commande créée depuis l'application.
+     */
+    public function montantHT(): float
+    {
+        $ht = (float) $this->detailCommande->sum(function ($d) {
+            return (float) $d->prix * (float) $d->qte;
+        });
+
+        // Repli défensif : commande sans lignes (ne devrait pas arriver).
+        return $ht > 0 ? $ht : (float) $this->montant_total;
+    }
+
+    /** Total net à payer par le client : HT + TVA + livraison − remise. */
+    public function montantAPayer(): float
+    {
+        return $this->montantHT()
+            + (float) ($this->TvaCommande->montant ?? 0)
+            + (float) ($this->cout_livraison_client ?? 0)
+            - (float) ($this->remise ?? 0);
+    }
+
+    /** Ce qui a réellement été encaissé sur la commande. */
+    public function montantPayeComptant(): float
+    {
+        $lignes = (float) LignePaiement::where('service', 'COMMANDE')
+            ->where('service_id', $this->id)
+            ->where('statut', 1)
+            ->sum('montant');
+
+        if ($lignes > 0) {
+            return $lignes;
+        }
+
+        // Repli historique : paiements rattachés directement ou via facture.
+        return (float) Paiement::where(function ($q) {
+                $q->where(function ($qq) {
+                    $qq->where('service', 'COMMANDE')->where('service_id', $this->id);
+                })->orWhereIn('facture_id', $this->factures()->pluck('id'));
+            })
+            ->where('statut', 1)
+            ->sum('montant_total');
+    }
+
+    /**
+     * Reste réellement dû sur la commande (net à payer − encaissé).
+     * Le fcfa n'a pas de décimales : un résidu < 1 est considéré comme nul.
+     */
+    public function montantRestantDu(): float
+    {
+        $reste = $this->montantAPayer() - $this->montantPayeComptant();
+        return $reste < 1 ? 0.0 : $reste;
+    }
+
     public static function lire($id)
     {
         $url = Help::$URL_BASE_FICHIER;
@@ -70,7 +154,18 @@ class Commande extends Model
     public static function liste($client_id = null, $etat_commande = null)
     {
         $url = Help::$URL_BASE_FICHIER;
+        // montant_total est ambigu en base : le SITE y stocke le HT, l'APPLICATION le
+        // net final. Une commande passée sur le site s'affichait donc dans l'application
+        // avec un montant inférieur à celui réellement dû (TVA et livraison manquantes).
+        // On renvoie ici le NET recalculé depuis les lignes, quelle que soit l'origine.
+        // (L'alias placé APRÈS commande.* écrase la valeur brute de la colonne.)
         return Commande::selectRaw("commande.*,
+        (COALESCE(NULLIF((SELECT SUM(d.prix * d.qte) FROM detail_commande d
+                           WHERE d.commande_id = commande.id AND d.deleted_at IS NULL), 0),
+                  commande.montant_total, 0)
+         + IFNULL(commande.cout_livraison_client, 0)
+         + IFNULL(tva_commande.montant, 0)
+         - IFNULL(commande.remise, 0)) as montant_total,
         mode_paiement.libelle as mode_paiement,
         adresse_livraison.complement_adresse as adresse,
         tva_commande.montant as montant_tva,

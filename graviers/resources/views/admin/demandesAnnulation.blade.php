@@ -47,16 +47,23 @@
                                 </td>
                                 <td class="text-center"><strong>{{ $demande->infos->numero }}</strong></td>
                                 <td>
-                                    <strong>{{ $demande->client->nom ?? '-' }} {{ $demande->client->prenom ?? '' }}</strong>
+                                    <strong>{{ $demande->client?->display_name ?? '-' }}</strong>
                                     @if($demande->client?->user)
-                                        <br><small class="text-muted">{{ $demande->client->user->email }}</small>
+                                        <br><small class="text-muted">{{ $demande->client?->user?->email }}</small>
                                     @endif
                                 </td>
                                 <td><small>{{ \Illuminate\Support\Str::limit($demande->motif, 120) }}</small></td>
                                 <td class="text-center">
+                                    {{-- Cette colonne montre l'état de la COMMANDE, pas celui de la
+                                         demande. Après un REFUS, la commande reste volontairement dans
+                                         son état : refuser l'annulation, c'est décider qu'elle suit son
+                                         cours. Lu sans explication, « EN ATTENTE » à côté d'une décision
+                                         « Refusée » laissait croire que rien n'avait été enregistré. --}}
                                     <span class="badge bg-light text-dark">{{ $demande->infos->etat }}</span>
                                     @if($demande->infos->en_traitement && !$demande->est_traite)
                                         <br><small class="text-danger">Traitement démarré : annulation auto impossible</small>
+                                    @elseif($demande->est_traite && $demande->decision != 1)
+                                        <br><small class="text-muted">inchangé — l'annulation a été refusée</small>
                                     @endif
                                 </td>
                                 <td class="text-center">
@@ -117,7 +124,7 @@
                         <div class="modal-body">
                             <p>Annuler définitivement la {{ $demande->type_affaire === 'LOCATION' ? 'location' : 'commande' }}
                                 <strong>{{ $demande->infos->numero }}</strong> de
-                                <strong>{{ $demande->client->nom ?? '' }} {{ $demande->client->prenom ?? '' }}</strong> ?</p>
+                                <strong>{{ $demande->client?->display_name ?? '' }}</strong> ?</p>
                             @if ($demande->infos->paye > 0)
                                 <div class="alert alert-warning py-2">
                                     <strong>{{ number_format($demande->infos->paye, 0, ',', ' ') }} FCFA déjà encaissés</strong> sur ce service :

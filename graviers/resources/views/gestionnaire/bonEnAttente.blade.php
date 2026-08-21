@@ -36,25 +36,24 @@
                                     @foreach ($enlevements as $enlevement)
                                         <tr>
                                             <td> {{ $enlevement->code_enleve }} </td>
-                                            <td>
-                                                @if ($enlevement->livraison?->client == null)
-                                                    @dd($enlevement->livraison?->id)
-                                                @else
-                                                    {{ $enlevement->livraison?->client->nom.' '.$enlevement->livraison?->client->prenom }} </td>
-                                                @endif
+                                            {{-- Client : un @dd() de debug s'affichait ici (dump brut à la place
+                                                 du tableau) dès qu'une livraison ou un client était supprimé. --}}
+                                            <td>{{ ($enlevement->livraison?->client?->display_name ?? '') ?: '-' }}</td>
                                             <td><b> {{ $enlevement->fournisseur?->user?->nom_prenoms }} </b></td>
+                                            {{-- Livreur : nullable (enlèvement créé sans livraison affectée par
+                                                 « traitement sans livraison » -> livreur_id null). --}}
                                             <td>
                                                 <b>
-                                                    @if ($enlevement->livraison->livre_par == 1)
-                                                        {{ $enlevement->livraison->livreur->user->nom_prenoms }}
+                                                    @if ($enlevement->livraison?->livre_par == 1)
+                                                        {{ $enlevement->livraison?->livreur?->user?->nom_prenoms ?? '-' }}
                                                     @else
-                                                        {{ $enlevement->livraison->clientLivreur->nom }}
+                                                        {{ $enlevement->livraison?->clientLivreur?->nom ?? '-' }}
                                                     @endif
                                                 </b>
                                             </td>
-                                            <td>{{ $enlevement->produit->nom }}</td>
+                                            <td>{{ $enlevement->produit?->nom }}</td>
                                             <td class="text-center">{{ $enlevement->qte }}</td>
-                                            <td class="text-center">{{ $enlevement->livraison->gestionnaire?->nom_prenoms }}</td>
+                                            <td class="text-center">{{ $enlevement->livraison?->gestionnaire?->nom_prenoms }}</td>
                                             <td>{{ $enlevement->created_at->format('d-m-Y')}} @if($enlevement->fournisseur_validation != null) <span class="text-success"> (Fournisseur) @elseif($enlevement->livreur_validation != null) <span class="text-success"> (Livreur) </span> @endif</span> </td>
                                             <td class="text-center">
                                                 <a href="{{ route('show.bonApercu', $enlevement) }}"

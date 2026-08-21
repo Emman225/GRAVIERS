@@ -42,7 +42,7 @@ class PaiementFilleuleScreenState extends State<PaiementFilleuleScreen> {
       }
 
       try {
-        retourHttp = await http
+        final http.Response retourHttp = await http
             .post(Uri.parse('${lienAPI()}liste-paiement-filleule'),
                 headers: {"Content-Type": "application/json"},
                 body: jsonEncode(param))
@@ -61,13 +61,13 @@ class PaiementFilleuleScreenState extends State<PaiementFilleuleScreen> {
               paiements = retourList.data ?? [];
             });
           } else {
-            EasyLoading.showError(retourList.message ?? '');
+            afficherErreur(retourList.message ?? '');
           }
         } else {
-          EasyLoading.showError("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
-        EasyLoading.showError(
+        afficherErreur(
             "Une erreur s'est produite veuillez reesayer plus tard");
         if (kDebugMode) {
           print(e.toString());
@@ -75,7 +75,7 @@ class PaiementFilleuleScreenState extends State<PaiementFilleuleScreen> {
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 

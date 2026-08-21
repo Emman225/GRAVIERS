@@ -27,7 +27,7 @@
                             <strong class="h5">{{ $lignes->count() }}</strong>
                         </div>
                         <div class="col-md-3">
-                            <span class="text-muted small">Total achats TTC</span><br>
+                            <span class="text-muted small">Total dû aux fournisseurs</span><br>
                             <strong class="h5 text-primary">{{ Help::formatNombre($totalTtc, true) }}</strong>
                         </div>
                         <div class="col-md-3">
@@ -59,8 +59,10 @@
                             <th class="text-end">Quantité</th>
                             <th class="text-end">Prix unitaire achat</th>
                             <th class="text-end">Montant HT</th>
-                            <th class="text-end">TVA {{ number_format($tauxTva, 0) }}%</th>
-                            <th class="text-end">Montant TTC</th>
+                            {{-- La TVA n'est due qu'au fournisseur assujetti : elle vaut 0 pour les autres,
+                                 la TVA payée par le client revenant alors à l'État. --}}
+                            <th class="text-end">TVA fournisseur</th>
+                            <th class="text-end">Montant dû</th>
                             <th class="text-center">Date Échéance</th>
                             <th class="text-end">Montant Payé</th>
                             <th class="text-end">Reste à Payer</th>

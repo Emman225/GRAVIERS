@@ -62,7 +62,10 @@
                                             @endphp
                                             @foreach($commandes as $commande)
                                                 @php
-                                                    $montant = (!is_null($commande->TvaCommande)) ? $commande->TvaCommande->montant : 0;
+                                                    // Total réellement encaissé sur la commande (source de vérité :
+                                                    // les lignes de paiement, cf. Commande::montantPayeComptant()).
+                                                    $payeCommande = $commande->montantPayeComptant();
+                                                    $restePaye    = $payeCommande;
                                                 @endphp
                                                 @if(!$commande->factures->isEmpty())
                                                     <tr class="grand-livre-divider-row">
@@ -72,20 +75,32 @@
                                                     </tr>
 
                                                     @foreach ($commande->factures as $facture)
-                                                        @php $montant += $facture->montant @endphp
+                                                        @php
+                                                            // Paiements rattachés à CETTE facture ; à défaut (encaissement
+                                                            // comptant lié à la commande et non à la facture), on impute le
+                                                            // solde encore disponible de la commande, facture par facture.
+                                                            $payeFacture = (float) $facture->paiements->where('statut', 1)->sum('montant_total');
+                                                            if ($payeFacture <= 0) {
+                                                                $payeFacture = min($restePaye, (float) $facture->montant);
+                                                            }
+                                                            $restePaye = max(0, $restePaye - $payeFacture);
+
+                                                            $montantFacture  += (float) $facture->montant;
+                                                            $montantPaiement += $payeFacture;
+                                                        @endphp
                                                         <tr>
                                                             <td><small>{{ $facture->created_at->format('d/m/Y') }}</small></td>
-                                                            <td>{{ $facture->commande->paiements->libelle ?? '—' }}</td>
+                                                            <td>{{ $facture->commande?->paiements->libelle ?? '—' }}</td>
                                                             <td><span class="grand-livre-num">{{ $facture->numero }}</span></td>
+                                                            {{-- Facturé --}}
                                                             <td class="text-end fw-bold">{{ number_format($facture->montant, '0', '', ' ') }} <small>fcfa</small></td>
-                                                            <td class="text-end fw-bold text-success">{{ number_format($commande->montant_total, '0', '', ' ') }} <small>fcfa</small></td>
-                                                            <td class="text-end fw-bold">{{ number_format($commande->montant_total - $montant, '0', '', ' ') }} <small>fcfa</small></td>
+                                                            {{-- Encaissé : l'ancien code affichait ici le montant HT de la
+                                                                 commande, qui n'est pas un paiement. --}}
+                                                            <td class="text-end fw-bold text-success">{{ number_format($payeFacture, '0', '', ' ') }} <small>fcfa</small></td>
+                                                            {{-- Reste dû sur la facture --}}
+                                                            <td class="text-end fw-bold">{{ number_format(max(0, (float) $facture->montant - $payeFacture), '0', '', ' ') }} <small>fcfa</small></td>
                                                         </tr>
                                                     @endforeach
-                                                    @php
-                                                        $montantFacture += $montant;
-                                                        $montantPaiement += $commande->montant_total;
-                                                    @endphp
                                                 @endif
                                             @endforeach
                                         </tbody>
@@ -94,8 +109,11 @@
                                                 <td colspan="3"><strong>SOLDE</strong></td>
                                                 <td class="text-end"><strong>{{ number_format($montantFacture, '0', '', ' ') }} <small>fcfa</small></strong></td>
                                                 <td class="text-end text-success"><strong>{{ number_format($montantPaiement, '0', '', ' ') }} <small>fcfa</small></strong></td>
+                                                {{-- Solde = ce qui reste dû, dans le même sens que la colonne Solde des
+                                                     lignes (l'ancien total faisait paiements − factures, donc négatif
+                                                     dès que le client devait de l'argent). --}}
                                                 <td class="text-end grand-livre-final-solde">
-                                                    <strong>{{ number_format($montantPaiement - $montantFacture, '0', '', ' ') }} <small>fcfa</small></strong>
+                                                    <strong>{{ number_format(max(0, $montantFacture - $montantPaiement), '0', '', ' ') }} <small>fcfa</small></strong>
                                                 </td>
                                             </tr>
                                         </tfoot>

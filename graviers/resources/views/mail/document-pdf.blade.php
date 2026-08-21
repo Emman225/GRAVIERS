@@ -5,7 +5,7 @@ Bonjour **{{ $clientNom }}**,
 Veuillez trouver ci-joint votre **{{ $typeDocument }}** N° **{{ $numero }}**.
 
 <x-mail::panel>
-Ce document est genere automatiquement par la plateforme IMLOD.
+Ce document est genere automatiquement par la plateforme DALAKOUN.
 Pour toute question, n'hesitez pas a nous contacter.
 </x-mail::panel>
 

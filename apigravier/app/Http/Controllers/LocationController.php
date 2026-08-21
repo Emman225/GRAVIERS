@@ -305,11 +305,11 @@ class LocationController extends Controller
                                 'prenom_usager' => $lePrenom,
                                 'telephone' => $client->contact1,
                                 'email' => $user->email,
-                                'libelle_article' => "Paiement IMLOD",
+                                'libelle_article' => "Paiement DALAKOUN",
                                 'quantite' => 1,
                                 // Montant reellement preleve : celui du serveur.
                                 'montant' => ceil($totalServeur),
-                                'lib_order' => "Paiement location de produit IMLOD",
+                                'lib_order' => "Paiement location de produit DALAKOUN",
                                 'Url_Retour' => Help::urlPaiement(route("ouvreApp", ['codePaiement' => $codePaiement])),
                                 'Url_Callback' => Help::urlPaiement(route('callBackPaiement')),
                             ],
@@ -358,7 +358,7 @@ class LocationController extends Controller
                     try {
                         $loc = Location::lire($location->id);
                         $lis = DetailLocation::liste(null, $location->id);
-                        Mail::to($user->email)->send(new EnvoieCommandeMail($loc, $lis, $request->montantTva, $client->nom . ' ' . $client->prenom, $client->email, $client->contact1, Help::$LOCATION));
+                        Mail::to($user->email)->send(new EnvoieCommandeMail($loc, $lis, $request->montantTva, $client->display_name, $client->email, $client->contact1, Help::$LOCATION));
                     } catch (\Throwable $mailEx) {
                         Log::error('Email location non envoyé (location ' . $location->id . '): ' . $mailEx->getMessage());
                     }

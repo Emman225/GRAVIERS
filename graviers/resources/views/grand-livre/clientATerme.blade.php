@@ -38,50 +38,41 @@
                     <thead>
                         <tr>
                             <th class="text-center">Numéro de compte</th>
-                            <th class="text-center">Date d'ouverture</th> {{--  --}}
+                            <th class="text-center">Date d'ouverture</th>
                             <th class="text-center">Nom</th>
-                            <th class="text-center">type de compte</th> {{--  --}}
-                            <th class="text-center">solde</th>
-                            <th class="text-center">Adresse géographique</th> {{--  --}}
+                            <th class="text-center">Type de compte</th>
+                            <th class="text-center">Adresse géographique</th>
                             <th class="text-center">Contact</th>
                             <th class="text-center">Email</th>
-
+                            <th class="text-center">Solde</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach ($users as $user)
-                            @if (!is_null($user->client))
-                                @if($user->client->client_a_terme == 1 && $user->client->deleted_at == null && $user->deleted_at == null )
-                                    <tr>
-                                        <td class="text-center">
-                                            <div class="info pl-3">
-                                                <h6 class="mb-0 title">{{ $user->id }}</h6>
-                                            </div>
-                                        </td>
-
-                                        <td class="text-center">{{ Carbon::parse($user->created_at)->format('d-m-Y') }}</td>
-
-                                        <td class="text-center"> <a href="{{route('grandLivre.clientOrdinaireDetail', $user->client)}}"> {{ $user->client->nom . ' ' . $user->client->prenom }}</a></td>
-
-                                        <td class="text-center">
-
-                                            {{ $user->client->type_client }}
-
-                                        </td>
-                                        <td class="text-center">{{ Help::soldeClient($user->client, 1) }} fcfa</td>
-                                        <td class="text-center">{{ $user->adresse }}</td>
-                                        <td class="text-center">
-                                            <p> {{ $user->client->contact1 }} </p>
-                                            <p> {{ $user->client->contact2 }} </p>
-                                        </td>
-                                        <td class="text-center">{{ $user->email }}</td>
-
-
-
-                                    </tr>
-                                @endif
-                            @endif
-                        @endforeach
+                        @forelse ($clients as $client)
+                            <tr>
+                                <td class="text-center">{{ $client->user?->id }}</td>
+                                <td class="text-center">{{ $client->user?->created_at ? \Carbon\Carbon::parse($client->user->created_at)->format('d-m-Y') : '-' }}</td>
+                                <td class="text-center">
+                                    <a href="{{ route('grandLivre.clientOrdinaireDetail', $client) }}">{{ $client->display_name }}</a>
+                                </td>
+                                <td class="text-center">{{ $client->type_client }}</td>
+                                <td class="text-center">{{ $client->user?->adresse ?: '-' }}</td>
+                                <td class="text-center">
+                                    {{ $client->contact1 ?: '-' }}
+                                    @if($client->contact2)
+                                        <br>{{ $client->contact2 }}
+                                    @endif
+                                </td>
+                                <td class="text-center">{{ $client->user?->email ?: '-' }}</td>
+                                <td class="text-center fw-bold">{{ Help::soldeClient($client, 1) }}</td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="8" class="text-center text-muted py-5">
+                                    Aucun client dans ce grand livre.
+                                </td>
+                            </tr>
+                        @endforelse
                     </tbody>
                 </table>
                 <!-- table-responsive.// -->
@@ -101,11 +92,20 @@
     <script src="{{ asset('backend/plugins/DataTables/datatables.min.js') }}"></script>
     <script type="text/javascript">
         $(function() {
-            var $table = $('#liste').DataTable({
-                language: {
-                    url: '{{ asset('backend/plugins/DataTables/i18n/fr-FR.json') }}',
-                },
-            });
+            // Le selecteur portait sur TOUTES les tables de la page, et rien
+            // n'empechait l'initialisation sur une table vide — « Requested
+            // unknown parameter » des qu'aucun client ne repond au filtre.
+            var $table = $('#liste');
+            if ($table.find('tbody tr').length > 0 &&
+                $table.find('tbody tr td[colspan]').length === 0) {
+                $table.DataTable({
+                    columnDefs: [{ targets: '_all', defaultContent: '-' }],
+                    language: {
+                        url: '{{ asset('backend/plugins/DataTables/i18n/fr-FR.json') }}',
+                    },
+                    order: [],
+                });
+            }
         });
     </script>
 @endsection

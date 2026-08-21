@@ -48,7 +48,7 @@
                                 </thead>
                                 <tbody>
                                     @foreach ($demandes as $demande)
-                                        @if($demande->user->type_user_id == 6 && $demande->paye == false)
+                                        @if($demande->user?->type_user_id == 6 && $demande->paye == false)
                                             @php
                                                 $estInitiateur = (int) $demande->user_valide_id === (int) $currentUserId;
                                                 $estDejaFinalisee = $demande->user_valide_id && $demande->user_valide2_id;
@@ -56,25 +56,25 @@
                                                 $estEnAttente2 = $demande->user_valide_id && !$demande->user_valide2_id;
                                             @endphp
                                             <tr>
-                                                <td class="text-center"> {{$demande->user->nom_prenoms}} </td>
+                                                <td class="text-center"> {{$demande->user?->nom_prenoms}} </td>
                                                 <td class="text-center"> {{$demande->montant}} fcfa </td>
                                                 <td class="text-center"> {{Carbon::parse($demande->created_at)->format('d-m-Y à H:i')}} </td>
                                                 <td class="text-center">
                                                     @if($estDejaFinalisee)
                                                         <span class="badge bg-success">Validée</span>
                                                     @elseif($estEnAttente1)
-                                                        <a href="{{route('show.valideDemande',['id'=>$demande->id, 'type' => 'apporteur','reponse' => 'accepter'])}}" class="btn btn-sm font-sm rounded btn-success"><i class="material-icons md-check"></i> 1re validation</a>
+                                                        <a href="{{route('show.valideDemande',['id'=>$demande->id, 'type' => 'apporteur','reponse' => 'accepter'])}}" class="btn btn-sm font-sm rounded btn-success" onclick="return confirm('Donner la 1re validation a cette demande ? Un SECOND administrateur devra ensuite accepter pour que cet apporteur soit paye.'accepter pour que l'apporteur soit paye.');"><i class="material-icons md-check"></i> 1re validation</a>
                                                     @elseif($estEnAttente2 && $estInitiateur)
                                                         <span class="text-muted" title="Vous êtes le 1er validateur">En attente d'un autre admin</span>
                                                     @elseif($estEnAttente2)
-                                                        <a href="{{route('show.valideDemande',['id'=>$demande->id, 'type' => 'apporteur','reponse' => 'accepter'])}}" class="btn btn-sm font-sm rounded btn-success"><i class="material-icons md-check"></i> 2e validation (accepter)</a>
+                                                        <a href="{{route('show.valideDemande',['id'=>$demande->id, 'type' => 'apporteur','reponse' => 'accepter'])}}" class="btn btn-sm font-sm rounded btn-success" onclick="return confirm('Accepter et PAYER cette demande ? Le versement sera enregistre et impute sur les pieces de cet apporteur. Cette action est definitive.'apporteur. Cette action est definitive.');"><i class="material-icons md-check"></i> 2e validation (accepter)</a>
                                                     @endif
                                                 </td>
                                                 <td>
                                                     @if($estDejaFinalisee)
                                                         —
                                                     @elseif($estEnAttente2 && !$estInitiateur)
-                                                        <a href="{{route('show.valideDemande',['id'=>$demande->id, 'type' => 'apporteur','reponse' => 'refuser'])}}" class="btn btn-sm font-sm rounded btn-danger" onclick="return confirm('Refuser cette demande ?');"><i class="material-icons md-denied"></i> Rejeter</a>
+                                                        <a href="{{route('show.valideDemande',['id'=>$demande->id, 'type' => 'apporteur','reponse' => 'refuser'])}}" class="btn btn-sm font-sm rounded btn-danger" onclick="return confirm('Refuser cette demande ? Le montant sera restitue au solde de cet apporteur.'apporteur.');"><i class="material-icons md-denied"></i> Rejeter</a>
                                                     @endif
                                                 </td>
                                             </tr>

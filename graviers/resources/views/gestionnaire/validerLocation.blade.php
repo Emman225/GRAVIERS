@@ -18,7 +18,7 @@
         <div class="card-body">
             <div class="row mb-3">
                 <div class="col-md-6">
-                    <p class="mb-1"><strong>Client :</strong> {{ $location->client?->nom }} {{ $location->client?->prenom }}</p>
+                    <p class="mb-1"><strong>Client :</strong> {{ $location->client?->display_name }}</p>
                     <p class="mb-1"><strong>Date location :</strong> {{ $location->date_location ? Carbon::parse($location->date_location)->format('d/m/Y') : '-' }}</p>
                 </div>
                 <div class="col-md-6 text-md-end">

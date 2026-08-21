@@ -42,7 +42,9 @@ return [
             'encryption' => env('MAIL_ENCRYPTION', 'tls'),
             'username' => env('MAIL_USERNAME'),
             'password' => env('MAIL_PASSWORD'),
-            'timeout' => null,
+            // 10 s max : un SMTP muet ne doit pas retenir la requête jusqu'à ce que
+            // l'hébergeur (LWS) tue le processus (ERR_CONNECTION_CLOSED côté client).
+            'timeout' => env('MAIL_TIMEOUT', 10),
             'local_domain' => env('MAIL_EHLO_DOMAIN'),
         ],
 

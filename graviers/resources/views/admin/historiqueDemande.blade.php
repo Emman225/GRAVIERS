@@ -52,7 +52,7 @@
                                                          Livreur/Fournisseur/Apporteur n'ont pas de colonnes nom/prenom. --}}
                                                     {{ $demande->user?->nom_prenoms }}
                                                 </td>
-                                                <td class="text-center"> {{$demande->user->type_user->nom}} </td>
+                                                <td class="text-center"> {{$demande->user?->type_user?->nom}} </td>
                                                 <td class="text-center"> {{number_format($demande->montant,'0','',' ')}} fcfa </td>
                                                 <td class="text-center"> {{Carbon::parse($demande->created_at)->format('d-m-Y à H:i')}} </td>
                                                 <td class="text-center"> {{Carbon::parse($demande->updated_at)->format('d-m-Y à H:i')}} </td>

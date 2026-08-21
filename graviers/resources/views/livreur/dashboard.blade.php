@@ -230,7 +230,7 @@
                         <div class="dash-top-item">
                             <div class="dash-top-rank dash-top-rank-{{ $idx + 1 }}">{{ $idx + 1 }}</div>
                             <div class="flex-grow-1">
-                                <div class="dash-top-name">{{ trim(($tc->client?->nom ?? '').' '.($tc->client?->prenom ?? '')) ?: 'Client #'.$tc->client_id }}</div>
+                                <div class="dash-top-name">{{ ($tc->client?->display_name ?? '') ?: 'Client #'.$tc->client_id }}</div>
                                 <div class="dash-top-meta">{{ $tc->total_livraisons }} livraison{{ $tc->total_livraisons > 1 ? 's' : '' }}</div>
                             </div>
                         </div>
@@ -281,7 +281,7 @@
                                             $label = $etat ?: '—';
                                             $badge = 'bg-light text-dark';
                                         }
-                                        $clientNom = trim(($liv->client?->nom ?? '').' '.($liv->client?->prenom ?? '')) ?: '—';
+                                        $clientNom = ($liv->client?->display_name ?? '') ?: '—';
                                         $produitNom = $liv->produit?->nom ?? '';
                                         $unite = $liv->produit?->unite ?? '';
                                     @endphp

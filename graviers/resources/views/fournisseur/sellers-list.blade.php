@@ -37,6 +37,7 @@
                             <th class="text-center">Téléphone</th>
                             <th class="text-center">Localisation</th>
                             <th class="text-center">Délai paiement (j)</th>
+                            <th class="text-center">TVA</th>
                             <th class="text-center">Notes</th>
                             <th class="text-center">Statut</th>
                             <th class="text-center">Actions</th>
@@ -65,9 +66,16 @@
                                 </td>
                                 <td>{{ $fournisseur->adresse_geo }}</td>
                                 <td class="text-center">{{ $fournisseur->delai_paiement ?? '-' }}</td>
+                                <td class="text-center">
+                                    @if ($fournisseur->assujetti_tva)
+                                        <span class="badge bg-info" title="Sa facture porte la TVA : elle s'ajoute à son règlement.">Assujetti</span>
+                                    @else
+                                        <span class="badge bg-light text-dark" title="On lui verse le seul coût du produit.">Non assujetti</span>
+                                    @endif
+                                </td>
                                 <td>{{ $fournisseur->notes ?? '-' }}</td>
                                 <td class="text-center">
-                                    @if ($fournisseur->user && $fournisseur->user->statut == 1)
+                                    @if ($fournisseur->user && $fournisseur->user?->statut == 1)
                                         <span class="badge bg-success">Actif</span>
                                     @else
                                         <span class="badge bg-danger">Bloqué</span>
@@ -100,7 +108,7 @@
                                                 class="dropdown-item"
                                                 data-id="{{ $fournisseur->id }}" data-nom="{{ $fournisseur->nom }}"
                                                 data-bs-toggle="modal" data-bs-target="#blockModal-{{ $fournisseur->user_id }}">
-                                                {{ $fournisseur->user->statut == 2 ? 'Débloquer' : 'Bloquer' }}
+                                                {{ $fournisseur->user?->statut == 2 ? 'Débloquer' : 'Bloquer' }}
                                             </button>
                                             <button class="dropdown-item text-danger"
                                                 data-nom="{{ $fournisseur->nom_prenoms }}" data-bs-toggle="modal"
@@ -129,7 +137,7 @@
                 <div class="modal-content">
                     <div class="modal-header">
                         <h5 class="modal-title" id="exampleModalLongTitle">Les produits de <span
-                                class="fw-bold">{{ $fournisseur->user->nom_prenoms }}</span> </h5>
+                                class="fw-bold">{{ $fournisseur->user?->nom_prenoms }}</span> </h5>
                         <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                             <span aria-hidden="true">&times;</span>
                         </button>
@@ -230,7 +238,7 @@
                             </button>
 
                             <a href="{{ route('show.bloquerCompte', ['id' => $fournisseur->user_id, 'type' => 'blok']) }}"
-                                class="btn btn-sm btn-brand bg-{{ $fournisseur->user->statut == 2 ? 'danger' : 'primary' }} rounded font-sm mt-15">{{ $fournisseur->user->statut == 2 ? 'Oui, débloquer' : 'Oui, Bloquer' }}</a>
+                                class="btn btn-sm btn-brand bg-{{ $fournisseur->user?->statut == 2 ? 'danger' : 'primary' }} rounded font-sm mt-15">{{ $fournisseur->user?->statut == 2 ? 'Oui, débloquer' : 'Oui, Bloquer' }}</a>
 
                         </form>
                     </div>

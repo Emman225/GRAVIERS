@@ -55,7 +55,7 @@ class ProfileScreen extends StatelessWidget {
                           GestureDetector(
                             onTap: () {
                               Clipboard.setData(ClipboardData(text: user.apporteur?.code ?? ''));
-                              EasyLoading.showSuccess("Code parrain copié !");
+                              afficherSucces("Code parrain copié !");
                             },
                             child: const Icon(
                               Icons.copy,
@@ -85,6 +85,16 @@ class ProfileScreen extends StatelessWidget {
                           user = User();
                           Get.offAllNamed(SignInScreen.routeName);
                         },
+                      ),
+                      // Version affichée : sans repère visible, deux APK
+                      // successifs sont indiscernables une fois installés.
+                      const Padding(
+                        padding: EdgeInsets.only(top: 24, bottom: 12),
+                        child: Text(
+                          "Version $versionApplication",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey, fontSize: 12),
+                        ),
                       ),
                     ],
                   ),

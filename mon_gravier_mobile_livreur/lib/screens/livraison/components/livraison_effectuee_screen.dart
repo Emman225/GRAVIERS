@@ -25,6 +25,10 @@ class _LivraisonEffectueeScreenState extends State<LivraisonEffectueeScreen> {
   UneLivraison livraison = UneLivraison();
   String msgErr = "";
 
+  /// Verrou anti double validation : sans lui, une seconde tape (ou un retour
+  /// puis un nouveau clic) renvoyait la meme fin de livraison au serveur.
+  bool _envoiEnCours = false;
+
   @override
   void initState() {
     livraison = Get.arguments;
@@ -115,11 +119,11 @@ class _LivraisonEffectueeScreenState extends State<LivraisonEffectueeScreen> {
             Padding(
               padding: const EdgeInsets.all(15.0),
               child: ElevatedButton(
-                onPressed: () async {
+                onPressed: _envoiEnCours ? null : () async {
                   if (_validationSaisie()) {
                     _enregistrerFinLivraison();
                   } else {
-                    EasyLoading.showError(msgErr);
+                    afficherErreur(msgErr);
                   }
                 },
                 child: const Text("Enregistrer la fin de livraison"),
@@ -133,7 +137,9 @@ class _LivraisonEffectueeScreenState extends State<LivraisonEffectueeScreen> {
   }
 
   _enregistrerFinLivraison() async {
+    if (_envoiEnCours) return;
     if (await verifierConnexion()) {
+      setState(() => _envoiEnCours = true);
       afficherChargement();
 
       var param = {
@@ -148,7 +154,7 @@ class _LivraisonEffectueeScreenState extends State<LivraisonEffectueeScreen> {
       }
 
       try {
-        retourHttp = await http
+        final http.Response retourHttp = await http
             .post(Uri.parse('${lienAPI()}enregistrer-fin-livraison'),
                 headers: {"Content-Type": "application/json"},
                 body: jsonEncode(param))
@@ -161,22 +167,29 @@ class _LivraisonEffectueeScreenState extends State<LivraisonEffectueeScreen> {
               noteController.text = '';
               livraison = UneLivraison.fromJson(datas['data']);
             });
-            EasyLoading.showSuccess(datas['message']);
+            afficherSucces(datas['message']);
             Get.back();
           } else {
-            EasyLoading.showError(datas['message']);
+            afficherErreur(datas['message']);
           }
+        } else {
+          // Sans cette branche, une reponse serveur en erreur ne produisait
+          // AUCUNE reaction a l'ecran.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez reessayer.");
         }
       } catch (e) {
         user.code = 500;
         user.message = "Une erreur s'est produite veuillez reesayer plus tard";
+        // Ce bloc de secours n.affichait RIEN : l.ecran restait muet en cas de
+        // coupure reseau ou de reponse illisible.
+        afficherErreur("Impossible de contacter le serveur. Verifiez votre connexion et reessayez.");
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -191,7 +204,11 @@ class _LivraisonEffectueeScreenState extends State<LivraisonEffectueeScreen> {
       pass = false;
       msgErr = "Cette livraison est déjà validé";
     }
-    if (livraison.livreurId != user.livreur?.id) {
+    // Le profil livreur n'est pas toujours chargé (reprise d'application, réponse
+    // partielle du serveur) : comparer à null bloquait ALORS TOUTES les livraisons
+    // avec « Vous n'êtes pas associé à cette livraison ». On ne contrôle
+    // l'appartenance que si l'identifiant du livreur est réellement connu.
+    if (user.livreur?.id != null && livraison.livreurId != user.livreur?.id) {
       pass = false;
       msgErr = "Vous n'êtes pas associé à cette livraison";
     }

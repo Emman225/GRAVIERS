@@ -56,7 +56,9 @@ class ListeDemandeLivraisonScreenState extends State<ListeDemandeLivraisonScreen
         if (retourHttp.statusCode == 200) {
           retListe = RetourListeDemandeLivraison.fromJson(datas);
             if (retListe.code == 200) {
-              setState(() {
+              // Écran quitté pendant le chargement : la réponse revient sur un écran
+              // détruit et le rafraîchissement échoue (voir devis_screen.dart).
+              if (mounted) setState(() {
                 var liste = retListe.data ?? [];
                 demandeLivAttente = liste.where((c) => c.etatCommande == COMMANDE_EN_ATTENTE).toList();
                 demandeLivEnTraitement = liste.where((c) => c.etatCommande == COMMANDE_EN_TRAITEMENT).toList();
@@ -68,18 +70,22 @@ class ListeDemandeLivraisonScreenState extends State<ListeDemandeLivraisonScreen
                 ];
               });
             }else{
-              EasyLoading.showError(retListe.message ?? '');
+              afficherErreur(retListe.message ?? '');
             }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
-        EasyLoading.showError("Une erreur s'est produite veuillez reesayer plus tard");
+        afficherErreur(messageErreurTechnique(e));
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 

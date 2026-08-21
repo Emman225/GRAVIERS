@@ -33,10 +33,10 @@
                         <div class="text">
                             <h6 class="mb-1">Info client</h6>
                             <p class="mb-1">
-                                {{ $demande->client->nom }} {{ $demande->client->prenom }} <br />
-                                {{-- {{$commande->client->user->email}} <br /> --}}
-                                {{ $demande->client->contact1 }} <br>
-                                {{ $demande->client->contact2 }}
+                                {{ $demande->client?->display_name }} <br />
+                                {{-- {{$commande->client?->user?->email}} <br /> --}}
+                                {{ $demande->client?->contact1 }} <br>
+                                {{ $demande->client?->contact2 }}
                             </p>
 
                         </div>
@@ -53,8 +53,10 @@
                         <div class="text">
                             <h6 class="mb-1">Prise en charge</h6>
                             <p class="mb-1">
-                                Ville: {{ ucfirst($demande->priseEnCharge->ville->nom) }}
-                                <br />{{ ucfirst($demande->priseEnCharge->affichage) }} <br />
+                                {{-- Adresses nullables en base (cf. demandeLivraisonlist) : la
+                                     ville était déjà lue sans risque, l'adresse elle-même non. --}}
+                                Ville: {{ ucfirst($demande->priseEnCharge?->ville?->nom ?? '—') }}
+                                <br />{{ ucfirst($demande->priseEnCharge?->affichage ?? '—') }} <br />
 
                             </p>
 
@@ -62,8 +64,8 @@
                         <div class="ms-5 text">
                             <h6 class="mb-1">Destination</h6>
                             <p class="mb-1">
-                                Ville: {{ ucfirst($demande->destination->ville->nom) }}
-                                <br />{{ ucfirst($demande->destination->affichage) }} <br />
+                                Ville: {{ ucfirst($demande->destination?->ville?->nom ?? '—') }}
+                                <br />{{ ucfirst($demande->destination?->affichage ?? '—') }} <br />
 
                             </p>
 
@@ -94,7 +96,7 @@
                                                 <div class="info">{{ $detail->nom_produit }}</div>
                                             </a>
                                         </td>
-                                        <td> {{ $detail->qte }} {{$detail->uniteProduit->abreviation}}</td>
+                                        <td> {{ $detail->qte }} {{$detail->uniteProduit?->abreviation}}</td>
                                         <td>{{ $detail->description }}</td>
 
                                     </tr>
@@ -157,14 +159,14 @@
                                 <tr>
                                     <td> {{$livraison->numero}} </td> {{-- numéro --}}
 
-                                    <td> {{$livraison->qte}} {{$detail->uniteProduit->abreviation}} </td> {{-- qte --}}
+                                    <td> {{$livraison->qte}} {{$detail->uniteProduit?->abreviation}} </td> {{-- qte --}}
 
 
-                                    <td> {{$livraison->livreur->user->nom.' '.$livraison->livreur->user->prenom}} ({{$livraison->livreur->user->contact}}) </td> {{-- livreur --}}
+                                    <td> {{$livraison->livreur?->user?->nom.' '.$livraison->livreur?->user?->prenom}} ({{$livraison->livreur?->user?->contact}}) </td> {{-- livreur --}}
 
                                     <td> {{$livraison->updated_at}}</td> {{-- date livreur--}}
 
-                                    <td> {{$livraison->user->nom_prenoms}}</td> {{-- traité par--}}
+                                    <td> {{$livraison->user?->nom_prenoms}}</td> {{-- traité par--}}
 
                                     <td> {{$livraison->etat_livraison}} </td> {{-- statut --}}
 

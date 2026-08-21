@@ -1,5 +1,35 @@
 @php
-    $logoDALAKOUN = 'data:image/png;base64,' . base64_encode(file_get_contents(public_path('frontend/assets/imgs/logo/logoDALAKOUN.png')));
+    /* ------------------------------------------------------------------
+       Les données de l'établissement et du client, si personne ne les a
+       fournies.
+
+       Douze documents appelaient @include('document.layouts._fne_init') en
+       tête de fichier pour les calculer. Or les variables créées dans un
+       @include restent LOCALES à la vue incluse : elles ne remontaient pas,
+       et le gabarit rendait « NCC : », « Établissement : », « Nom : » suivis
+       de rien. Seules les factures s'affichaient complètes, parce que leur
+       contrôleur passait les données au moment du view().
+
+       On les recalcule donc ici, à l'endroit où elles sont consommées, en
+       réutilisant la même source que les factures. Le ?? laisse la main aux
+       contrôleurs qui les fournissent déjà.
+       ------------------------------------------------------------------ */
+    if (!isset($fne_config) || !isset($fne_client)) {
+        $clientFne = $client
+            ?? ($devis->client ?? null)
+            ?? ($commande->client ?? null)
+            ?? ($location->client ?? null)
+            ?? ($facture->client ?? null)
+            ?? ($livraison->client ?? null);
+
+        $donneesFne = App\Services\FneService::getDonneesFne(null, $clientFne);
+
+        $fne_config = $fne_config ?? $donneesFne['fne_config'];
+        $fne_client = $fne_client ?? $donneesFne['fne_client'];
+        $fne_date   = $fne_date   ?? $donneesFne['fne_date'];
+    }
+
+    $logoDALAKOUN = 'data:image/png;base64,' . base64_encode(file_get_contents(public_path(config('constantes.logo_pdf'))));
     $logoCI = 'data:image/png;base64,' . base64_encode(file_get_contents(public_path('frontend/assets/imgs/logo/logoci.png')));
 
     // Auto-génération du QR Code FNE si non fourni

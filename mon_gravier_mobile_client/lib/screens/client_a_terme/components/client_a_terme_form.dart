@@ -59,11 +59,11 @@ class DemandeClientATermeFormState extends State<DemandeClientATermeForm> {
     if (result != null && result.files.isNotEmpty) {
       final f = result.files.first;
       if (f.bytes == null) {
-        EasyLoading.showError("Impossible de lire le fichier sélectionné");
+        afficherErreur("Impossible de lire le fichier sélectionné");
         return;
       }
       if (f.size > 5 * 1024 * 1024) {
-        EasyLoading.showError("Le document ne doit pas dépasser 5 Mo");
+        afficherErreur("Le document ne doit pas dépasser 5 Mo");
         return;
       }
       setState(() {
@@ -161,7 +161,7 @@ class DemandeClientATermeFormState extends State<DemandeClientATermeForm> {
               if (_validationSaisie()) {
                 _envoyerDemande();
               }else{
-                EasyLoading.showError(msgErr);
+                afficherErreur(msgErr);
               }
             },
             child: const Text("Envoyer ma demande"),
@@ -225,21 +225,25 @@ class DemandeClientATermeFormState extends State<DemandeClientATermeForm> {
               descController.text = '';
               _docs.updateAll((k, v) => null);
             });
-            EasyLoading.showSuccess(datas['message']);
+            afficherSucces(datas['message']);
           }else{
-            EasyLoading.showError(datas['message']);
+            afficherErreur(datas['message']);
           }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
         user.code = 500;
-        user.message = "Une erreur s'est produite veuillez reesayer plus tard";
+        user.message = messageErreurTechnique(e);
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 

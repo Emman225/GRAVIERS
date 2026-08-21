@@ -31,7 +31,7 @@
                                     <th class="text-center" style="background-color: #1c57a3; color: white; border-top-left-radius:5px">N°</th>
                                     <th class="text-center" style="background-color: #1c57a3; color: white">Nom du client</th>
                                     <th class="text-center" style="background-color: #1c57a3; color: white">Type du client</th>
-                                    <th class="text-center" style="background-color: #1c57a3; color: white">Montant</th>
+                                    <th class="text-center" style="background-color: #1c57a3; color: white">Montant HT</th>
                                     <th class="text-center" style="background-color: #1c57a3; color: white">Etat</th>
                                     <th class="text-center" style="background-color: #1c57a3; color: white">Date</th>
                                     <!-- <th class="text-center" style="background-color: #1c57a3; color: white">Paiement</th> -->
@@ -45,13 +45,13 @@
                             <tbody>
 
                                 @foreach ($commandes as $commande)
-                                    @if($commande->client->client_a_terme == 1)
+                                    @if($commande->client?->client_a_terme == 1)
                                         {{-- @if($commande->statut != 4) --}}
                                             <tr>
                                                 <td class="texte-center" > {{ $commande->numero }} </td>
-                                                <td class="texte-center"><b>{{ $commande->client->nom }}  {{ $commande->client->prenom }}</b></td>
-                                                <td class="text-center"> {{$commande->client->type_client}} </td>
-                                                <td class="texte-center">{{ number_format($commande->montant_total,'0','',' ') }} fcfa</td>
+                                                <td class="texte-center"><b>{{ $commande->client?->display_name }}</b></td>
+                                                <td class="text-center"> {{$commande->client?->type_client}} </td>
+                                                <td class="texte-center">{{ number_format($commande->montantHT(),'0','',' ') }} fcfa</td>
                                                 <td><span class="badge rounded-pill text-warning">{{ $commande->etat_commande }}</span>
                                                 </td>
                                                 <td class="texte-center">{{ Carbon::parse($commande->created_at)->format('d-m-Y à H:i') }}</td>
@@ -71,13 +71,12 @@
 
 
                                                 </td>
-                                                <!-- <td>
-                                                    @if($commande->statut == 1 || $commande->statut == 2)
-                                                    <a href="{{ route('paye.create', $commande->id) }}" class="btn btn-md rounded font-sm">
-                                                        Effectuer un paiement
-                                                    </a>
-                                                    @endif
-                                                </td> -->
+                                                {{-- Bloc retiré : il appelait route('paye.create'), l'écran de
+                                                     paiement historique supprimé. Les balises <!-- --> ne
+                                                     protègent PAS un {{ }} : Blade l'évalue quand même, et la
+                                                     page serait tombée sur « Route [paye.create] not defined ».
+                                                     Le règlement d'un client à terme passe par
+                                                     /clients-terme/paiements. --}}
                                                 <td>
                                                     <a href="{{ route('orders.traitement', $commande) }}" class="btn btn-md rounded font-sm">Traiter la commande</a>
 

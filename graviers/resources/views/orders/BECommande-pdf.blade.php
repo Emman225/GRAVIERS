@@ -2,7 +2,7 @@
     use Illuminate\Support\Carbon;
 
     // Logo en base64
-    $logoPath = public_path(config('constantes.logo'));
+    $logoPath = public_path(config('constantes.logo_pdf'));
     $logoSrc = '';
     if (file_exists($logoPath)) {
         $logoData = base64_encode(file_get_contents($logoPath));
@@ -96,7 +96,10 @@
             <tr>
                 @if ($logoSrc)
                     <td class="head-logo">
-                        <img src="{{ $logoSrc }}" alt="Logo">
+                        {{-- Dimensions en ATTRIBUTS, pas seulement en CSS : la même
+                             vue sert le PDF et le Word, et Word ignore « max-width »
+                             sur une image — le logo occupait alors la page entière. --}}
+                        <img src="{{ $logoSrc }}" alt="Logo" width="80" height="60">
                     </td>
                 @endif
                 <td class="head-info">

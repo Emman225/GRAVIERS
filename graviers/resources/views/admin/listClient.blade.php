@@ -80,17 +80,22 @@
                                 <p> {{ $c->contact1 }} </p>
                                 <p> {{ $c->contact2 }} </p>
                             </td>
-                            <td class="text-center">{{ $c->user->email }}</td>
+                            <td class="text-center">{{ $c->user?->email }}</td>
                             <td>{{ $c->applique_tva == 1 ? 'Appliquée' : 'Non appliquée' }}</td>
-                            <td> {{ $c->user->statut == 1 ? "NON" : "OUI" }} </td>
+                            <td> {{ $c->user?->statut == 1 ? "NON" : "OUI" }} </td>
 
                             <td>
                                 <div class="dropdown">
                                     <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm"> <i class="material-icons md-more_horiz"></i> Actions</a>
                                     <div class="dropdown-menu">
 
-                                        <a class="dropdown-item" href="{{route('show.clientDetailCommande',$c->user)}}">Commandes</a>
-                                        <a class="dropdown-item" href="{{route('paye.effectuerPaiement',$c)}}">Faire un paiement </a>
+                                        {{-- Compte utilisateur supprimé : route() sans paramètre levait
+                                             « Missing required parameter » et TOUTE la liste tombait en 500. --}}
+                                        @if($c->user)
+                                            <a class="dropdown-item" href="{{route('show.clientDetailCommande',$c->user)}}">Commandes</a>
+                                        @endif
+                                        {{-- Un seul écran d'encaissement pour les clients ordinaires. --}}
+                                        <a class="dropdown-item" href="{{route('show.comptant.encaissements')}}">Faire un paiement </a>
                                         @if($c->type_client == 'ENTREPRISE')
                                             @php
                                                 $dfeExists = !empty($c->dfe) && \App\Models\Client::resolveStoragePath($c->dfe) !== null;
@@ -131,7 +136,7 @@
                                         <button class="dropdown-item" data-id="{{ $c->id }}" data-nom="{{ $c->nom }}" data-bs-toggle="modal" data-bs-target="#tvaModal-{{ $c->id }}">
                                             {{ $c->applique_tva == 1 ? 'Retirer la TVA' : 'Appliquer la TVA' }}
                                         </button>
-                                        @switch($c->user->statut)
+                                        @switch($c->user?->statut)
                                             @case(1)
                                                 <button data-id="{{ $c->id }}" data-nom="{{ $c->nom }}" data-bs-toggle="modal" data-bs-target="#blockModal-{{ $c->id }}"
                                                     class="dropdown-item">Bloquer</a>

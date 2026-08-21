@@ -139,6 +139,7 @@ class ImpressionCommandePdf extends StatelessWidget {
       totalTva: montantTvaCalc,
       totalTtc: totalTtc,
       totalAPayer: totalAPayer,
+      remise: remise,
       resumeFiscal: resumeFiscal,
       modePaiement: commande.modePaiement,
       adresseLivraison: commande.adresse,

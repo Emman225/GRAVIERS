@@ -11,9 +11,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use App\Models\Location;
 
+use App\Models\Concerns\TraceLesValidations;
+
 class Paiement extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, SoftDeletes, TraceLesValidations;
     protected $table = 'paiement';
     protected $fillable = [
         'client_id',
@@ -73,25 +75,58 @@ class Paiement extends Model
         else return new Paiement();
     }
 
-    public static function statPaiementFilleule($du, $au)
+    /**
+     * Ce que les filleuls ont réellement payé, par client et par apporteur.
+     *
+     * LE FILTRE DE DATES ÉTAIT COMMENTÉ. Le contrôleur calculait `$du` et `$au`,
+     * les passait ici… où la ligne qui s'en servait était mise en commentaire.
+     * L'écran affichait donc tout l'historique, quelle que soit la période
+     * demandée — et sa borne haute portait « 29:59:59 », une heure qui n'existe
+     * pas et que le serveur aurait refusée le jour où on l'aurait réactivée.
+     *
+     * LES PAIEMENTS NON RÉGLÉS ÉTAIENT ADMIS. La condition retenait un paiement
+     * validé OU dont `montant_total = montant_restant`. Or `montant_restant`
+     * tombe à zéro quand le paiement est soldé : ce second terme désignait donc
+     * exactement les paiements sur lesquels RIEN n'a été versé. Un état de ce
+     * qui a été payé ne peut pas compter ce qui ne l'a pas été.
+     *
+     * ON GROUPE SUR LES IDENTIFIANTS, jamais sur les libellés : deux clients
+     * homonymes joignables au même numéro fusionnaient en une seule ligne.
+     *
+     * Le GROUP BY ne porte que sur des colonnes nues : une expression y est
+     * acceptée par MySQL 8.0.30 — celui du poste de développement — et refusée
+     * par le serveur (1055).
+     */
+    public static function statPaiementFilleule($du = null, $au = null)
     {
         return Paiement::selectRaw("
         SUM(paiement.montant_total) AS total,
-        CONCAT(client.nom, ' ', client.prenom, ' - ', client.contact1) AS client,
+        client.id AS clientId,
+        CONCAT(" . \App\Models\Client::sqlNomAffiche() . ", ' - ', client.contact1) AS client,
+        apporteur.id AS apporteurId,
         apporteur.code AS codeApporteur,
         CONCAT(users.nom_prenoms, ' - ', users.contact) AS apporteur")
             ->join('client', 'client.id', '=', 'paiement.client_id')
             ->join('apporteur', 'apporteur.id', '=', 'client.parrain_id')
             ->join('users', 'users.id', '=', 'apporteur.user_id')
-            ->where(function ($query) {
-                $query->where('paiement.statut', 1)
-                    ->orWhereColumn('paiement.montant_total', 'paiement.montant_restant');
+            ->where('paiement.statut', Help::$STATUT_ACTIF)
+            ->when($du, function ($query) use ($du) {
+                $query->where('paiement.created_at', '>=', $du . ' 00:00:00');
             })
-            // ->whereBetween('paiement.created_at', [$du." 00:00:00", $au." 29:59:59"])
-            ->groupByRaw("
-        CONCAT(client.nom, ' ', client.prenom, ' - ', client.contact1),
-        apporteur.code,
-        CONCAT(users.nom_prenoms, ' - ', users.contact)")
+            ->when($au, function ($query) use ($au) {
+                $query->where('paiement.created_at', '<=', $au . ' 23:59:59');
+            })
+            ->groupBy(
+                'client.id',
+                'client.nom',
+                'client.prenom',
+                'client.type_client',
+                'client.contact1',
+                'apporteur.id',
+                'apporteur.code',
+                'users.nom_prenoms',
+                'users.contact'
+            )
             ->get();
     }
 

@@ -101,7 +101,7 @@
                                 // Produit selon la provenance : enlèvement (COMMANDE), detail_location
                                 // (LOCATION : detail_commande_id pointe un detail_location), ou demande.
                                 if ($livraison->enlevement) {
-                                    $produitNom = $livraison->enlevement->produit?->nom;
+                                    $produitNom = $livraison->enlevement?->produit?->nom;
                                 } elseif ($livraison->provenance == 'LOCATION') {
                                     $produitNom = \App\Models\DetailLocation::find($livraison->detail_commande_id)?->produit?->nom;
                                 } else {
@@ -111,12 +111,12 @@
                             @endphp
                             <tr>
                                 <td><strong class="text-primary">{{ $livraison->numero }}</strong></td>
-                                <td><strong>{{ $livraison->client->nom.' '.$livraison->client->prenom }}</strong></td>
+                                <td><strong>{{ $livraison->client?->display_name }}</strong></td>
                                 <td>{{ $produitNom ?: '—' }}</td>
                                 <td class="text-end fw-bold">{{ rtrim(rtrim(number_format((float) $qte, 2, ',', ' '), '0'), ',') }}</td>
                                 <td>{{ $livraison->vehicule?->marque ?: '—' }}</td>
-                                <td>@if($livraison->vehicule?->immatriculation) <span class="badge bg-light text-dark">{{ $livraison->vehicule->immatriculation }}</span> @else — @endif</td>
-                                <td class="text-end">{{ $livraison->vehicule?->capacite ? $livraison->vehicule->capacite.'t' : '—' }}</td>
+                                <td>@if($livraison->vehicule?->immatriculation) <span class="badge bg-light text-dark">{{ $livraison->vehicule?->immatriculation }}</span> @else — @endif</td>
+                                <td class="text-end">{{ $livraison->vehicule?->capacite ? $livraison->vehicule?->capacite.'t' : '—' }}</td>
                                 <td><small>{{ $livraison->AdresseLivraison->affichage ?? '—' }}</small></td>
                                 <td>
                                     <small>

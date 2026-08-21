@@ -20,7 +20,7 @@
 <div class=" mt-20 card mx-auto " >
     <div class="card-body">
 
-        <h4 class="card-title mb-4">Les factures de {{ ucwords($client->nom.' '.$client->prenom) }}</h4>
+        <h4 class="card-title mb-4">Les factures de {{ ucwords($client->display_name) }}</h4>
         <form action="" method="post">
             @csrf
             @error('factures')

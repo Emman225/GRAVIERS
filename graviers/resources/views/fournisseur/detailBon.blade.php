@@ -39,7 +39,7 @@
                                     <tr>
                                         <td class="text-center">
 
-                                            {{ $bon->produit->nom }}
+                                            {{ $bon->produit?->nom }}
 
                                         </td>
                                         {{-- <td class="fw-bold h5 text-center" > {{ $produit->prix }} fcfa</td> --}}
@@ -75,19 +75,19 @@
                                         <td class="text-center">
                                             <a>
                                                 <div class="info ">
-                                                    @if ($bon->livraison->livre_par == 1)
-                                                        {{ $bon->livraison->livreur->user->nom_prenoms }}
+                                                    @if ($bon->livraison?->livre_par == 1)
+                                                        {{ $bon->livraison?->livreur?->user?->nom_prenoms }}
                                                     @else
-                                                        {{ $bon->livraison->clientLivreur->nom }}
+                                                        {{ $bon->livraison?->clientLivreur->nom }}
                                                     @endif
                                                 </div>
                                             </a>
                                         </td>
                                         <td class="text-center">
-                                            @if ($bon->livraison->livre_par == 1)
-                                                {{ $bon->livraison->livreur->user->contact }}
+                                            @if ($bon->livraison?->livre_par == 1)
+                                                {{ $bon->livraison?->livreur?->user?->contact }}
                                             @else
-                                                {{ $bon->livraison->clientLivreur->contact }}
+                                                {{ $bon->livraison?->clientLivreur->contact }}
                                             @endif
                                         </td>
                                     </tr>

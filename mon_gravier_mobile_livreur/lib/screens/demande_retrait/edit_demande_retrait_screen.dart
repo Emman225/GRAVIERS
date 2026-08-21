@@ -21,6 +21,10 @@ class EditDemandeRetraitScreen extends StatefulWidget {
 }
 
 class _EditDemandeRetraitScreenState extends State<EditDemandeRetraitScreen> {
+  /// Verrou anti double envoi : plusieurs demandes de paiement identiques
+  /// etaient creees quand l'utilisateur ne voyait aucune confirmation.
+  bool _envoiEnCours = false;
+
   TextEditingController montantController = TextEditingController();
   TextEditingController modePaiementController = TextEditingController();
   TextEditingController compteController = TextEditingController();
@@ -141,11 +145,11 @@ class _EditDemandeRetraitScreenState extends State<EditDemandeRetraitScreen> {
             Padding(
               padding: const EdgeInsets.all(15.0),
               child: ElevatedButton(
-                onPressed: () async {
+                onPressed: _envoiEnCours ? null : () async {
                   if (_validationSaisie()) {
                     _enregistrerDemandePaiement();
                   } else {
-                    EasyLoading.showError(msgErr);
+                    afficherErreur(msgErr);
                   }
                 },
                 child: const Text("Enregistrer ma demande de paiement"),
@@ -159,7 +163,9 @@ class _EditDemandeRetraitScreenState extends State<EditDemandeRetraitScreen> {
   }
 
   _enregistrerDemandePaiement() async {
+    if (_envoiEnCours) return;
     if (await verifierConnexion()) {
+      setState(() => _envoiEnCours = true);
       afficherChargement();
 
       var param = {
@@ -176,7 +182,7 @@ class _EditDemandeRetraitScreenState extends State<EditDemandeRetraitScreen> {
       }
 
       try {
-        retourHttp = await http
+        final http.Response retourHttp = await http
             .post(Uri.parse('${lienAPI()}enregistrer-demande-paiement'),
             headers: {"Content-Type": "application/json"},
             body: jsonEncode(param))
@@ -191,21 +197,29 @@ class _EditDemandeRetraitScreenState extends State<EditDemandeRetraitScreen> {
               _mode = 0;
               _montant = 0;
             });
-            EasyLoading.showSuccess(datas['message']);
+            afficherSucces(datas['message']);
           }else{
-            EasyLoading.showError(datas['message']);
+            afficherErreur(datas['message']);
           }
+        } else {
+          // Sans cette branche, une reponse serveur en erreur ne produisait
+          // AUCUNE reaction a l'ecran.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez reessayer.");
         }
       } catch (e) {
         user.code = 500;
         user.message = "Une erreur s'est produite veuillez reesayer plus tard";
+        // Ce bloc de secours n.affichait RIEN : l.ecran restait muet en cas de
+        // coupure reseau ou de reponse illisible.
+        afficherErreur("Impossible de contacter le serveur. Verifiez votre connexion et reessayez.");
         if (kDebugMode) {
           print(e.toString());
         }
       }
+      if (mounted) setState(() => _envoiEnCours = false);
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -219,10 +233,27 @@ class _EditDemandeRetraitScreenState extends State<EditDemandeRetraitScreen> {
       pass = false;
       msgErr = "Veuillez renseigner le montant";
     }else{
-      _montant = double.parse(montantController.text.removeAllWhitespace.trim());
-      if (_montant < 1000) {
+      // double.parse levait une FormatException NON capturee (virgule decimale du
+      // clavier fr, caractere parasite) : le bouton ne faisait alors RIEN.
+      final saisie = montantController.text
+          .replaceAll(RegExp(r"[^0-9,.]"), "")
+          .replaceAll(",", ".");
+      final valeur = double.tryParse(saisie);
+      if (valeur == null) {
         pass = false;
-        msgErr = "Le montant du paiement dois être supérieur ou égale à 1000 Frs";
+        msgErr = "Veuillez saisir un montant valide";
+      } else {
+        _montant = valeur;
+        final solde = user.livreur?.solde ?? 0;
+        if (_montant < 1000) {
+          pass = false;
+          msgErr = "Le montant du paiement dois être supérieur ou égale à 1000 Frs";
+        } else if (_montant > solde) {
+          // Controle absent cote application : le serveur le refusait a la
+          // creation mais PAS a la modification.
+          pass = false;
+          msgErr = "Votre solde est insuffisant (disponible : ${formaterMontant(solde.toDouble())})";
+        }
       }
     }
     if (_mode == 0) {

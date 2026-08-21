@@ -92,16 +92,25 @@
                             {{-- Tarif actif selon le mode de tarification choisi sur le profil.
                                  NB : le tarif de base est stocké dans cout_livraison (PAS dans
                                  tarif_forfait_base, colonne jamais alimentée -> affichait toujours '-'). --}}
+                            @php $modeLivreur = $livreur->mode_tarification ?? 'base'; @endphp
                             <td class="text-end">
                                 {{ $livreur->tarif_km ? number_format($livreur->tarif_km, 0, ',', ' ') . ' FCFA' : '-' }}
-                                @if (($livreur->mode_tarification ?? 'base') == 'km')
+                                @if (in_array($modeLivreur, ['km', 'mixte']))
                                     <span class="badge bg-success">actif</span>
                                 @endif
                             </td>
                             <td class="text-end">
-                                {{ $livreur->cout_livraison ? number_format($livreur->cout_livraison, 0, ',', ' ') . ' FCFA' : '-' }}
-                                @if (($livreur->mode_tarification ?? 'base') == 'base')
+                                {{-- En mode « Fixe + KM », la part fixe vit dans tarif_forfait_base,
+                                     pas dans cout_livraison : on affiche celle qui s'applique. --}}
+                                @if ($modeLivreur === 'mixte')
+                                    {{ $livreur->tarif_forfait_base ? number_format($livreur->tarif_forfait_base, 0, ',', ' ') . ' FCFA' : '-' }}
                                     <span class="badge bg-success">actif</span>
+                                    <br><small class="text-muted">fixe + km</small>
+                                @else
+                                    {{ $livreur->cout_livraison ? number_format($livreur->cout_livraison, 0, ',', ' ') . ' FCFA' : '-' }}
+                                    @if ($modeLivreur === 'base')
+                                        <span class="badge bg-success">actif</span>
+                                    @endif
                                 @endif
                             </td>
                             <td class="text-center">

@@ -10,6 +10,7 @@ use App\Models\Paiement;
 use App\Models\LignePaiement;
 use App\Models\Livraison;
 use App\Models\TvaCommande;
+use App\Models\DemandeAnnulationCommande;
 use App\Models\ModePaiement;
 use App\Models\DetailCommande;
 use App\Models\PreuveOperation;
@@ -87,7 +88,7 @@ class Commande extends Model
     public static function lireSurNumero($numero)
     {
         $obj = Commande::selectRaw("commande.*, mode_paiement.libelle as mode_paiement,
-        concat(client.nom, ' ', client.prenom) as le_client, client.contact1, client.email,
+        " . \App\Models\Client::sqlNomAffiche() . " as le_client, client.contact1, client.email,
         adresse_livraison.complement_adresse as adresse, type_livraison.libelle as type_livraison,
         bl_client.numero as numero_bl, bl_client.fichier as fichier_bl")
             ->join('client', 'client.id', '=', 'commande.client_id')
@@ -109,21 +110,36 @@ class Commande extends Model
 
     public static function liste($client_id = null, $etat_commande = null)
     {
+        // Le paiement et le bon de commande sont lus par SOUS-REQUÊTE, pas par
+        // jointure. Une commande peut porter plusieurs paiements — un règlement en
+        // deux fois, par exemple — et chacun ajoutait une ligne : la même commande
+        // apparaissait deux fois dans la liste, et se comptait deux fois dans les
+        // totaux. Même exposition côté bon de commande.
+        //
+        // Le filtre sur le service manquait aussi : paiement.service_id vaut
+        // l'identifiant d'une COMMANDE, d'une LOCATION ou d'une LIVRAISON selon les
+        // cas. Un paiement de location portant le même identifiant renseignait donc
+        // le reste à payer d'une commande sans rapport.
         return  Commande::selectRaw("commande.*,
-        concat(client.nom, ' ', client.prenom, ' - ', client.contact1) as infos_client,
+        CONCAT(" . \App\Models\Client::sqlNomAffiche() . ", ' - ', client.contact1) as infos_client,
         client.type_client,
         client.client_a_terme,
         mode_paiement.libelle as mode_paiement,
-        paiement.montant_restant,
+        (select p.montant_restant from paiement p
+          where p.service_id = commande.id
+            and p.service = ?
+            and p.deleted_at is null
+          order by p.created_at desc, p.id desc limit 1) as montant_restant,
         adresse_livraison.complement_adresse as adresse,
-        bl_client.numero as numero_bl,
-        bl_client.fichier as fichier_bl")
+        (select b.numero from bl_client b
+          where b.commande_id = commande.id order by b.id desc limit 1) as numero_bl,
+        (select b.fichier from bl_client b
+          where b.commande_id = commande.id order by b.id desc limit 1) as fichier_bl",
+            [Help::$COMMANDE])
             ->orderBy('commande.id', 'desc')
             ->join('client', 'client.id', '=', 'commande.client_id')
             ->leftjoin('mode_paiement', 'mode_paiement.id', '=', 'commande.mode_paiement_id')
             ->leftjoin('adresse_livraison', 'adresse_livraison.id', '=', 'commande.adresse_livraison_id')
-            ->leftjoin('bl_client', 'bl_client.commande_id', '=', 'commande.id')
-            ->leftjoin('paiement', 'paiement.service_id', 'commande.id')
             ->when($client_id, function ($query) use ($client_id) {
                 $query->where('commande.client_id', $client_id);
             })
@@ -189,7 +205,11 @@ class Commande extends Model
      */
     public function produits(): BelongsToMany
     {
-        return $this->belongsToMany(Produit::class,'detail_commande')->withPivot('id','qte','prix','statut');
+        // qte_livree et etat_livraison DOIVENT figurer ici : sans elles, la fiche
+        // commande lisait $produit->pivot->qte_livree = null et affichait donc
+        // « Non livrée » pour TOUTES les lignes, y compris celles réellement livrées.
+        return $this->belongsToMany(Produit::class,'detail_commande')
+            ->withPivot('id','qte','prix','statut','qte_livree','etat_livraison');
     }
 
     function enlevements(){
@@ -205,6 +225,28 @@ class Commande extends Model
     }
 
     /**
+     * ---------------------------------------------------------------------
+     * CONVENTION DES MONTANTS (à lire avant toute modification)
+     * ---------------------------------------------------------------------
+     * La colonne commande.montant_total n'est PAS une source fiable : le site
+     * y écrit le montant HT, l'application mobile le montant NET final. Les
+     * deux conventions coexistent donc dans la même colonne, selon l'origine
+     * de la commande.
+     *
+     * Depuis l'harmonisation du 04/08/2026, PLUS AUCUN écran, document, export
+     * ni requête ne lit cette colonne pour afficher ou calculer un montant.
+     * Tout passe par les deux méthodes ci-dessous, qui recalculent à partir des
+     * lignes (detail_commande), identiques dans les deux flux :
+     *
+     *   - montantHT()      : somme des lignes (prix × qte)
+     *   - montantAPayer()  : HT + TVA + livraison − remise
+     *
+     * Seul repli conservé : une commande sans aucune ligne retombe sur
+     * montant_total (cas anormal, ne devrait pas se produire).
+     * La colonne reste alimentée pour ne pas casser l'historique, mais elle
+     * n'a plus d'influence sur ce qui est affiché ou encaissé.
+     * ---------------------------------------------------------------------
+     *
      * Montant HT de la commande = somme des lignes (prix unitaire × qte).
      *
      * NE PAS utiliser montant_total pour calculer le "total à payer" :
@@ -234,6 +276,41 @@ class Commande extends Model
             + (float) ($this->cout_livraison_client ?? 0)
             - (float) ($this->remise ?? 0);
     }
+    /**
+     * Réduction demandée sur cette commande et pas encore appliquée.
+     *
+     * Elle se cherche d'abord par le rattachement direct à la commande. Le
+     * détour par le devis n'est conservé que pour les réductions écrites avant
+     * l'ajout de la colonne commande_id : une commande comptant ou mobile n'a
+     * pas de devis, et sa réduction restait alors introuvable.
+     *
+     * On prend la PLUS RÉCENTE : la relation Devis::reduction() est un hasOne
+     * sans tri, si bien qu'une seconde demande sur le même devis pouvait
+     * ramener l'ancienne, déjà consommée.
+     */
+    public function reductionEnAttente(): ?Reduction
+    {
+        $directe = Reduction::where('commande_id', $this->id)
+            ->where('est_utilise', false)
+            ->where('statut', Help::$STATUT_ACTIF)
+            ->orderByDesc('id')
+            ->first();
+
+        if ($directe) {
+            return $directe;
+        }
+
+        if (!$this->devis_id) {
+            return null;
+        }
+
+        return Reduction::where('devis_id', $this->devis_id)
+            ->where('est_utilise', false)
+            ->where('statut', Help::$STATUT_ACTIF)
+            ->orderByDesc('id')
+            ->first();
+    }
+
     public function livraisons(){
         return $this->hasMany(Livraison::class);
     }
@@ -247,6 +324,24 @@ class Commande extends Model
     }
     public function lastLivraisons(){
         return $this->hasManyThrough(Livraison::class,DetailCommande::class,  'commande_id', 'detailCommande_id', 'id', 'id');
+    }
+
+    /**
+     * Dernière demande d'annulation déposée par le client sur cette commande.
+     *
+     * Le client n'avait AUCUN moyen de savoir où en était sa demande : elle
+     * partait au back-office, la décision lui était notifiée par courriel, et
+     * son espace n'en gardait aucune trace. Un courriel manqué, et il ne
+     * pouvait plus rien savoir — ni qu'une demande était en cours, ni qu'elle
+     * avait été refusée, ni pourquoi.
+     *
+     * La plus récente seulement : après un refus, le client peut redéposer une
+     * demande, et c'est l'état actuel qui l'intéresse.
+     */
+    public function derniereDemandeAnnulation(){
+        return $this->hasOne(DemandeAnnulationCommande::class, 'commande_id')
+            ->where('type_affaire', 'VENTE')
+            ->latestOfMany();
     }
 
  public function paiement(){
@@ -287,6 +382,36 @@ class Commande extends Model
             })
             ->where('statut', 1)
             ->sum('montant_total');
+    }
+
+    /**
+     * Reste réellement dû sur la commande (net à payer − encaissé).
+     * Le fcfa n'a pas de décimales : un résidu < 1 est considéré comme nul.
+     */
+    public function montantRestantDu(): float
+    {
+        $reste = $this->montantAPayer() - $this->montantPayeComptant();
+        return $reste < 1 ? 0.0 : $reste;
+    }
+
+    /**
+     * La commande peut-elle être TRAITÉE (enlèvement / livraison) ?
+     *
+     * Règle métier : on ne sort pas la marchandise avant d'être payé — sauf pour
+     * un client à terme, qui règle à crédit par définition. Même règle que pour
+     * les locations (cf. UserController::validerLocation).
+     *
+     * On s'appuie sur montantPayeComptant()/montantAPayer() (source de vérité =
+     * lignes de paiement) et non sur la colonne montant_restant de Commande::liste(),
+     * dont la jointure ne filtre pas le service et peut donc rapprocher un paiement
+     * de LOCATION portant le même identifiant.
+     */
+    public function peutEtreTraitee(): bool
+    {
+        if ($this->client_a_terme == 1 || ($this->client && $this->client->client_a_terme == 1)) {
+            return true;
+        }
+        return $this->montantRestantDu() <= 0;
     }
 
     /**

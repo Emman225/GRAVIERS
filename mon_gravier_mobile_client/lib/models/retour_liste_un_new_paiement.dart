@@ -67,8 +67,8 @@ class UnNewPaiement {
       print("----------->");
       print(json);
     }
-    montantTotal = double.parse(json['montant_total'].toString());
-    montantRestant = double.parse(json['montant_restant'].toString());
+    montantTotal = double.parse(json['montant_total'] == null ? '0' : json['montant_total'].toString());
+    montantRestant = double.parse(json['montant_restant'] == null ? '0' : json['montant_restant'].toString());
     statut = json['statut'];
     serviceId = json['service_id'];
     service = json['service'];

@@ -94,9 +94,9 @@ class UneLivraison {
     detailCommandeId = json['detail_commande_id'];
     detailLivraisonId = json['detail_livraison_id'];
     adresseLivraisonId = json['adresse_livraison_id'];
-    coutLivraison = double.parse(json['cout_livraison'].toString());
+    coutLivraison = double.parse(json['cout_livraison'] == null ? '0' : json['cout_livraison'].toString());
     dateLivraison = json['date_livraison'];
-    qte = double.parse(json['qte'].toString());
+    qte = double.parse(json['qte'] == null ? '0' : json['qte'].toString());
     noteLivreur = json['note_livreur'];
     etatLivraison = json['etat_livraison'];
     statut = json['statut'];

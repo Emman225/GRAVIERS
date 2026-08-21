@@ -141,15 +141,15 @@ class _DetailsScreenState extends State<DetailsScreen> {
                       setState(() {
                         paniers.add(Cart(product: product, numOfItem: qte));
                       });
-                      EasyLoading.showSuccess("Ajouté au panier avec succès");
+                      afficherSucces("Ajouté au panier avec succès");
                     }else{
-                      EasyLoading.showInfo("Déjà présent dans votre panier");
+                      afficherInfo("Déjà présent dans votre panier");
                     }
                   } else{
-                    EasyLoading.showError("Veuillez saisir une quantité supérieur à 0");
+                    afficherErreur("Veuillez saisir une quantité supérieur à 0");
                   }
                 }else{
-                  EasyLoading.showError("Veuillez saisir une quantité valide");
+                  afficherErreur("Veuillez saisir une quantité valide");
                 }
               },
               child: const Text("Ajouter au pannier"),

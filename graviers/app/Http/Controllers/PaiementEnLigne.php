@@ -22,6 +22,48 @@ use Retour;
 
 class PaiementEnLigne extends Controller
 {
+    /**
+     * Données attendues par la vue document.factureCommande.
+     *
+     * Cette vue parcourt $enlevements et lit $config, $facture, $livraison ainsi
+     * que les informations FNE. L'appel après un paiement en ligne ne passait que
+     * la commande et le logo : la génération du PDF échouait donc à chaque fois
+     * (« Undefined variable $enlevements ») et le client ne recevait pas sa
+     * facture. On reprend ici exactement le jeu de données de l'écran qui
+     * fonctionne (ClientController::factureCommande).
+     */
+    private function donneesFactureCommande($commande, $image): array
+    {
+        $enlevements = collect();
+
+        if ($commande instanceof Commande) {
+            $idsLignes = DetailCommande::where('commande_id', $commande->id)->pluck('id');
+            if ($idsLignes->isNotEmpty()) {
+                $idsLivraisons = \App\Models\Livraison::whereIn('detail_commande_id', $idsLignes)->pluck('id');
+                if ($idsLivraisons->isNotEmpty()) {
+                    $enlevements = \App\Models\Enlevement::whereIn('livraison_id', $idsLivraisons)->get();
+                }
+            }
+        }
+
+        $donneesFne = [];
+        try {
+            $donneesFne = \App\Services\FneService::getDonneesFne(null, $commande->client);
+        } catch (\Throwable $e) {
+            // Les données FNE ne doivent pas empêcher l'envoi de la facture.
+            \Log::error('Données FNE indisponibles pour la facture ' . ($commande->numero ?? '') . ' : ' . $e->getMessage());
+        }
+
+        return array_merge([
+            'commande'    => $commande,
+            'image'       => $image,
+            'config'      => \App\Models\Configuration::first(),
+            'enlevements' => $enlevements,
+            'facture'     => new \App\Models\Facture(),
+            'livraison'   => 0,
+        ], $donneesFne);
+    }
+
     public function callBackPaiement(Request $request)
     {
 
@@ -188,13 +230,19 @@ class PaiementEnLigne extends Controller
                                     }
                                     if ($commande && $commande->client) {
                                         $image = base_path('public/frontend/assets/imgs/logo/omer 1.png');
+                                        // La vue document.factureCommande a besoin de $enlevements,
+                                        // $config, $facture, $livraison et des données FNE. Sans eux
+                                        // la génération échouait (« Undefined variable $enlevements »)
+                                        // et le client ne recevait JAMAIS sa facture après un
+                                        // paiement en ligne — l'échec n'apparaissait que dans le
+                                        // journal du serveur.
                                         Help::envoyerDocumentPdf(
-                                            $commande->client->nom . ' ' . $commande->client->prenom,
-                                            $commande->client->user->email,
+                                            $commande->client->display_name,
+                                            $commande->client->user?->email ?: ($commande->client->email ?: ''),
                                             'Facture',
                                             $commande->numero ?? $commande->id,
                                             'document.factureCommande',
-                                            ['commande' => $commande, 'image' => $image],
+                                            $this->donneesFactureCommande($commande, $image),
                                             'Facture_' . ($commande->numero ?? $commande->id) . '.pdf'
                                         );
                                     }
@@ -204,12 +252,12 @@ class PaiementEnLigne extends Controller
                                     if ($location && $location->client) {
                                         $image = base_path('public/frontend/assets/imgs/logo/omer 1.png');
                                         Help::envoyerDocumentPdf(
-                                            $location->client->nom . ' ' . $location->client->prenom,
-                                            $location->client->user->email,
+                                            $location->client->display_name,
+                                            $location->client->user?->email ?: ($location->client->email ?: ''),
                                             'Facture Location',
                                             $location->numero ?? $location->id,
                                             'document.factureCommande',
-                                            ['commande' => $location, 'image' => $image],
+                                            $this->donneesFactureCommande($location, $image),
                                             'Facture_Location_' . ($location->numero ?? $location->id) . '.pdf'
                                         );
                                     }
@@ -437,10 +485,10 @@ class PaiementEnLigne extends Controller
                         'prenom_usager' => $lePrenom,
                         'telephone' => $client->contact1,
                         'email' => $user->email,
-                        'libelle_article' => "Paiement IMLOD",
+                        'libelle_article' => "Paiement DALAKOUN",
                         'quantite' => 1,
                         'montant' => $total,
-                        'lib_order' => "Paiement de facture IMLOD",
+                        'lib_order' => "Paiement de facture DALAKOUN",
                         'Url_Retour' => route("ouvreApp", ['codePaiement' => $codePaiement]),
                         'Url_Callback' => route('callBackPaiement'),
                     ],
@@ -472,12 +520,31 @@ class PaiementEnLigne extends Controller
         return response()->json($retour);
     }
 
-    private static function messageBrut(array $tableauDeChaines)
+    /**
+     * Met en forme le message renvoyé par la plateforme de paiement.
+     *
+     * La signature exigeait un TABLEAU. Or la plateforme renvoie tantôt une
+     * liste de messages, tantôt une simple chaîne : dans ce second cas, PHP
+     * levait une TypeError et la page tombait en erreur 500 — au moment
+     * précis où l'on cherchait à expliquer au client pourquoi son paiement
+     * n'avait pas abouti.
+     *
+     * On accepte donc les deux formes, et l'absence de message.
+     */
+    private static function messageBrut($message)
     {
+        if ($message === null) {
+            return '';
+        }
+
+        if (!is_array($message)) {
+            return (string) $message;
+        }
+
         $chainefinale = '';
         // Parcourir le tableau et afficher chaque élément
-        foreach ($tableauDeChaines as $chaine) {
-            $chainefinale .= $chaine . "\n";
+        foreach ($message as $chaine) {
+            $chainefinale .= (is_array($chaine) ? implode(' ', $chaine) : $chaine) . "\n";
         }
         return $chainefinale;
     }
@@ -504,7 +571,24 @@ class PaiementEnLigne extends Controller
                     // le client payait chez PaySecure mais aucune trace en base -> retour
                     // "code introuvable" (500) et callback sans effet.
                     if ($idService !== null && $service != null) {
-                        if ($client->client_a_terme == false) {
+                        // La branche « factures » ne vaut que si des factures ont été
+                        // fournies. Elle était choisie sur le seul critère du client à
+                        // terme, en supposant qu'il ne paie jamais en ligne qu'un
+                        // arriéré de factures. C'était vrai tant que la commande d'un
+                        // client à terme n'atteignait pas la passerelle — ce n'est plus
+                        // le cas depuis qu'un règlement mobile money est traité comme
+                        // un paiement immédiat et non comme du crédit.
+                        //
+                        // Un client à terme réglant une commande NEUVE arrivait donc
+                        // ici sans facture (elle n'existe pas encore), et le
+                        // « foreach ($factures) » tombait sur null : 500 et page
+                        // blanche au moment de payer.
+                        // blank() et non empty() : $factures arrive sous forme de
+                        // Collection, et empty() renvoie toujours false sur un objet —
+                        // une collection VIDE aurait pris la branche « factures », dont
+                        // la boucle ne fait alors rien : le client serait parti payer
+                        // chez PaySecure sans qu'aucun paiement ne soit enregistré.
+                        if ($client->client_a_terme == false || blank($factures)) {
                             //Client BE
                             $paiement = new Paiement();
                             $paiement->client_id = $client->id;
@@ -537,9 +621,28 @@ class PaiementEnLigne extends Controller
                         } else {
                             $leMontant = $montantTotal;
                             foreach ($factures as $f) {
+                                // Un paiement en ligne n'était rattaché à AUCUNE facture :
+                                // facture_id restait vide. Or c'est par ce lien que tout le
+                                // reste juge une facture réglée — total encaissé, passage en
+                                // « Soldée », liste « Facture à encaisser », paiements en
+                                // attente du client. Une facture payée par mobile money
+                                // continuait d'apparaître comme due, et un agent pouvait
+                                // l'encaisser une seconde fois.
+                                //
+                                // On ne réutilise une ligne existante que si elle n'a jamais
+                                // été confirmée — cas d'un paiement abandonné puis relancé,
+                                // inutile à dupliquer. Un paiement déjà encaissé n'est jamais
+                                // écrasé : sans cette réserve, régler une facture en deux fois
+                                // effacerait le premier versement.
                                 $paiement = Paiement::lireSurFacture($f->id);
+
+                                if ($paiement->exists && (int) $paiement->statut === (int) Help::$STATUT_ACTIF) {
+                                    $paiement = new Paiement();
+                                }
+
                                 $paiement->client_id = $client->id;
                                 $paiement->devis_id = null;
+                                $paiement->facture_id = $f->id;
                                 $paiement->service_id = $f->service_id;
                                 $paiement->service = $f->service;
                                 $paiement->code = $codePaiement;
@@ -573,9 +676,28 @@ class PaiementEnLigne extends Controller
                             //Client a terme
                             $leMontant = $montantTotal;
                             foreach ($factures as $f) {
+                                // Un paiement en ligne n'était rattaché à AUCUNE facture :
+                                // facture_id restait vide. Or c'est par ce lien que tout le
+                                // reste juge une facture réglée — total encaissé, passage en
+                                // « Soldée », liste « Facture à encaisser », paiements en
+                                // attente du client. Une facture payée par mobile money
+                                // continuait d'apparaître comme due, et un agent pouvait
+                                // l'encaisser une seconde fois.
+                                //
+                                // On ne réutilise une ligne existante que si elle n'a jamais
+                                // été confirmée — cas d'un paiement abandonné puis relancé,
+                                // inutile à dupliquer. Un paiement déjà encaissé n'est jamais
+                                // écrasé : sans cette réserve, régler une facture en deux fois
+                                // effacerait le premier versement.
                                 $paiement = Paiement::lireSurFacture($f->id);
+
+                                if ($paiement->exists && (int) $paiement->statut === (int) Help::$STATUT_ACTIF) {
+                                    $paiement = new Paiement();
+                                }
+
                                 $paiement->client_id = $client->id;
                                 $paiement->devis_id = null;
+                                $paiement->facture_id = $f->id;
                                 $paiement->service_id = $f->service_id;
                                 $paiement->service = $f->service;
                                 $paiement->code = $codePaiement;
@@ -857,7 +979,7 @@ class PaiementEnLigne extends Controller
                         if ($commande && $commande->client) {
                             $image = base_path('public/frontend/assets/imgs/logo/omer 1.png');
                             Help::envoyerDocumentPdf(
-                                $commande->client->nom . ' ' . $commande->client->prenom,
+                                $commande->client->display_name,
                                 $commande->client->user->email,
                                 'Facture',
                                 $commande->numero ?? $commande->id,
@@ -872,7 +994,7 @@ class PaiementEnLigne extends Controller
                         if ($location && $location->client) {
                             $image = base_path('public/frontend/assets/imgs/logo/omer 1.png');
                             Help::envoyerDocumentPdf(
-                                $location->client->nom . ' ' . $location->client->prenom,
+                                $location->client->display_name,
                                 $location->client->user->email,
                                 'Facture Location',
                                 $location->numero ?? $location->id,

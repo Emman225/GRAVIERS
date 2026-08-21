@@ -19,6 +19,7 @@ class Reduction extends Model
         'est_utilise',
         'taux_reduction',
         'devis_id',
+        'commande_id',
         'client_id',
         'statut',
         'deleted_at',
@@ -49,6 +50,51 @@ class Reduction extends Model
             ->get();
     }
 
+    /**
+     * Réductions en attente de validation pour un lot de commandes, indexées
+     * par identifiant de commande.
+     *
+     * Une seule requête pour toute la liste : l'écran des commandes en attente
+     * affiche l'indicateur sur chaque ligne, et interroger la base ligne par
+     * ligne y coûterait autant de requêtes que de commandes.
+     *
+     * Le rattrapage par devis_id ne sert qu'aux réductions écrites avant
+     * l'ajout de commande_id.
+     */
+    public static function reductionsEnAttentePour($commandes)
+    {
+        $idsCommande = collect($commandes)->pluck('id')->filter()->all();
+        $idsDevis    = collect($commandes)->pluck('devis_id')->filter()->all();
+
+        if (empty($idsCommande) && empty($idsDevis)) {
+            return collect();
+        }
+
+        $lignes = Reduction::where('est_utilise', false)
+            ->where('statut', Help::$STATUT_ACTIF)
+            ->where(function ($q) use ($idsCommande, $idsDevis) {
+                if (!empty($idsCommande)) { $q->whereIn('commande_id', $idsCommande); }
+                if (!empty($idsDevis))    { $q->orWhereIn('devis_id', $idsDevis); }
+            })
+            ->orderBy('id')
+            ->get();
+
+        // orderBy('id') puis keyBy : la DERNIÈRE demande écrase les précédentes,
+        // c'est bien la plus récente qui doit s'afficher.
+        $parCommande = collect();
+        $devisVersCommande = collect($commandes)->filter(fn ($c) => $c->devis_id)
+            ->pluck('id', 'devis_id');
+
+        foreach ($lignes as $ligne) {
+            $idCommande = $ligne->commande_id ?: ($devisVersCommande[$ligne->devis_id] ?? null);
+            if ($idCommande) {
+                $parCommande[$idCommande] = $ligne;
+            }
+        }
+
+        return $parCommande;
+    }
+
     public static function enregistrer(array $arr)
     {
         $obj = new Reduction($arr);
@@ -67,6 +113,10 @@ class Reduction extends Model
 
     public function user(){
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function commande(){
+        return $this->belongsTo(Commande::class, 'commande_id');
     }
 
     /**

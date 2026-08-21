@@ -49,6 +49,15 @@ class _CartScreenState extends State<CartScreen> {
     }
     super.initState();
     timer = Timer.periodic(const Duration(seconds: 3), (Timer t) {
+      // dispose() annule bien ce minuteur, mais l'annulation et le battement
+      // peuvent se croiser : il suffit que l'écran soit quitté à l'instant où
+      // le minuteur se déclenche pour que setState soit appelé sur un état
+      // détruit. En version release, l'exception qui en résulte n'a plus de
+      // trace lisible — elle ressort en « _TypeError » sans origine.
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
       setState(() {});
     });
   }
@@ -93,6 +102,9 @@ class _CartScreenState extends State<CartScreen> {
                 {
                   setState(() {
                     paniers.clear();
+                    devisRepris = null;
+                    // Le panier vidé, il ne provient plus d aucun devis.
+                    devisRepris = null;
                   })
                 }
             },
@@ -228,7 +240,7 @@ class _CartScreenState extends State<CartScreen> {
                             onTap: (selected) {
                                 if(user.token == null){
                                   meFaireLivre = false;
-                                  EasyLoading.showError("Veuillez vous inscrire ou vous connecter pour être livrer");
+                                  afficherErreur("Veuillez vous inscrire ou vous connecter pour être livrer");
                                 }else{
                                   meFaireLivre = selected!;
                                 }
@@ -257,10 +269,10 @@ class _CartScreenState extends State<CartScreen> {
                               });
                               double mtn = montantPoint * nombrePoint;
                               if (utiliserPoint == true) {
-                                EasyLoading.showSuccess(
+                                afficherSucces(
                                     "Réduction de ${formaterMontant(mtn)} appliquée");
                               } else {
-                                EasyLoading.showError(
+                                afficherErreur(
                                     "Réduction de ${formaterMontant(mtn)} non appliquée");
                               }
                             },
@@ -325,21 +337,25 @@ class _CartScreenState extends State<CartScreen> {
             setState(() {
               reduction = retourPromo.data ?? Reduction();
             });
-            EasyLoading.showSuccess(retourPromo.message ?? '');
+            afficherSucces(retourPromo.message ?? '');
           } else {
-            EasyLoading.showError(retourPromo.message ?? '');
+            afficherErreur(retourPromo.message ?? '');
           }
+        } else {
+          // Sans cette branche, une réponse serveur en erreur ne produisait
+          // AUCUNE réaction à l'écran : l'utilisateur recliquait sans savoir.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
         user.code = 500;
-        user.message = "Une erreur s'est produite veuillez reesayer plus tard";
+        user.message = messageErreurTechnique(e);
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 }

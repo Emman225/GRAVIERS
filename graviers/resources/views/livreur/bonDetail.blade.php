@@ -34,12 +34,12 @@
                                 <tr>
                                     <td>
                                         <a class="itemside">
-                                            <div class="h6 info bd-primary"> {{ $enlevement->produit->nom }} </div>
+                                            <div class="h6 info bd-primary"> {{ $enlevement->produit?->nom }} </div>
                                         </a>
                                     </td>
-                                    {{-- <td class="fw-bold h5"> {{ $enlevement->produit->prix_moyen }} fcfa</td> --}}
+                                    {{-- <td class="fw-bold h5"> {{ $enlevement->produit?->prix_moyen }} fcfa</td> --}}
                                     <td class="h6 text-center"> {{ $enlevement->qte_servi == null ? $enlevement->qte : $enlevement->qte_servi }} </td>
-                                    {{-- <td class="text-end"><dd><b class="h5 text-success fw-bold "> {{ $enlevement->produit->prix_moyen * $enlevement->qte }} fcfa </b> <br> --}}
+                                    {{-- <td class="text-end"><dd><b class="h5 text-success fw-bold "> {{ $enlevement->produit?->prix_moyen * $enlevement->qte }} fcfa </b> <br> --}}
 
                                     </td>
                                 </tr>
@@ -90,12 +90,12 @@
                                     <td>
                                         <a class="itemside">
                                             <div class="h6 info">
-                                                {{ $enlevement->fournisseur->nom_prenoms }}
+                                                {{ $enlevement->fournisseur?->nom_prenoms }}
                                             </div>
                                         </a>
                                     </td>
-                                    <td class="h6"> {{ $enlevement->fournisseur->adresse_geo }}</td>
-                                    <td class="h6"> {{ $enlevement->fournisseur->contact1 }} </td>
+                                    <td class="h6"> {{ $enlevement->fournisseur?->adresse_geo }}</td>
+                                    <td class="h6"> {{ $enlevement->fournisseur?->contact1 }} </td>
                                 </tr>
                             </tbody>
                         </table>
@@ -121,15 +121,15 @@
                                         <td>
                                             <a>
                                                 <div class="h6 info ">
-                                                    {{ $enlevement->livraison->client->nom . ' ' . $enlevement->livraison->client->prenom }}
+                                                    {{ $enlevement->livraison?->client?->display_name }}
                                                 </div>
                                             </a>
                                         </td>
                                         <td class="h6">
-                                            {{ $enlevement->livraison->client->contact1 }}</td>
+                                            {{ $enlevement->livraison?->client?->contact1 }}</td>
                                         </td>
                                         <td class="h6">
-                                            {{ $enlevement->livraison->adresseLivraison->affichage }}</td>
+                                            {{ $enlevement->livraison?->adresseLivraison->affichage }}</td>
                                     </tr>
 
                                 </tbody>

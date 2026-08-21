@@ -6,7 +6,7 @@
 --}}
 @php
     use Illuminate\Support\Carbon;
-    $logoPath = public_path(config('constantes.logo'));
+    $logoPath = public_path(config('constantes.logo_pdf'));
     $logoSrc = '';
     if (file_exists($logoPath)) {
         $logoData = base64_encode(file_get_contents($logoPath));
@@ -72,7 +72,7 @@
                 <div class="recu-meta-value">
                     {{ $paiement->agence?->code ?? '-' }}
                     @if ($paiement->agence?->nom)
-                        <br><span style="font-weight: normal; font-size: 11px; color: #666;">{{ $paiement->agence->nom }}</span>
+                        <br><span style="font-weight: normal; font-size: 11px; color: #666;">{{ $paiement->agence?->nom }}</span>
                     @endif
                 </div>
             </div>
@@ -82,7 +82,7 @@
     <table class="recu-table">
         <tr>
             <td>Reçu de</td>
-            <td>{{ $paiement->client ? trim($paiement->client->nom . ' ' . $paiement->client->prenom) : '-' }}</td>
+            <td>{{ $paiement->client ? trim($paiement->client?->display_name) : '-' }}</td>
         </tr>
         <tr>
             <td>Téléphone</td>

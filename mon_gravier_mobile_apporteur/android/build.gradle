@@ -1,15 +1,6 @@
-buildscript {
-    ext.kotlin_version = '1.9.10'
-    repositories {
-        google()
-        mavenCentral()
-    }
-
-    dependencies {
-        classpath 'com.android.tools.build:gradle:7.3.0'
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-    }
-}
+// Le bloc buildscript (AGP 7.3.0 / Kotlin 1.9.10) a été déplacé dans le bloc
+// plugins de settings.gradle (migration au schéma déclaratif Flutter), comme sur
+// les applications client et livreur.
 
 allprojects {
     repositories {
@@ -23,6 +14,40 @@ subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
 }
 subprojects {
+    project.pluginManager.withPlugin("com.android.library") {
+        def manifest = file("${project.projectDir}/src/main/AndroidManifest.xml")
+        if (manifest.exists()) {
+            // Classe qualifiée : groovy.util.XmlParser n'existe plus en Groovy 4 (Gradle 9+)
+            def pkg = new groovy.xml.XmlParser().parse(manifest).attribute("package")
+            if (pkg != null && project.android.namespace == null) {
+                project.android.namespace = pkg
+            }
+        }
+    }
+    // Alignement Java 17 en afterEvaluate : certains plugins fixent Java 11 dans
+    // LEUR script, qui s'exécute APRÈS pluginManager.withPlugin — d'où une
+    // « Inconsistent JVM Target ». afterEvaluate passe en dernier.
+    project.afterEvaluate {
+        if (project.plugins.hasPlugin("com.android.library") || project.plugins.hasPlugin("com.android.application")) {
+            project.android.compileOptions {
+                sourceCompatibility JavaVersion.VERSION_17
+                targetCompatibility JavaVersion.VERSION_17
+            }
+            // Certains plugins anciens déclarent un compileSdk < 31, ce qui donne
+            // « resource android:attr/lStar not found » avec les androidx récentes.
+            // On aligne tous les modules sur le compileSdk de l'application.
+            project.android.compileSdkVersion 35
+        }
+    }
+    project.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+        kotlinOptions {
+            jvmTarget = "17"
+        }
+    }
+}
+subprojects {
+    // Neutralisation des tâches d'extraction d'annotations : conservée de la
+    // configuration précédente de cette application, où elles échouaient.
     afterEvaluate {
         tasks.matching { it.name ==~ /extract.*Annotations/ }.configureEach { extractTask ->
             extractTask.actions.clear()
@@ -38,13 +63,6 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
-    project.configurations.all {
-        resolutionStrategy.eachDependency { details ->
-            if (details.requested.group == 'org.jetbrains.kotlin') {
-                details.useVersion kotlin_version
-            }
-        }
-    }
 }
 
 tasks.register("clean", Delete) {

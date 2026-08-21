@@ -1,245 +1,430 @@
 @extends('client.main')
 @section('title', 'Demande de livraison')
+@section('cssPart')
+    <style>
+        /* ===================================================================
+           Demande de livraison — mise en page
+
+           La page enchaînait sans hiérarchie un bouton flottant, un tableau
+           bordé de noir, trois listes déroulantes et deux cartes de 500px.
+           Rien n'indiquait au visiteur combien d'étapes l'attendaient ni où il
+           en était. Deux défauts mesurés sur mobile (375px) :
+
+             · la page défilait horizontalement — 516px de contenu pour 375px
+               d'écran, dus aux encarts de recherche d'adresse posés en absolu
+               avec « left: 10px » ET « width: 100% » ;
+             · le tableau des marchandises, à cinq colonnes, y était illisible.
+
+           Les identifiants, les noms de champs et les classes restent
+           STRICTEMENT identiques : le script de la page (ajout et suppression
+           de lignes, cartes Leaflet, géocodeur) et le contrôleur s'y appuient.
+           =================================================================== */
+
+        /* Garde-fou : les grilles du thème portent une gouttière négative qui
+           dépasse de 2px. Invisible sur ordinateur, elle suffit à faire
+           apparaître une barre de défilement horizontale sur téléphone. */
+        .dl-page { background: #f6f8fb; padding: 32px 0 64px; overflow-x: hidden; }
+
+        .dl-entete { max-width: 900px; margin: 0 auto 28px; text-align: center; }
+        .dl-entete h1 { font-size: 30px; font-weight: 700; color: #102a48; margin-bottom: 10px; }
+        .dl-entete p { color: #5b6b7f; font-size: 16px; margin: 0 auto; max-width: 640px; }
+
+        .dl-carte {
+            background: #fff;
+            border: 1px solid #e4eaf1;
+            border-radius: 14px;
+            box-shadow: 0 2px 10px rgba(16, 42, 72, .05);
+            padding: 26px 26px 22px;
+            margin-bottom: 22px;
+        }
+
+        /* Titre d'étape : le numéro dit combien il en reste. */
+        .dl-etape { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+        .dl-etape__num {
+            flex: 0 0 auto;
+            width: 34px; height: 34px;
+            border-radius: 50%;
+            background: #1c57a3; color: #fff;
+            font-weight: 700; font-size: 15px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .dl-etape__titre { margin: 0; font-size: 19px; font-weight: 700; color: #102a48; }
+        .dl-etape__aide { margin: 2px 0 0; font-size: 13.5px; color: #7a8a9c; }
+
+        /* Champs : le noir pur du thème d'origine écrasait la page. */
+        .dl-carte .form-control,
+        .dl-carte .form-select,
+        .dl-carte select.form-control {
+            border: 1px solid #d5dee8 !important;
+            border-radius: 8px;
+            min-height: 46px;
+            font-size: 15px;
+            box-shadow: none;
+        }
+        .dl-carte textarea.form-control { min-height: 92px; height: auto; }
+        .dl-carte .form-control:focus,
+        .dl-carte .form-select:focus {
+            border-color: #1c57a3 !important;
+            box-shadow: 0 0 0 3px rgba(28, 87, 163, .12);
+        }
+        .dl-libelle { display: block; font-size: 13.5px; font-weight: 600; color: #48586b; margin-bottom: 6px; }
+
+        /* Tableau des marchandises */
+        .dl-tableau { margin: 0; }
+        .dl-tableau > thead th {
+            background: #1c57a3; color: #fff;
+            font-size: 13.5px; font-weight: 600;
+            border: 0; padding: 12px 10px; white-space: nowrap;
+        }
+        .dl-tableau > thead th:first-child { border-top-left-radius: 8px; }
+        .dl-tableau > thead th:last-child { border-top-right-radius: 8px; }
+        .dl-tableau > tbody > tr > td { border-color: #e4eaf1; padding: 10px; vertical-align: top; }
+        .dl-tableau .btn-danger {
+            width: 38px; height: 38px; padding: 0;
+            border-radius: 8px;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-weight: 700; line-height: 1;
+        }
+
+        .dl-ajouter {
+            background: #eef4fb; color: #1c57a3;
+            border: 1px dashed #9dbbdd; border-radius: 8px;
+            font-weight: 600; padding: 10px 18px;
+        }
+        .dl-ajouter:hover { background: #e2edf9; color: #14406f; }
+
+        /* Recherche d'adresse.
+
+           Le bloc est posé en absolu par-dessus la carte pour que la liste des
+           suggestions la recouvre. Il portait « left: 10px » AVEC
+           « width: 100% » : sa largeur partait donc du bord gauche du parent et
+           débordait de 10px, et le formulaire du géocodeur, non contraint,
+           poussait l'ensemble à 135px hors de l'écran. On borne par la droite. */
+        .dl-recherche { position: relative; min-height: 54px; margin-bottom: 12px; }
+        .dl-recherche > div {
+            position: absolute; top: 0; left: 0; right: 0;
+            width: auto !important;
+            z-index: 999;
+        }
+        .dl-recherche .leaflet-control-geocoder { max-width: 100%; box-sizing: border-box; }
+        .dl-recherche .leaflet-control-geocoder-form input {
+            width: 100%; box-sizing: border-box;
+            min-height: 44px; padding: 8px 12px;
+            border: 1px solid #d5dee8; border-radius: 8px;
+        }
+        .dl-recherche .leaflet-control-geocoder-alternatives { max-width: 100%; }
+
+        /* Sélecteur porté par l'identifiant : myStyle.css impose
+           « #map { height: 500px; width: 70%; margin: auto } » à l'échelle du
+           site. Une simple classe ne peut pas l'emporter — le balisage d'origine
+           s'en sortait par un style en ligne. On ne touche pas au fichier
+           global, d'autres pages s'appuient dessus. */
+        #map.dl-carteleaflet,
+        #map1.dl-carteleaflet {
+            height: 420px; width: 100%; margin: 0;
+            border: 1px solid #d5dee8; border-radius: 10px;
+            overflow: hidden; background: #dde6f0;
+        }
+        .dl-coordonnees { font-size: 13px; color: #7a8a9c; margin-top: 8px; }
+
+        .dl-envoyer {
+            width: 100%; padding: 15px 20px;
+            font-size: 16px; font-weight: 600; border-radius: 10px;
+        }
+
+        @media (max-width: 767px) {
+            .dl-page { padding: 20px 0 40px; }
+            .dl-entete h1 { font-size: 24px; }
+            .dl-carte { padding: 18px 16px 16px; border-radius: 12px; }
+            /* 500px de carte sur un téléphone reléguaient la suite du
+               formulaire hors de l'écran. */
+            #map.dl-carteleaflet,
+            #map1.dl-carteleaflet { height: 300px; }
+
+            /* Cinq colonnes ne tiennent pas sur un téléphone : chaque ligne
+               devient un bloc, chaque cellule reçoit son libellé. Le tableau
+               garde sa structure — le script clone un <tr>, il ne doit pas
+               être remplacé par des <div>. */
+            .dl-tableau > thead { display: none; }
+            .dl-tableau, .dl-tableau > tbody, .dl-tableau > tbody > tr, .dl-tableau > tbody > tr > td { display: block; width: 100%; }
+            .dl-tableau > tbody > tr {
+                border: 1px solid #e4eaf1; border-radius: 10px;
+                padding: 6px 10px 10px; margin-bottom: 14px; background: #fbfcfe;
+            }
+            .dl-tableau > tbody > tr > td { border: 0; padding: 8px 0; }
+            .dl-tableau > tbody > tr > td::before {
+                content: attr(data-libelle);
+                display: block;
+                font-size: 12.5px; font-weight: 600; color: #48586b;
+                margin-bottom: 5px;
+            }
+            .dl-tableau > tbody > tr > td.dl-cellule-action { text-align: right; padding-top: 4px; }
+            .dl-tableau > tbody > tr > td.dl-cellule-action::before { content: none; }
+        }
+    </style>
+@endsection
+
 @section('content')
-    <main class="main">
+    <main class="main dl-page">
 
-        {{-- @dd(Cart::content()) --}}
-        <div class="container mb-80 mt-50">
-            <div class="row">
-                <div class="col-lg-8 mb-40">
-                    <h1 class="heading-2 mb-10">Demande de livraison</h1>
+        <div class="container">
 
-                </div>
+            <div class="dl-entete">
+                <h1>Demande de livraison</h1>
+                <p>Vous avez une marchandise à faire transporter d'un point à un autre ?
+                   Décrivez-la, indiquez le lieu de prise en charge et la destination :
+                   nous calculons le coût avant que vous ne validiez quoi que ce soit.</p>
             </div>
-            <div class="container">
 
-                <a href="{{ route('client.monCompte') }}" class="btn btn-primary">Demandes de livraison en cours</a>
+            <div class="row justify-content-center">
+                <div class="col-lg-10">
 
-            </div>
-            <div class="row">
-                <div class="col-lg-10 container">
-                    <div class="row mb-50">
+                    {{-- La page est consultable sans compte. On prévient d'emblée le
+                         visiteur que l'envoi demande une connexion, plutôt que de le
+                         laisser remplir tout le formulaire pour être renvoyé vers la
+                         page de connexion en perdant sa saisie. Le bouton
+                         « Demandes en cours » mène à un espace réservé : il n'a pas
+                         de sens pour un visiteur. --}}
+                    {{-- Aucun tarif ne couvre la marchandise demandée. Clé propre :
+                         Flasher capte « error » et le rejoue en bulle fugace, alors
+                         que le visiteur doit pouvoir lire ce message et corriger sa
+                         saisie. --}}
+                    @if (session('tarif_introuvable'))
+                        <div class="alert alert-warning">
+                            {{ session('tarif_introuvable') }}
+                        </div>
+                    @endif
 
+                    @auth
+                        <div class="mb-20 text-right">
+                            <a href="{{ route('client.monCompte') }}" class="btn btn-primary">Mes demandes de livraison en cours</a>
+                        </div>
+                    @else
+                        <div class="alert alert-info">
+                            Vous pouvez préparer votre demande librement. Pour l'envoyer, il faudra
+                            <a href="{{ route('client.login') }}" class="text-brand font-weight-bold">vous connecter</a>
+                            ou <a href="{{ route('client.register') }}" class="text-brand font-weight-bold">créer un compte</a>.
+                        </div>
+                    @endauth
 
-                    </div>
-                    <button class="btn" id="btnAjt">+ ajouter un produit</button>
-                    <div class="row">
-                        {{-- <h4 class="mb-30">Ajoutez votre adresse</h4> --}}
-                        <form method="post" action="{{ route('client.recapLivraison') }}">
-                            @csrf
-                            <div class="row shipping_calculator">
-                                <div class="container" id="info">
+                    <form method="post" action="{{ route('client.recapLivraison') }}" enctype="multipart/form-data">
+                        @csrf
 
-                                    <table class="table table-bordered mt-5" id="table" style="border: 1px solid #000;">
-                                        <thead>
+                        {{-- ÉTAPE 1 : la marchandise ------------------------------ --}}
+                        <div class="dl-carte">
+                            <div class="dl-etape">
+                                <span class="dl-etape__num">1</span>
+                                <div>
+                                    <h3 class="dl-etape__titre">Marchandise à transporter</h3>
+                                    <p class="dl-etape__aide">Ajoutez autant de lignes que nécessaire.</p>
+                                </div>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="table dl-tableau" id="table">
+                                    <thead>
+                                        <tr>
                                             <th>Produit</th>
                                             <th>Description</th>
                                             <th>Qté</th>
                                             <th>Unité</th>
-                                            <th>Action</th>
-                                        </thead>
-                                        <tbody>
-                                            <tr>
-                                                <td>
-                                                    <input style="border: 1px solid #000;" type="text" required
-                                                        style="margin-top: 3rem;" name="produit[]" class="form-control"
-                                                        placeholder="Nom du produit">
-                                                </td>
-                                                <td>
-                                                    <textarea name="description[]" style="border: 1px solid #000;" required class="form-control "
-                                                        style="margin-top: 3rem; height: 200px" id="" placeholder="Description" cols="30" rows="10"></textarea>
-                                                </td>
-                                                <td>
-                                                    <input class="form-control" style="border: 1px solid #000;" required
-                                                        name="qte[]" placeholder="Quantité" type="number" />
-                                                </td>
-                                                <td>
-                                                    <select required class="form-select " style="border: 1px solid #000;"
-                                                        name="unite[]">
-                                                        <option value="">Unité</option>
-                                                        @foreach ($unites as $unite)
-                                                            @if ($unite->id !== 5)
-                                                                <option value="{{ $unite->id }}"> {{ $unite->libelle }}
-                                                                </option>
-                                                            @endif
-                                                        @endforeach
-                                                    </select>
-                                                </td>
-                                                <td>
-                                                    <a class="btn btn-danger bg-danger">x</a>
-                                                </td>
-
-                                            </tr>
-                                        </tbody>
-
-                                    </table>
-                                    <hr>
-
-                                </div>
-                                <div class="container">
-                                    <div class="row">
-                                        <div class="col-md-4">
-                                            <div class="custom_select mb-5" style="margin-top: 3rem;">
-                                                <select required class="form-control" style="border: 1px solid #000;"
-                                                    name="paiement">
-
-                                                    <option> Choisissez un mode de paiement</option>
-                                                    @foreach ($paiements as $paiement)
-                                                        <option value="{{ $paiement->id }}">{{ $paiement->libelle }}
-                                                        </option>
-                                                    @endforeach
-                                                </select>
-                                            </div>
-                                        </div>
-
-                                        <div class="col-md-4">
-                                            <div class="custom_select mb-5" style="margin-top: 3rem;">
-                                                <select required class="form-control" style="border: 1px solid #000;"
-                                                    name="type_livraison">
-                                                    <option value="">Choisissez le type de livraison souhaité...
-                                                    </option>
-                                                    @foreach ($types_livraison as $type_livraison)
-                                                        <option value="{{ $type_livraison->libelle }}">
-                                                            {{ $type_livraison->libelle }}</option>
-                                                    @endforeach
-                                                </select>
-                                            </div>
-                                        </div>
-
-                                        <div class="col-md-4">
-                                            <div class="custom_select mb-5" style="margin-top: 1rem;">
-                                                <label for="">Date de livraison souhaitée</label>
-                                                <input required style="border: 1px solid #000;" type="date"
-                                                    class="form-control" min="{{now()->format('Y-m-d')}}" name="date" value="{{ date('Y-m-d') }}">
-                                            </div>
-
-                                        </div>
-                                    </div>
-
-
-                                </div>
-                                {{-- <input type="text" name="poids" class="form-control" placeholder="Poids du vehicule souhaité (en tonne)"> --}}
-
-                                <div class="container" style="margin-top: 3rem;">
-                                    <H3>Lieu de prise en charge</h3>
-                                    <div id="demo"></div>
-                                    <div class="custom_select mb-5 mt-2">
-                                        <select required class="form-control select-active" style="border: 1px solid #000;"
-                                            name="ville" id="ville">
-                                            <option value="">Selectionnez une ville...</option>
-                                            @foreach ($villes as $ville)
-                                                <option value="{{ $ville->id }}">{{ $ville->nom }}</option>
-                                            @endforeach
-                                        </select>
-                                    </div>
-                                    {{-- <input type="text" required class=" mb-5 mt-5 form-control" disabled id="affichage" placeholder="Lieu de pris en charge" value=""> --}}
-                                    <div style="position: relative;margin-bottom: 7rem">
-                                        <div id="search-container1" style="position: absolute; top: 10px; left: 10px; height: 70px; width: 100%; margin-bottom: 3rem; z-index: 999"></div>
-                                    </div>
-                                    <p for="" class="text-center h5">Veuillez préciser sur la carte</p>
-                                    <div id="map"
-                                        style="height: 500px; width: 100%; margin: auto; background: #1c57a3"></div>
-                                    <div class="text-center" id="coordinates"></div>
-                                    <div class="text-center" id="latlng"></div>
-                                    <input required type="hidden" name="long" id="long"><br><br>
-                                    <input required type="hidden" name="lat" id="lat">
-                                    <input required type="hidden" name="affichage" id="affichages">
-                                </div>
-
-                                <div class="container" style="margin-top: 3rem;">
-                                    <H3>Lieu de destination</h3>
-                                    <div class="custom_select mb-5 mt-2">
-                                        <select required class="form-control select-active" style="border: 1px solid #000;"
-                                            style="border: 1px solid #000;" id="ville1" name="ville1">
-                                            <option value="">Selectionnez une ville...</option>
-                                            @foreach ($villes as $ville)
-                                                <option value="{{ $ville->id }}">{{ $ville->nom }}</option>
-                                            @endforeach
-                                        </select>
-                                    </div>
-
-                                    <div style="position: relative;margin-bottom: 7rem">
-                                        <div id="search-container2" style="position: absolute; top: 10px; left: 10px; height: 70px; width: 100%; margin-bottom: 3rem; z-index: 999"></div>
-                                    </div>
-
-                                    {{-- <input required type="text" class=" mb-5 mt-5 form-control" id="affichage1"
-                                        disabled placeholder="Lieu de destination" value=""> --}}
-                                    <p for="" class="text-center h5">Veuillez préciser sur la carte</p>
-                                    <div id="map1"
-                                        style="height: 500px; width: 100%; margin: auto; background: #1c57a3"></div>
-
-                                    <div class="text-center" id="coordinates1"></div>
-                                    <div class="text-center" id="latlng1"></div>
-                                    {{-- info bon de commande --}}
-
-                                    <div class="row shipping_calculator mt-50 text-center">
-                                        <div class="form-group col-lg-10">
-                                            <H3> Bon de commande </h3>
-
-                                            <div class=" custom_select">
-                                                <input type="text"
-                                                    {{ Auth::user()->client->client_a_terme ? 'required' : '' }}
-                                                    placeholder="Entrez un numero de bon commande"
-                                                    style="border: solid 1px grey" class="form-control"
-                                                    name="numero_bon">
-                                            </div>
-
-                                            <div class="mt-20 custom_select">
-                                                <input type="file"
-                                                    {{ Auth::user()->client->client_a_terme ? 'required' : '' }}
-                                                    placeholder="Entrez un numero de bon commande"
-                                                    style="border: solid 1px grey" class="form-control" name="fichier">
-                                            </div>
-
-                                        </div>
-
-                                    </div>
-
-                                    {{-- info bon de commande --}}
-                                    <input required type="hidden" name="long1" id="long1"><br><br>
-                                    <input required type="hidden" name="lat1" id="lat1">
-                                    <input required type="hidden" name="km" id="km">
-                                    <input required type="hidden" name="affichage1" id="affichages1">
-                                </div>
-                            </div>
-                            <button type="submit" class="btn btn-fill-out btn-block mb-30">Voir le récapitulatif</button>
-                            {{-- Ce bouton s'affiche si le client veut passer une commande --}}
-                        </form>
-                    </div>
-                </div>
-                {{-- <div class="col-lg-5">
-                    <div class="border p-40 cart-totals ml-30 mb-50">
-                        <div class="d-flex align-items-end justify-content-between mb-30">
-                            <h4>Votre commande</h4>
-                            <h6 class=" h3" id="lePrix"></h6>
-                        </div>
-                        <div class="divider-2 mb-30"></div>
-                        <div class="table-responsive order_table checkout">
-                            <table class="table no-border">
-                                <tbody>
-
+                                            <th style="width: 60px;">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
                                         <tr>
-                                            <td class="image product-thumbnail"><img src="" alt="#"></td>
-                                            <td>
-                                                <h6 class="w-160 mb-5"><a href="shop-product-full.html" class="text-heading"></a></h6></span>
-                                                <div class="product-rate-cover">
-                                                    <span class="font-small ml-5 text-muted"></span>
-                                                </div>
+                                            <td data-libelle="Produit">
+                                                <input type="text" required name="produit[]" class="form-control"
+                                                    placeholder="Nom du produit">
                                             </td>
-                                            <td>
-                                                <h6 class="text-muted pl-20 pr-20"></h6>
+                                            <td data-libelle="Description">
+                                                <textarea name="description[]" required class="form-control"
+                                                    placeholder="Description" cols="30" rows="3"></textarea>
                                             </td>
-                                            <td>
-                                                <h4 class="text-brand" id="prix">gff</h4>
+                                            <td data-libelle="Quantité">
+                                                <input class="form-control" required name="qte[]"
+                                                    placeholder="Quantité" type="number" min="1" step="any" />
+                                            </td>
+                                            <td data-libelle="Unité">
+                                                <select required class="form-select" name="unite[]">
+                                                    <option value="">Unité</option>
+                                                    @foreach ($unites as $unite)
+                                                        @if ($unite->id !== 5)
+                                                            <option value="{{ $unite->id }}">{{ $unite->libelle }}</option>
+                                                        @endif
+                                                    @endforeach
+                                                </select>
+                                            </td>
+                                            <td class="dl-cellule-action">
+                                                <a class="btn btn-danger bg-danger" title="Retirer cette ligne">&times;</a>
                                             </td>
                                         </tr>
+                                    </tbody>
+                                </table>
+                            </div>
 
-
-                                </tbody>
-                            </table>
+                            {{-- Le bouton flottait AU-DESSUS du formulaire, sans lien
+                                 visible avec le tableau qu'il alimente. --}}
+                            <button type="button" class="btn dl-ajouter mt-15" id="btnAjt">+ Ajouter une marchandise</button>
                         </div>
-                    </div>
-                </div> --}}
+
+                        {{-- ÉTAPE 2 : les modalités ------------------------------- --}}
+                        <div class="dl-carte">
+                            <div class="dl-etape">
+                                <span class="dl-etape__num">2</span>
+                                <div>
+                                    <h3 class="dl-etape__titre">Modalités</h3>
+                                    <p class="dl-etape__aide">Paiement, conditionnement et date souhaitée.</p>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-4 mb-20">
+                                    <label class="dl-libelle" for="dl-paiement">Mode de paiement</label>
+                                    <select required class="form-control" name="paiement" id="dl-paiement">
+                                        <option value="">Choisissez un mode de paiement</option>
+                                        @foreach ($paiements as $paiement)
+                                            <option value="{{ $paiement->id }}">{{ $paiement->libelle }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+
+                                <div class="col-md-4 mb-20">
+                                    <label class="dl-libelle" for="dl-type-livraison">Type de livraison</label>
+                                    <select required class="form-control" name="type_livraison" id="dl-type-livraison">
+                                        <option value="">Choisissez le type souhaité</option>
+                                        @foreach ($types_livraison as $type_livraison)
+                                            <option value="{{ $type_livraison->libelle }}">{{ $type_livraison->libelle }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+
+                                <div class="col-md-4 mb-20">
+                                    <label class="dl-libelle" for="dl-date">Date de livraison souhaitée</label>
+                                    <input required type="date" class="form-control" id="dl-date"
+                                        min="{{ now()->format('Y-m-d') }}" name="date" value="{{ date('Y-m-d') }}">
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- ÉTAPE 3 : la prise en charge --------------------------- --}}
+                        <div class="dl-carte">
+                            <div class="dl-etape">
+                                <span class="dl-etape__num">3</span>
+                                <div>
+                                    <h3 class="dl-etape__titre">Lieu de prise en charge</h3>
+                                    <p class="dl-etape__aide">Où récupérons-nous la marchandise ? Placez le point exact sur la carte.</p>
+                                </div>
+                            </div>
+
+                            <div id="demo"></div>
+
+                            <label class="dl-libelle" for="ville">Ville</label>
+                            <div class="custom_select mb-20">
+                                <select required class="form-control select-active" name="ville" id="ville">
+                                    <option value="">Sélectionnez une ville...</option>
+                                    @foreach ($villes as $ville)
+                                        <option value="{{ $ville->id }}">{{ $ville->nom }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+
+                            <label class="dl-libelle">Rechercher une adresse</label>
+                            <div class="dl-recherche">
+                                <div id="search-container1"></div>
+                            </div>
+
+                            <div id="map" class="dl-carteleaflet"></div>
+                            <div class="text-center dl-coordonnees" id="coordinates"></div>
+                            <div class="text-center dl-coordonnees" id="latlng"></div>
+
+                            <input required type="hidden" name="long" id="long">
+                            <input required type="hidden" name="lat" id="lat">
+                            <input required type="hidden" name="affichage" id="affichages">
+                        </div>
+
+                        {{-- ÉTAPE 4 : la destination ------------------------------- --}}
+                        <div class="dl-carte">
+                            <div class="dl-etape">
+                                <span class="dl-etape__num">4</span>
+                                <div>
+                                    <h3 class="dl-etape__titre">Lieu de destination</h3>
+                                    <p class="dl-etape__aide">Où livrons-nous ? Le coût du transport dépend de cette distance.</p>
+                                </div>
+                            </div>
+
+                            <label class="dl-libelle" for="ville1">Ville</label>
+                            <div class="custom_select mb-20">
+                                <select required class="form-control select-active" id="ville1" name="ville1">
+                                    <option value="">Sélectionnez une ville...</option>
+                                    @foreach ($villes as $ville)
+                                        <option value="{{ $ville->id }}">{{ $ville->nom }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+
+                            <label class="dl-libelle">Rechercher une adresse</label>
+                            <div class="dl-recherche">
+                                <div id="search-container2"></div>
+                            </div>
+
+                            <div id="map1" class="dl-carteleaflet"></div>
+                            <div class="text-center dl-coordonnees" id="coordinates1"></div>
+                            <div class="text-center dl-coordonnees" id="latlng1"></div>
+
+                            <input required type="hidden" name="long1" id="long1">
+                            <input required type="hidden" name="lat1" id="lat1">
+                            <input required type="hidden" name="km" id="km">
+                            <input required type="hidden" name="affichage1" id="affichages1">
+                        </div>
+
+                        {{-- ÉTAPE 5 : le bon de commande ---------------------------
+                             Il était imbriqué DANS le bloc « Lieu de destination »,
+                             ce qui le rattachait visuellement à l'adresse. --}}
+                        <div class="dl-carte">
+                            <div class="dl-etape">
+                                <span class="dl-etape__num">5</span>
+                                <div>
+                                    <h3 class="dl-etape__titre">Bon de commande</h3>
+                                    <p class="dl-etape__aide">
+                                        @if (Auth::user()?->client?->client_a_terme)
+                                            Obligatoire pour un compte à terme.
+                                        @else
+                                            Facultatif.
+                                        @endif
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-20">
+                                    <label class="dl-libelle" for="dl-numero-bon">Numéro du bon</label>
+                                    <input type="text" id="dl-numero-bon"
+                                        {{ Auth::user()?->client?->client_a_terme ? 'required' : '' }}
+                                        placeholder="Entrez un numéro de bon de commande"
+                                        class="form-control" name="numero_bon">
+                                </div>
+                                <div class="col-md-6 mb-20">
+                                    <label class="dl-libelle" for="dl-fichier-bon">Pièce jointe</label>
+                                    <input type="file" id="dl-fichier-bon"
+                                        {{ Auth::user()?->client?->client_a_terme ? 'required' : '' }}
+                                        class="form-control" name="fichier">
+                                </div>
+                            </div>
+                        </div>
+
+                        @auth
+                            <button type="submit" class="btn btn-fill-out dl-envoyer mb-30">Voir le récapitulatif</button>
+                        @else
+                            {{-- Envoi réservé aux clients connectés : on propose la
+                                 connexion au lieu d'un bouton qui échouerait. --}}
+                            <a href="{{ route('client.login') }}" class="btn btn-fill-out dl-envoyer mb-30">
+                                Se connecter pour envoyer la demande
+                            </a>
+                        @endauth
+
+                    </form>
+                </div>
             </div>
         </div>
     </main>
@@ -277,13 +462,20 @@
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
 
-        var geocoder = L.Control.geocoder({
-            // position: 'topright',
-            titLe: 'Barre de recherche',
-            placeholder: 'Entrez votre adresse',
-            collapsed: false,
-            defaultMarkGeocode: false
-        }).addTo(map);
+        // Un SECOND géocodeur était déclaré ici, posé sur la carte par
+        // « .addTo(map) », et écrasé aussitôt par celui ci-dessous — les deux
+        // portaient le même nom de variable.
+        //
+        // Il en résultait deux champs de recherche pour la prise en charge :
+        // celui de l'encart, et un autre en haut à droite de la carte. Le
+        // second n'était pas seulement superflu : comme la variable avait été
+        // réaffectée, TOUS les écouteurs (« markgeocode », « startgeocode »)
+        // s'attachaient au premier. Chercher une adresse dans le champ posé
+        // sur la carte ne renseignait donc NI les coordonnées, NI l'adresse
+        // du formulaire — le client croyait avoir choisi son lieu de prise en
+        // charge alors que rien n'était retenu.
+        //
+        // La carte de destination, elle, n'a jamais eu ce doublon.
 
         // INITIALISATION DE LA BARRE DE RECHERCHE
         var geocoder = L.Control.geocoder({
@@ -305,7 +497,12 @@
                 searchInput.id = 'afficheAdresse1'; // Ajouter l'ID
                 searchInput.name = 'infoSup'; // Ajouter le name
                 // searchInput.style.backgroundColor = 'red';
-                searchInput.style.width = '500px;';
+                // Largeur fluide, jamais 500px en dur : le champ tient dans son
+                // encart quelle que soit la taille de l'écran. (Cette ligne-ci
+                // écrivait « 500px; » — le point-virgule rendait la valeur
+                // invalide, elle était donc ignorée. Une faute de frappe
+                // épargnait au premier champ le défaut que subissait le second.)
+                searchInput.style.width = '100%';
             }
 
             //SUPPRIMER LE RESULTAT DE RECHERCHE
@@ -453,7 +650,9 @@
     if (searchInput2) {
         searchInput2.id = 'afficheAdresse2';
         searchInput2.name = 'infoSup';
-        searchInput2.style.width = '500px';
+        // 500px en dur poussaient ce champ 152px hors d'un écran de téléphone,
+        // et c'est ce qui faisait défiler TOUTE la page horizontalement.
+        searchInput2.style.width = '100%';
     }
 
     function updateMarkerPosition1(latlng, address = null) {

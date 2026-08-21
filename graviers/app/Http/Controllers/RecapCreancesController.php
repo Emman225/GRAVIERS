@@ -23,8 +23,12 @@ class RecapCreancesController extends Controller
     public function dashboard(Request $request)
     {
         // ===== 1. Données Clients à Terme (factures) =====
-        $clientsTermeIds = Client::where('client_a_terme', 1)->where('statut', 1)->pluck('id');
-        $factures        = Facture::with('paiements')->whereIn('client_id', $clientsTermeIds)->get();
+        // Le filtre sur le statut du client retirait du tableau de bord la
+        // creance des clients suspendus : le total global de l'entreprise s'en
+        // trouvait ampute.
+        $clientsTermeIds = Client::where('client_a_terme', 1)->pluck('id');
+        $factures        = Facture::with(['paiements', 'client', 'commande'])
+            ->whereIn('client_id', $clientsTermeIds)->get();
 
         $totalTerme         = 0.0;
         $payeTerme          = 0.0;
@@ -34,8 +38,11 @@ class RecapCreancesController extends Controller
         $clientsTermeUniques = [];
 
         foreach ($factures as $f) {
-            $paye  = (float) $f->paiements->where('statut', 1)->sum('montant_total');
-            $total = (float) $f->montant;
+            // Meme regle que les etats « Client a terme » et « Balance agee » :
+            // Facture::totalAPayer(), pour que les trois ecrans ne puissent pas
+            // annoncer trois montants differents pour la meme facture.
+            $paye  = $f->montantPaye();
+            $total = $f->totalAPayer();
             $reste = max(0, $total - $paye);
             $totalTerme += $total;
             $payeTerme  += $paye;
@@ -53,8 +60,11 @@ class RecapCreancesController extends Controller
         // ===== 2. Données Clients Comptant (commandes) =====
         $clientsComptantIds = Client::where(function ($q) {
                 $q->where('client_a_terme', 0)->orWhereNull('client_a_terme');
-            })->where('statut', 1)->pluck('id');
-        $commandes = Commande::whereIn('client_id', $clientsComptantIds)->get();
+            })->pluck('id');
+        // Chaque commande fait appel a ses lignes, sa TVA et ses reglements :
+        // sans prechargement, le tableau de bord les relisait une par une.
+        $commandes = Commande::with(['detailCommande', 'TvaCommande', 'client'])
+            ->whereIn('client_id', $clientsComptantIds)->get();
 
         $totalComptant     = 0.0;
         $payeComptant      = 0.0;
@@ -65,8 +75,9 @@ class RecapCreancesController extends Controller
 
         foreach ($commandes as $c) {
             $paye  = $c->montantPayeComptant();
-            $total = (float) $c->montant_total;
-            $reste = max(0, $total - $paye);
+            // Total NET du (TVA + livraison - remise), cf. Commande::montantAPayer().
+            $total = $c->montantAPayer();
+            $reste = $c->montantRestantDu();
             $totalComptant += $total;
             $payeComptant  += $paye;
             $resteComptant += $reste;
@@ -152,12 +163,12 @@ class RecapCreancesController extends Controller
             return (object) [
                 'numero'       => $f->numero,
                 'date_facture' => $f->created_at,
-                'client_nom'   => $client ? trim($client->nom . ' ' . $client->prenom) : '-',
+                'client_nom'   => $client?->display_name ?? '-',
                 'telephone'    => $client?->contact1 ?? $client?->user?->contact ?? '-',
                 'montant_ttc'  => $total,
                 'paye'         => $paye,
                 'reste_du'     => $reste,
-                'echeance'     => $f->date_echeance,
+                'echeance'     => $f->echeance(),
                 'statut'       => $f->statutCreance(),
                 'jours_retard' => $f->joursRetard(),
             ];
@@ -185,8 +196,9 @@ class RecapCreancesController extends Controller
         $lignes = $commandes->map(function (Commande $c) {
             $client  = $c->client;
             $paye    = $c->montantPayeComptant();
-            $total   = (float) $c->montant_total;
-            $reste   = max(0, $total - $paye);
+            // Total NET du (TVA + livraison - remise), cf. Commande::montantAPayer().
+            $total   = $c->montantAPayer();
+            $reste   = $c->montantRestantDu();
             $statut  = $c->statutComptant();
             // Le libellé Excel utilise "Encaissée" pour Payée
             $statutLabel = $statut === 'Payée' ? 'Encaissée' :
@@ -196,9 +208,16 @@ class RecapCreancesController extends Controller
             return (object) [
                 'numero'       => $c->numero,
                 'date'         => $c->date_commande,
-                'client_nom'   => $client ? trim($client->nom . ' ' . $client->prenom) : '-',
+                'client_nom'   => $client?->display_name ?? '-',
                 'telephone'    => $client?->contact1 ?? $client?->user?->contact ?? '-',
-                'agence'       => $c->agence?->nom ?? ($c->agence?->code ?? '-'),
+                // L'agence d'une commande ne se lit PAS sur la commande :
+                // commande.agence_id n'est renseignée nulle part — une commande
+                // passée sur le site n'est rattachée à aucun guichet — et la
+                // colonne restait donc systématiquement vide.
+                //
+                // L'agence qui a un sens ici est celle où l'argent a été encaissé.
+                // On la prend sur les règlements de la commande.
+                'agence'       => $this->agencesDEncaissement($c),
                 'montant_ttc'  => $total,
                 'encaisse'     => $paye,
                 'reste_du'     => $reste,
@@ -214,6 +233,34 @@ class RecapCreancesController extends Controller
     // =====================================================================
     // Helpers privés
     // =====================================================================
+
+    /**
+     * Agence(s) où la commande a été encaissée.
+     *
+     * Un règlement en agence porte l'agence de son caissier ; une commande, non.
+     * Une commande réglée en plusieurs fois peut l'avoir été à deux guichets :
+     * on les liste alors tous les deux plutôt que d'en choisir un au hasard.
+     * Rien d'encaissé au guichet — paiement en ligne, ou commande impayée —
+     * donne un tiret.
+     */
+    private function agencesDEncaissement(Commande $commande): string
+    {
+        $codes = \App\Models\Paiement::with('agence')
+            ->where('service', 'COMMANDE')
+            ->where('service_id', $commande->id)
+            // Seuls les règlements VALIDÉS, comme partout ailleurs sur cet
+            // écran : un paiement en attente de validation nommait une agence
+            // dans une colonne dont tous les montants voisins l'ignoraient.
+            ->where('statut', 1)
+            ->whereNotNull('agence_id')
+            ->get()
+            ->map(fn ($p) => $p->agence?->code ?: $p->agence?->nom)
+            ->filter()
+            ->unique()
+            ->values();
+
+        return $codes->isEmpty() ? '-' : $codes->implode(', ');
+    }
 
     private function totalEncaisseCeMois($clientsTermeIds, $clientsComptantIds): float
     {
@@ -236,19 +283,20 @@ class RecapCreancesController extends Controller
         $items = collect();
 
         foreach ($factures as $f) {
-            $paye  = (float) $f->paiements->where('statut', 1)->sum('montant_total');
-            $total = (float) $f->montant;
-            $reste = max(0, $total - $paye);
+            $reste  = $f->resteAPayer();
             $statut = $f->statutCreance();
-            $jr    = $f->joursRetard();
+            $jr     = $f->joursRetard();
             if ($reste > 0 && $jr > 0) {
-                $client = $f->commande?->client;
+                // Le client se lit sur la FACTURE : pour une facture de
+                // location, `service_id` designe une location et la relation
+                // commande() ramenait une commande sans rapport.
+                $client = $f->client ?? $f->commande?->client;
                 $items->push((object) [
-                    'ref'          => $f->numero,
-                    'client_nom'   => $client ? trim($client->nom . ' ' . $client->prenom) : '-',
-                    'type'         => 'Terme',
-                    'date_emission'=> $f->created_at,
-                    'reste'        => $reste,
+                    'reference'      => $f->numero,
+                    'client'         => $client?->display_name ?? '-',
+                    'type'           => 'Terme',
+                    'date_emission'  => $f->created_at,
+                    'montant_restant'=> $reste,
                     'statut'       => $statut,
                     'jours_retard' => $jr,
                     'action'       => $this->actionRecommandee($jr),
@@ -258,19 +306,20 @@ class RecapCreancesController extends Controller
 
         foreach ($commandes as $c) {
             $paye  = $c->montantPayeComptant();
-            $total = (float) $c->montant_total;
-            $reste = max(0, $total - $paye);
+            // Total NET du (TVA + livraison - remise), cf. Commande::montantAPayer().
+            $total = $c->montantAPayer();
+            $reste = $c->montantRestantDu();
             if ($reste > 0 && $c->date_limite_paiement) {
                 $jr = \Carbon\Carbon::today()->diffInDays(\Carbon\Carbon::parse($c->date_limite_paiement), false);
                 $jr = $jr < 0 ? abs($jr) : 0;
                 if ($jr > 0) {
                     $client = $c->client;
                     $items->push((object) [
-                        'ref'          => $c->numero,
-                        'client_nom'   => $client ? trim($client->nom . ' ' . $client->prenom) : '-',
-                        'type'         => 'Comptant',
-                        'date_emission'=> $c->date_commande,
-                        'reste'        => $reste,
+                        'reference'      => $c->numero,
+                        'client'         => $client?->display_name ?? '-',
+                        'type'           => 'Comptant',
+                        'date_emission'  => $c->date_commande,
+                        'montant_restant'=> $reste,
                         'statut'       => $c->statutComptant(),
                         'jours_retard' => $jr,
                         'action'       => $this->actionRecommandee($jr),
@@ -299,14 +348,16 @@ class RecapCreancesController extends Controller
         $debiteurs = [];
 
         foreach ($factures as $f) {
-            $client = $f->commande?->client;
+            // Le client vient de la facture : une facture de location pointait
+            // sinon vers une commande sans rapport, et son debiteur avec elle.
+            $client = $f->client ?? $f->commande?->client;
             if (!$client) continue;
-            $reste = max(0, (float) $f->montant - (float) $f->paiements->where('statut', 1)->sum('montant_total'));
+            $reste = $f->resteAPayer();
             if ($reste <= 0) continue;
             if (!isset($debiteurs[$client->id])) {
                 $debiteurs[$client->id] = (object) [
                     'client'     => $client,
-                    'nom'        => trim($client->nom . ' ' . $client->prenom),
+                    'nom'        => $client->display_name,
                     'tel'        => $client->contact1 ?? $client->user?->contact ?? '-',
                     'type'       => $client->client_a_terme ? 'Terme' : 'Comptant',
                     'total_du'   => 0.0,
@@ -324,12 +375,12 @@ class RecapCreancesController extends Controller
         foreach ($commandes as $c) {
             $client = $c->client;
             if (!$client) continue;
-            $reste = max(0, (float) $c->montant_total - $c->montantPayeComptant());
+            $reste = $c->montantRestantDu(); // NET du, cf. Commande::montantAPayer()
             if ($reste <= 0) continue;
             if (!isset($debiteurs[$client->id])) {
                 $debiteurs[$client->id] = (object) [
                     'client'     => $client,
-                    'nom'        => trim($client->nom . ' ' . $client->prenom),
+                    'nom'        => $client->display_name,
                     'tel'        => $client->contact1 ?? $client->user?->contact ?? '-',
                     'type'       => $client->client_a_terme ? 'Terme' : 'Comptant',
                     'total_du'   => 0.0,

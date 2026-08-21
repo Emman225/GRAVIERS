@@ -20,6 +20,10 @@ class RetourProduit extends Model
         'user_id',
         'user_paie_id',
         'date_reception',
+        // Absente de cette liste, la date de retour était SILENCIEUSEMENT ignorée
+        // à la création et la colonne prenait la valeur par défaut figée du
+        // schéma. L'application, elle, la renseigne bien de son côté.
+        'date_retour',
         'statut'
     ];
 

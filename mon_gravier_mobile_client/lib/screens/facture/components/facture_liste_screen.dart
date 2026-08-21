@@ -1,19 +1,13 @@
-import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:mon_gravier_com/constants.dart';
 
 import 'package:mon_gravier_com/helper/constants.dart';
 import 'package:searchable_listview/searchable_listview.dart';
-import 'package:select_searchable_list/select_searchable_list.dart';
-import 'package:http/http.dart' as http;
 
 import '../../../globale.dart';
 import '../../../impression/impression_recu_paiement_pdf.dart';
-import '../../../models/ConfigModel.dart';
 import '../../../models/liste_paiement.dart';
 
 class FactureListeScreen extends StatefulWidget {
@@ -26,42 +20,22 @@ class FactureListeScreen extends StatefulWidget {
 
 class _FactureListeScreenState extends State<FactureListeScreen> {
 
-  TextEditingController modePaiementController = TextEditingController();
-  List<ModePaiements> _listModePaiement = [];
-  int _mode = 0;
-  double _total = 0;
-  int leStatut = 0;
-  List<int> ids = [];
-
-  @override
-  void initState() {
-    _listModePaiement = user.configs?.modePaiements ?? [];
-    _total = 0;
-    super.initState();
-  }
-
-  @override
-  void dispose() {
-    modePaiementController.dispose();
-    super.dispose();
-  }
+  // Les champs de sélection et de règlement — liste des moyens de paiement,
+  // mode choisi, total sélectionné, identifiants cochés — ont disparu avec le
+  // bouton « Payer factures » : cet écran ne règle plus rien.
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: (user.token != null && user.token != ""&& ids.isNotEmpty)
-          ? FloatingActionButton.extended(
-        backgroundColor: greenColor,
-        foregroundColor: Colors.black,
-        onPressed: () async {
-          //Passer au paiement
-          await _choixModePaiementForm();
-        },
-        icon: const Icon(Icons.wallet_rounded, color: whiteColor),
-        label: Text('Payer factures. Tot: ${formaterMontant(_total)}', style: white16BoldTextStyle,),
-      )
-          : null,
+      // Écran de CONSULTATION.
+      //
+      // Il proposait de sélectionner des factures en attente puis de les régler
+      // par mobile money. Décision de gestion du 11/08/2026 : les factures se
+      // règlent en agence, et cet écran ne fait que les présenter — comme la
+      // page « Mes paiements » du site, dont le bloc de paiement a été retiré
+      // pour la même raison.
+      //
+      // Une facture déjà réglée reste ouvrable : c'est son reçu.
       body: Container(
         width: double.infinity,
         height: heightOfScreen(context),
@@ -91,17 +65,14 @@ class _FactureListeScreenState extends State<FactureListeScreen> {
                   //Paiement effectué on imprime le reçu de paiement
                   Get.toNamed(ImpressionRecuPaiementPdf.routeName,
                       arguments: [2, "", p.id]);
-                }else if (p.statut == 2) {
-                  //Paiement en attente
-                  setState(() {
-                    if (!ids.contains(p.id)) {
-                      ids.add(p.id ?? 0);
-                      _total += p.montant ?? 0;
-                    }else{
-                      ids.remove(p.id);
-                      _total -= p.montant ?? 0;
-                    }
-                  });
+                } else if (p.statut == 2) {
+                  // Facture en attente : elle se règle au guichet. Le geste
+                  // sélectionnait auparavant la facture en vue d'un paiement
+                  // par mobile money ; il indique désormais la marche à suivre
+                  // plutôt que de ne rien faire, ce qui aurait laissé croire à
+                  // un écran qui ne répond pas.
+                  afficherInfo(
+                      "Cette facture se règle en agence. Présentez son numéro à nos guichets.");
                 }
               },
               child: Padding(
@@ -109,7 +80,7 @@ class _FactureListeScreenState extends State<FactureListeScreen> {
                 child: Container(
                   height: 160,
                   decoration: BoxDecoration(
-                    color: ids.contains(p.id) ? Colors.green[100] : Colors.grey[200],
+                    color: Colors.grey[200],
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
@@ -212,97 +183,8 @@ class _FactureListeScreenState extends State<FactureListeScreen> {
     );
   }
 
-  _choixModePaiementForm() async {
-    return showDialog(
-        barrierDismissible: true,
-        context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: const Text("Réglement de facture"),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(30),
-            ),
-            elevation: 5.0,
-            content: SizedBox(
-              height: 150,
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: DropDownTextField(
-                      textEditingController: modePaiementController,
-                      title: 'Mode de paiement',
-                      hint: 'Choisir un mode de paiement',
-                      options: {
-                        for (var p in _listModePaiement)
-                          p.id ?? 0: p.libelle.toString()
-                      },
-                      multiple: false,
-                      textInputAction: TextInputAction.next,
-                      onChanged: (selectedIds) {
-                        setState(() {
-                          _mode = selectedIds?.first ?? 0;
-                        });
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  ElevatedButton(
-                    onPressed: () {
-                      Get.back();
-                      obtenirLienPaiement();
-                    },
-                    child: const Text("Passer au paiement"),
-                  ),
-                ],
-              ),
-            ),
-          );
-        });
-  }
-
-  obtenirLienPaiement() async {
-    if (await verifierConnexion()) {
-      afficherChargement();
-
-      var param = {
-        "access": user.token.toString(),
-        "type": user.type.toString(),
-        "ids": ids,
-        "modePaiement": _mode,
-      };
-
-      if (kDebugMode) {
-        print(param);
-      }
-
-      try {
-        retourHttp = await http
-            .post(Uri.parse('${lienAPI()}obtenir-lien-paiement'),
-            headers: {"Content-Type": "application/json"},
-            body: jsonEncode(param))
-            .timeout(const Duration(minutes: 2));
-        var datas = jsonDecode(retourHttp.body);
-        if (kDebugMode) {
-          print(datas);
-        }
-        if (retourHttp.statusCode == 200) {
-          if (datas['code'] == 200) {
-            lancerUrl(datas['message']);
-          } else {
-            EasyLoading.showError(datas['message']);
-          }
-        }
-      } catch (e) {
-        EasyLoading.showError(
-            "Une erreur s'est produite veuillez reesayer plus tard");
-        if (kDebugMode) {
-          print(e.toString());
-        }
-      }
-      fermerChargement();
-    } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
-    }
-  }
+  // Les méthodes _choixModePaiementForm() et obtenirLienPaiement() ont été
+  // retirées avec le bouton de règlement : elles ouvraient le choix d'un
+  // moyen mobile money puis appelaient la passerelle. Le règlement se fait
+  // désormais au guichet.
 }

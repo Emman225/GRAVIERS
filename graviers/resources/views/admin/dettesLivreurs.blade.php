@@ -73,13 +73,14 @@
                                     </div>
                                 </td>
                                 <td class="text-center">
-                                    <button type="button" class="btn btn-sm btn-success btn-regler-dette"
-                                            data-type="livreur"
-                                            data-tier-id="{{ $livreur->id }}"
-                                            data-nom="{{ $livreur->user?->nom_prenoms }}"
-                                            data-solde="{{ $livreur->solde }}">
+                                    {{-- Le règlement se fait au guichet, qui porte la double
+                                         validation, les reçus et l'imputation sur les pièces.
+                                         Le popup local écrivait par un autre chemin. --}}
+                                    <a href="{{ route('show.livreurs.paiements', ['regler' => $livreur->id]) }}"
+                                       class="btn btn-sm btn-success"
+                                       title="Ouvrir le guichet de paiement avec le livreur déjà choisi">
                                         <i class="material-icons md-payment align-middle"></i> Régler
-                                    </button>
+                                    </a>
                                 </td>
                             </tr>
                         @empty
@@ -95,7 +96,6 @@
         </div>
     </div>
 
-    @include('admin._popupReglerDette')
 @endsection
 
 @section('cssParts')

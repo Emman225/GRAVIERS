@@ -17,21 +17,12 @@ use App\Http\Controllers\UtilisateurController;
 |
 */
 
-Route::get('test-mail', function () {
-    try {
-        \Illuminate\Support\Facades\Mail::to('reply@gravierci.com')->send(
-            new \App\Mail\CodeInscriptionMail('Test', '1234', 'Ceci est un test d\'envoi de mail')
-        );
-        return response()->json(['status' => 'Email envoyé avec succès']);
-    } catch (\Throwable $e) {
-        return response()->json([
-            'status' => 'Erreur',
-            'message' => $e->getMessage(),
-            'file' => $e->getFile(),
-            'line' => $e->getLine(),
-        ], 500);
-    }
-});
+// [ROUTE DE TEST SUPPRIMÉE — audit du 31/07/2026]
+// Cette route était PUBLIQUE : n'importe qui pouvait déclencher un envoi d'email
+// depuis le serveur (relais à spam) et, en cas d'échec, la réponse affichait le
+// chemin complet des fichiers du serveur et le numéro de ligne. Aucun code de
+// l'application ne l'utilise.
+// Route::get('test-mail', ...);
 Route::get('get-config', [ApporteurController::class, 'chargerParametres']);
 Route::post('connexion', [ApporteurController::class, 'connexion']);
 Route::post('inscription', [ApporteurController::class, 'inscription']);

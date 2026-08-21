@@ -43,13 +43,13 @@ editerAdresse(UneAdresse adresse) async {
         if (datas["code"] == 200) {
           adresse = UneAdresse.fromJson(datas['data']);
         }else{
-          EasyLoading.showError(datas['message']);
+          afficherErreur(datas['message']);
         }
       }else{
-        EasyLoading.showError("Une erreur serveur s'est produite");
+        afficherErreur("Une erreur serveur s'est produite");
       }
     } catch (e) {
-      EasyLoading.showError("Une erreur s'est produite veuillez reesayer plus tard");
+      afficherErreur(messageErreurTechnique(e));
       if (kDebugMode) {
         print(e.toString());
       }
@@ -59,6 +59,6 @@ editerAdresse(UneAdresse adresse) async {
 
     return adresse;
   }else{
-    EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+    afficherInfo("Veuillez vérifier votre connexion internet");
   }
 }

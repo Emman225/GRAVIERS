@@ -53,14 +53,14 @@
             @elseif(isset($devis) && $devis->id)
                 @foreach($devis->detailDevis as $d)
                     @php
-                        $pu = $d->prix ?? $d->produit->prix_moyen; $montant = $pu * $d->qte; $totalHT += $montant; $index++;
+                        $pu = $d->prix ?? $d->produit?->prix_moyen; $montant = $pu * $d->qte; $totalHT += $montant; $index++;
                     @endphp
                     <tr>
                         <td class="col-ref">{{ str_pad($index, 2, '0', STR_PAD_LEFT) }}</td>
-                        <td class="col-designation">{{ ucwords($d->produit->nom) }}</td>
+                        <td class="col-designation">{{ ucwords($d->produit?->nom) }}</td>
                         <td class="col-pu">{{ number_format($pu, 0, '', ' ') }}</td>
                         <td class="col-qte">{{ $d->qte }}</td>
-                        <td class="col-unite">{{ $d->produit->uniteProduit->abreviation ?? 'U' }}</td>
+                        <td class="col-unite">{{ $d->produit?->uniteProduit->abreviation ?? 'U' }}</td>
                         <td class="col-taxes">TVA ({{ $config->tva ?? 0 }}%)</td>
                         <td class="col-rem">0</td>
                         <td class="col-montant">{{ number_format($montant, 0, '', ' ') }}</td>

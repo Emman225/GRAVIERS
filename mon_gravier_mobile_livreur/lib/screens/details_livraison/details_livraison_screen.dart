@@ -28,6 +28,11 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
   int niveau = 0;
   double qteLivree = 0;
 
+  /// Vrai pendant un appel réseau d'acceptation ou de refus. Empêche la DOUBLE
+  /// ACTION : sur le terrain, un livreur qui ne voyait pas de confirmation
+  /// retapait le bouton et une seconde requête partait.
+  bool _actionEnCours = false;
+
   DetailsLivraison retLiv = DetailsLivraison();
   LigneCommande ligneCommande = LigneCommande();
   LigneLivraison ligneLivraison = LigneLivraison();
@@ -49,7 +54,7 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
       // échouer jsonDecode sans capture -> fermerChargement() jamais atteint ->
       // "Patientez" infini. On capture, on affiche l'erreur et on ferme le loader.
       try {
-        retourHttp = await http
+        final http.Response retourHttp = await http
             .post(Uri.parse('${lienAPI()}details-livraison/${livraison.id}'),
                 headers: {"Content-Type": "application/json"},
                 body: jsonEncode(param))
@@ -66,22 +71,23 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
               ligneLivraison = retLiv.data?.ligneLivraison ?? LigneLivraison();
             });
           } else {
-            EasyLoading.showError(retLiv.message ?? '');
+            afficherErreur(retLiv.message ?? '');
           }
         } else {
-          EasyLoading.showError(
+          afficherErreur(
               "Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer plus tard.");
         }
       } catch (e) {
-        EasyLoading.showError(
+        afficherErreur(
             "Une erreur s'est produite veuillez réessayer plus tard");
         if (kDebugMode) {
           print(e.toString());
         }
       }
+      if (mounted) setState(() => _actionEnCours = false);
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -143,10 +149,14 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
                       backgroundColor:
                           MaterialStateProperty.all(Colors.blueAccent)),
                   onPressed: () {
-                    final debut =
-                        '${position?.latitude},${position?.longitude}';
+                    // Position indisponible (GPS coupé ou refusé, cas fréquent en
+                    // extérieur) : l'ancien code envoyait « origin=null,null » à
+                    // Google Maps. On part alors de la position actuelle du téléphone
+                    // en n'indiquant que la destination.
                     final fin = '${livraison.latitude},${livraison.longitude}';
-                    final String url = "https://www.google.com/maps/dir/?api=1&origin=$debut&destination=$fin";
+                    final String url = position == null
+                        ? "https://www.google.com/maps/dir/?api=1&destination=$fin"
+                        : "https://www.google.com/maps/dir/?api=1&origin=${position!.latitude},${position!.longitude}&destination=$fin";
                     if (kDebugMode) {
                       print(url);
                     }
@@ -161,7 +171,7 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
                     style: ButtonStyle(
                         backgroundColor:
                         MaterialStateProperty.all(Colors.blueAccent)),
-                    onPressed: () => _accordLivraison(),
+                    onPressed: _actionEnCours ? null : () => _accordLivraison(),
                     child: const Text("Accepter livraison")),
               ),
             ],
@@ -183,7 +193,7 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
       floatingActionButton: livraison.etatLivraison == LIVRAISON_EN_ATTENTE ? FloatingActionButton.extended(
         backgroundColor: redColor,
         foregroundColor: Colors.black,
-        onPressed: () => _refusLivraison(),
+        onPressed: _actionEnCours ? null : () => _refusLivraison(),
         icon: const Icon(Icons.close, color: whiteColor),
         label: const Text('Refuser livraison', style: white12MediumTextStyle),
       )  : null,
@@ -359,7 +369,11 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
   }
 
   effectuerLivraison() async {
+    // Verrou anti double action : une seconde tape pendant l'appel reseau
+    // envoyait une deuxieme requete (double acceptation / double refus).
+    if (_actionEnCours) return;
     if (await verifierConnexion()) {
+      setState(() => _actionEnCours = true);
       afficherChargement();
 
       var param = {
@@ -373,7 +387,7 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
       }
 
       try {
-        retourHttp = await http
+        final http.Response retourHttp = await http
             .post(Uri.parse('${lienAPI()}accepter-livraison'),
                 headers: {"Content-Type": "application/json"},
                 body: jsonEncode(param))
@@ -387,26 +401,35 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
             setState(() {
               livraison = UneLivraison.fromJson(datas['data']);
             });
-            EasyLoading.showSuccess(datas['message']);
+            afficherSucces(datas['message']);
           } else {
-            EasyLoading.showError(datas['message']);
+            afficherErreur(datas['message']);
           }
+        } else {
+          // Sans cette branche, une reponse serveur en erreur ne produisait
+          // AUCUNE reaction a l'ecran.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez reessayer.");
         }
       } catch (e) {
-        EasyLoading.showError(
+        afficherErreur(
             "Une erreur s'est produite veuillez reesayer plus tard");
         if (kDebugMode) {
           print(e.toString());
         }
       }
+      if (mounted) setState(() => _actionEnCours = false);
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
   refuserLivraison() async {
+    // Verrou anti double action : une seconde tape pendant l'appel reseau
+    // envoyait une deuxieme requete (double acceptation / double refus).
+    if (_actionEnCours) return;
     if (await verifierConnexion()) {
+      setState(() => _actionEnCours = true);
       afficherChargement();
 
       var param = {
@@ -420,7 +443,7 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
       }
 
       try {
-        retourHttp = await http
+        final http.Response retourHttp = await http
             .post(Uri.parse('${lienAPI()}refuser-livraison'),
             headers: {"Content-Type": "application/json"},
             body: jsonEncode(param))
@@ -434,21 +457,26 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
             setState(() {
               livraison = UneLivraison.fromJson(datas['data']);
             });
-            EasyLoading.showSuccess(datas['message']);
+            afficherSucces(datas['message']);
           } else {
-            EasyLoading.showError(datas['message']);
+            afficherErreur(datas['message']);
           }
+        } else {
+          // Sans cette branche, une reponse serveur en erreur ne produisait
+          // AUCUNE reaction a l'ecran.
+          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez reessayer.");
         }
       } catch (e) {
-        EasyLoading.showError(
+        afficherErreur(
             "Une erreur s'est produite veuillez reesayer plus tard");
         if (kDebugMode) {
           print(e.toString());
         }
       }
+      if (mounted) setState(() => _actionEnCours = false);
       fermerChargement();
     } else {
-      EasyLoading.showInfo("Veuillez vérifier votre connexion internet");
+      afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 }

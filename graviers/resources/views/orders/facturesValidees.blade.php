@@ -49,11 +49,11 @@
                                         <td>
                                             @if($facture->service === 'LOCATION')
                                                 @if($facture->location)
-                                                    <span class="badge bg-info text-dark">Location</span> {{ $facture->location->numero }}
+                                                    <span class="badge bg-info text-dark">Location</span> {{ $facture->location?->numero }}
                                                 @else — @endif
                                             @elseif($facture->commande)
-                                                <a href="{{ route('orders.BECommande', ['numero' => $facture->commande->numero]) }}">
-                                                    {{ $facture->commande->numero }}
+                                                <a href="{{ route('orders.BECommande', ['numero' => $facture->commande?->numero]) }}">
+                                                    {{ $facture->commande?->numero }}
                                                 </a>
                                             @else
                                                 —
@@ -61,7 +61,7 @@
                                         </td>
                                         <td>
                                             @if($facture->client)
-                                                {{ $facture->client->nom }} {{ $facture->client->prenom }}
+                                                {{ $facture->client?->display_name }}
                                             @else
                                                 —
                                             @endif

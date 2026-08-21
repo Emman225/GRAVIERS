@@ -37,10 +37,10 @@
                             </div>
                             <!--  col.// -->
                             <div class="col-xl col-lg">
-                                <h3> {{$apporteur->user->nom_prenoms}} </h3>
-                                <p class="mb-1">{{$apporteur->user->email}}</p>
-                                @if($apporteur->user->login && $apporteur->user->login !== $apporteur->user->email)
-                                    <p class="text-muted mb-1"><small>Identifiant : {{$apporteur->user->login}}</small></p>
+                                <h3> {{$apporteur->user?->nom_prenoms}} </h3>
+                                <p class="mb-1">{{$apporteur->user?->email}}</p>
+                                @if($apporteur->user?->login && $apporteur->user?->login !== $apporteur->user?->email)
+                                    <p class="text-muted mb-1"><small>Identifiant : {{$apporteur->user?->login}}</small></p>
                                 @endif
                                 <span class="badge bg-primary">Code parrain : {{ $apporteur->code }}</span>
                             </div>
@@ -76,7 +76,7 @@
                         <div class="row g-4">
                             <div class="col-sm-6 col-lg-4">
                                 <h6>Contact</h6>
-                                <p>{{ $apporteur->user->contact ?: '—' }}</p>
+                                <p>{{ $apporteur->user?->contact ?: '—' }}</p>
                             </div>
                             <div class="col-sm-6 col-lg-4">
                                 <h6>Numéro de pièce</h6>
@@ -84,7 +84,7 @@
                             </div>
                             <div class="col-sm-6 col-lg-4">
                                 <h6>Lieu de résidence</h6>
-                                <p>{{ $apporteur->user->adresse ?: '—' }}</p>
+                                <p>{{ $apporteur->user?->adresse ?: '—' }}</p>
                             </div>
                             <div class="col-sm-6 col-lg-4">
                                 <h6>Zone d'intervention</h6>
@@ -92,7 +92,7 @@
                             </div>
                             <div class="col-sm-6 col-lg-4">
                                 <h6>Mode de paiement préféré</h6>
-                                <p>{{ $apporteur->modePaiement->libelle ?? ($apporteur->mode_paiement_prefere ?: '—') }}</p>
+                                <p>{{ $apporteur->modePaiement?->libelle ?? ($apporteur->mode_paiement_prefere ?: '—') }}</p>
                             </div>
                             <div class="col-sm-6 col-lg-4">
                                 <h6>Coordonnées de paiement</h6>
@@ -126,9 +126,9 @@
                                                 @foreach ($livraisons as $livraison)
                                                     <tr>
                                                         <td>{{ $livraison->enlevement?->code_enleve}}</td>
-                                                        <td>{{ $livraison->enlevement?->produit->nom }}</td>
+                                                        <td>{{ $livraison->enlevement?->produit?->nom }}</td>
                                                         <td class="text-center"><b> {{ $livraison->enlevement?->qte }}  </b></td>
-                                                        <td class="text-center"><b> {{ $livraison->enlevement?->fournisseur->nom_prenoms }}  </b></td>
+                                                        <td class="text-center"><b> {{ $livraison->enlevement?->fournisseur?->nom_prenoms }}  </b></td>
                                                         <td class="text-center">
                                                             {{ $livraison->date_livraison }}
                                                     </td>

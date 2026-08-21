@@ -20,7 +20,7 @@
                         @foreach ($details as $detail)
                             <div class="row">
                                 <div class="col-6">
-                                    <p> {{ $detail->produit->nom }} </p>
+                                    <p> {{ $detail->produit?->nom }} </p>
                                 </div>
                                 <div class="col-2">
                                     <p> {{ $detail->qte }} </p>

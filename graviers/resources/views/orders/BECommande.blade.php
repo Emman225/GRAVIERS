@@ -11,6 +11,16 @@
             <h2 class="content-title card-title">Enlevement de la commande {{ $commande->numero }} </h2>
             {{-- <p>Details for Order ID: </p> --}}
         </div>
+        {{-- Word et PDF viennent du SERVEUR : ils reprennent la mise en page du
+             bon, en-tête et logo compris. Excel, lui, reconstitue les lignes
+             depuis l'écran — c'est un tableau de travail, pas un document. --}}
+        <div>
+            <x-export-buttons container="bonEnlevementLignes"
+                filename="bon-enlevement-{{ $commande->numero }}"
+                title="Bon d'enlèvement — commande {{ $commande->numero }}"
+                :word-url="route('orders.BECommande.word', $commande->numero)"
+                :pdf-url="route('orders.BECommande.pdf', $commande->numero)" />
+        </div>
     </div>
     <div class="card">
         <header class="card-header">
@@ -35,7 +45,7 @@
                             <h6 class="mb-1">Info client</h6>
                             <p class="mb-1">
                                 {{ $commande->le_client }}<br />
-                                {{ $commande->client->user->email }} <br />
+                                {{ $commande->client?->user?->email }} <br />
                                 {{ $commande->contact1 }} <br>
                             </p>
                         </div>
@@ -166,7 +176,7 @@
                                             </dl>
                                             <dl class="dlist">
                                                 <dt>TVA:</dt>
-                                                <dd>{{Help::formatNombre($commande->TvaCommande->montant, true)}}</dd>
+                                                <dd>{{Help::formatNombre($commande->TvaCommande?->montant ?? 0, true)}}</dd>
                                             </dl>
                                             @if($commande->remise)
                                                 <dl class="dlist">
@@ -218,6 +228,9 @@
                     @error('enlevements')
                         <span class="alert alert-danger text-center mb-20"> {{$message}} </span>
                     @enderror
+                    {{-- Conteneur repéré par l'export Excel : il rassemble un tableau
+                         par produit, chacun précédé de son titre. --}}
+                    <div id="bonEnlevementLignes">
                     @foreach ($details as $detail)
                         <div class="col-lg-12">
                             <div class="table-responsive mt-20">
@@ -225,8 +238,11 @@
                                 <table class="table table-striped">
                                     <thead class="thead-dark">
                                         <tr>
-                                            <th style="background-color: #1c57a3; color: white; border-top-left-radius:5px"
-                                                width=""></th>
+                                            {{-- Colonne d'action : elle porte la case de selection multiple
+                                                 ET le bouton de facturation a l'unite. Sans largeur, le bouton
+                                                 debordait sur la colonne voisine. --}}
+                                            <th style="background-color: #1c57a3; color: white; border-top-left-radius:5px; min-width:135px;"
+                                                width="135">Facturer</th>
                                             <th style="background-color: #1c57a3; color: white;" width="">Qte Restante <i>(en tonne)</i>
                                             </th>
                                             <th style="background-color: #1c57a3; color: white;" width="">Prix
@@ -256,19 +272,54 @@
                                             $qteRestante = $detail->qte;
                                         @endphp
                                         @foreach ($detail->livs as $livraison)
+                                            @php
+                                                $bon = $livraison->bon ?? null;
+                                                // La règle d'éligibilité vient du modèle : retrait sur place validé
+                                                // par le fournisseur, ou livraison clôturée. Cf. Enlevement::estFacturable.
+                                                $facturable = $bon?->estFacturable() ?? false;
+                                                $partiel    = $bon?->estServiPartiellement() ?? false;
+                                                // Quantité réellement remise par le fournisseur : c'est elle qui sera
+                                                // facturée. Tant qu'il n'a pas validé, on retient la quantité demandée.
+                                                $qteEnlevee = $bon ? $bon->quantiteAPayer() : (float) $livraison->qte_enleve;
+                                                if ($facturable) {
+                                                    $genFact = true;
+                                                }
+                                            @endphp
                                             <tr style="" class="text-danger">
-                                                <td class="text-center align-middle">
-                                                    @if ($livraison->facture_id == null && $livraison->etat_livraison == "LIVREE")
-                                                        @php
-                                                            $genFact = true;
-                                                        @endphp
+                                                <td class="text-center align-middle" style="min-width:135px;">
+                                                    {{-- Empile case, bouton et badge : sans conteneur, la case
+                                                         flottante et le bouton se chevauchaient. --}}
+                                                    <div class="d-flex flex-column align-items-center" style="gap:8px;">
+                                                    @if ($facturable)
                                                         {{-- Case centrée et visible (l'ancien style Bootstrap sans
                                                              conteneur .form-check la rendait minuscule/décalée) --}}
                                                         <input type="checkbox" name="enlevements[]" class="form-check-input"
-                                                            style="width:20px;height:20px;margin:0;cursor:pointer;border:2px solid #1c57a3;"
+                                                            style="width:20px;height:20px;margin:0;cursor:pointer;border:2px solid #1c57a3;position:static;flex:none;"
                                                             title="Sélectionner cet enlèvement pour générer la facture"
                                                             value="{{ $livraison->id_enlevement }}" id="">
+
+                                                        {{-- Facturer CE bon seul, sans attendre les autres lignes.
+                                                             Le bouton est dans le tableau, donc dans le formulaire de
+                                                             sélection : il ne peut pas être déplacé auprès du sien.
+                                                             Il désigne donc son formulaire par identifiant, via une
+                                                             FONCTION NOMMÉE — un appel à confirm() écrit directement
+                                                             dans l'attribut serait capté par delete-confirm.js, qui
+                                                             retire l'onclick et rendait le bouton inerte. --}}
+                                                        <button type="button"
+                                                            class="btn btn-sm {{ $partiel ? 'btn-warning' : 'btn-outline-primary' }} text-nowrap"
+                                                            title="Générer la facture DGI de ce seul bon d'enlèvement"
+                                                            onclick="facturerCeBon('factureBon{{ $livraison->id_enlevement }}')">
+                                                            Facture DGI
+                                                        </button>
                                                     @endif
+
+                                                    @if ($partiel)
+                                                        <span class="badge bg-warning text-dark"
+                                                            title="Le fournisseur a servi moins que la quantité demandée.">
+                                                            Partiel
+                                                        </span>
+                                                    @endif
+                                                    </div>
                                                 </td>
 
                                                 <td> {{ $qteRestante }}</td> {{-- qte restante --}}
@@ -279,22 +330,30 @@
                                                 <td> {{ number_format(($detail->prix ?? $detail->prix_moyen) * $qteRestante, '0', '', ' ') }}
                                                     fcfa</td> {{-- montant --}}
 
-                                                {{-- <td> {{$livraison->enlevement->code_enleve}} </td> numéro --}}
+                                                {{-- <td> {{$livraison->enlevement?->code_enleve}} </td> numéro --}}
 
-                                                <td> {{ $livraison->qte_enleve }} @php $qteAEnlever += $livraison->qte_enleve  @endphp </td>
-                                                {{-- qte des enlevement --}}
+                                                <td>
+                                                    {{ rtrim(rtrim(number_format($qteEnlevee, 2, ',', ' '), '0'), ',') }}
+                                                    @if ($partiel)
+                                                        <small class="text-muted d-block">
+                                                            demandé : {{ rtrim(rtrim(number_format((float) $livraison->qte_enleve, 2, ',', ' '), '0'), ',') }}
+                                                        </small>
+                                                    @endif
+                                                    @php $qteAEnlever += $qteEnlevee @endphp
+                                                </td>
+                                                {{-- qte des enlevement : quantité SERVIE, celle qui sera facturée --}}
 
-                                                <td> {{ $qteRestante - $livraison->qte_enleve }} </td>
+                                                <td> {{ rtrim(rtrim(number_format($qteRestante - $qteEnlevee, 2, ',', ' '), '0'), ',') }} </td>
                                                 {{-- qte restante à enlever --}}
 
                                                 <td>{{ number_format(($detail->prix ?? $detail->prix_moyen), '0', '', ' ') }} fcfa
                                                 </td>
                                                 {{-- prix unitaire --}}
 
-                                                <td> {{ number_format($livraison->qte_enleve * ($detail->prix ?? $detail->prix_moyen), '0', '', ' ') }}
+                                                <td> {{ number_format($qteEnlevee * ($detail->prix ?? $detail->prix_moyen), '0', '', ' ') }}
                                                     fcfa</td> {{-- montant enlevement --}}
 
-                                                <td> {{ number_format(($detail->prix ?? $detail->prix_moyen) * $qteRestante - $livraison->qte_enleve * ($detail->prix ?? $detail->prix_moyen), '0', '', ' ') }}
+                                                <td> {{ number_format(($detail->prix ?? $detail->prix_moyen) * $qteRestante - $qteEnlevee * ($detail->prix ?? $detail->prix_moyen), '0', '', ' ') }}
                                                     fcfa</td> {{-- montant restant --}}
 
                                                 <td> {{ $livraison->gestionnaire }} </td> {{-- Traité par --}}
@@ -327,7 +386,7 @@
                                                 <td> {{ $livraison->numero_facture }} </td>
                                             </tr>
                                             @php
-                                                $qteRestante -= $livraison->qte_enleve;
+                                                $qteRestante -= $qteEnlevee;
                                             @endphp
                                         @endforeach
                                         {{-- Ligne de SOLDE : quantité/montant restant APRÈS tous les
@@ -359,14 +418,64 @@
                             </div>
                         </div>
                     @endforeach
+                    </div>
                     <hr>
 
                     @if ($genFact == true)
-                        <div class="container-fluid">
-                            <button type="submit" class=" mt-3 btn btn-success float-start">Generer une facture</button>
+                        <div class="container-fluid mt-3">
+                            <button type="submit" class="btn btn-success align-top">Generer une facture</button>
                         </div>
                     @endif
                 </form>
+
+                {{-- ATTENTION — « Facturer la totalité » a SON PROPRE formulaire, et son
+                     bouton est DEDANS.
+                     Il visait auparavant ce formulaire par l'attribut « form », le bouton
+                     restant à l'intérieur du formulaire de sélection : en production, le
+                     clic partait malgré tout vers le formulaire englobant, qui répondait
+                     « Veuillez sélectionner au moins un enlèvement ». On ne dépend plus
+                     de cette résolution : le bouton est dans le formulaire qu'il soumet. --}}
+                @if ($genFact == true)
+                    {{-- Les deux boutons ne peuvent pas etre cote a cote : ils appartiennent
+                         a deux formulaires distincts, et celui de gauche enveloppe tout le
+                         tableau. On les empile — un decalage negatif les faisait se
+                         chevaucher. --}}
+                    <form method="POST" action="{{ route('orders.genererFactureTotale', $commande) }}"
+                        class="container-fluid mt-2">
+                        @csrf
+                        <button type="submit" class="btn btn-primary"
+                            title="Facturer d'un coup tous les bons facturables de cette commande"
+                            onclick="return confirm('Générer UNE facture DGI couvrant les {{ $nbFacturables }} bon(s) facturable(s) de cette commande ?');">
+                            Facturer la totalité ({{ $nbFacturables }})
+                        </button>
+                    </form>
+
+                    <div class="container-fluid">
+                        <small class="d-block text-muted mt-2">
+                            <strong>Générer une facture</strong> ne prend que les bons cochés.
+                            <strong>Facturer la totalité</strong> prend tous les bons facturables de la
+                            commande, sans avoir à les cocher, et les réunit dans une seule facture.
+                            Pour n'en facturer qu'un — le cas d'un bon servi partiellement —
+                            utilisez le bouton « Facture DGI » de sa ligne.
+                        </small>
+                    </div>
+                @endif
+
+                {{-- Un formulaire par bon facturable, PLACÉ HORS du formulaire principal :
+                     imbriquer deux formulaires est invalide en HTML et le navigateur
+                     ignorerait le second. Les boutons des lignes, eux, sont dans le
+                     tableau : ils ne peuvent pas être déplacés ici, et déclenchent donc
+                     l'envoi par script plutôt qu'en s'appuyant sur l'attribut « form ». --}}
+                @foreach ($details as $detail)
+                    @foreach ($detail->livs as $liv)
+                        @if ($liv->bon?->estFacturable())
+                            <form id="factureBon{{ $liv->id_enlevement }}" method="POST"
+                                action="{{ route('orders.genererFactureEnlevement', $liv->id_enlevement) }}">
+                                @csrf
+                            </form>
+                        @endif
+                    @endforeach
+                @endforeach
 
                 <br>
 
@@ -415,7 +524,7 @@
 
                                 @foreach ($commande->factures as $key =>  $facture)
                                     @php
-                                        $supplement = $facture->commande->cout_livraison_client + $facture->commande->TvaCommande->montant - $commande->remise;
+                                        $supplement = $facture->commande?->cout_livraison_client + ($facture->commande?->TvaCommande?->montant ?? 0) - $commande->remise;
                                         // dd($supplement, $facture->montant);
                                     @endphp
 
@@ -495,4 +604,48 @@
 
         </div>
         <!-- card end// -->
+
+        <script>
+            /**
+             * Envoie le formulaire de facturation d'UN bon d'enlèvement.
+             *
+             * Le bouton se trouve dans le tableau, donc à l'intérieur du
+             * formulaire de sélection ; son propre formulaire est ailleurs dans
+             * la page. On le désigne par son identifiant plutôt que de compter
+             * sur la remontée automatique vers le formulaire englobant.
+             */
+            function facturerCeBon(idFormulaire) {
+                var formulaire = document.getElementById(idFormulaire);
+                if (!formulaire) {
+                    console.error('Facturation : formulaire introuvable ' + idFormulaire);
+                    return;
+                }
+                var titre = 'Générer la facture DGI pour ce bon ?';
+                var detail = 'Elle portera sur la <b>quantité réellement servie</b> et devra '
+                    + 'ensuite être validée dans « Factures non validées ».';
+
+                // La confirmation passe par l'assistant du back-office
+                // (delete-confirm.js), le même que celui des autres boutons :
+                // même fenêtre SweetAlert2, même habillage. Ce bouton y
+                // échappait, son onclick ne contenant pas d'appel à confirm().
+                if (typeof window.confirmDelete === 'function') {
+                    window.confirmDelete({
+                        mode: 'confirm',
+                        title: titre,
+                        html: detail,
+                        confirmText: 'Oui, générer la facture',
+                        onConfirm: function () {
+                            formulaire.submit();
+                        }
+                    });
+                    return;
+                }
+
+                // Repli : SweetAlert2 est servi par un CDN. S'il n'a pas pu être
+                // chargé, la facturation doit rester possible.
+                if (window.confirm(titre + '\n\n' + detail.replace(/<[^>]+>/g, ''))) {
+                    formulaire.submit();
+                }
+            }
+        </script>
     @endsection

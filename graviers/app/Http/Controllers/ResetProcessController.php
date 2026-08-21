@@ -77,8 +77,13 @@ class ResetProcessController extends Controller
 
             return redirect()->route('code');
         } catch (\Throwable $th) {
-            // dd($th);
-            return view('layout.errorCatchBack');
+            // Ici l'email est ESSENTIEL (il porte le code de réinitialisation) : en cas
+            // d'échec on ne masque rien, on journalise et on redemande d'essayer plus
+            // tard. L'ancien écran layout.errorCatchBack parlait de « compte créé » —
+            // sans rapport avec une réinitialisation de mot de passe.
+            \Log::error('Envoi email code reset échoué pour '.$request->email.': '.$th->getMessage());
+            return redirect()->route('demandeEmail')
+                ->with('fail', "L'envoi de l'email a échoué. Veuillez réessayer dans quelques instants.");
         }
         }else{
             return redirect()->route('demandeEmail')->with('fail','email inexistant');

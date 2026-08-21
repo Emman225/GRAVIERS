@@ -48,15 +48,21 @@ class _ForgotPassFormState extends State<ForgotPassForm> {
               return;
             },
             validator: (value) {
-              if (value!.isEmpty && !errors.contains(kEmailNullError)) {
-                setState(() {
-                  errors.add(kEmailNullError);
-                });
-              } else if (!emailValidatorRegExp.hasMatch(value) &&
-                  !errors.contains(kInvalidEmailError)) {
-                setState(() {
-                  errors.add(kInvalidEmailError);
-                });
+              // Le validateur retournait TOUJOURS null : validate() valait donc
+              // toujours true et un email vide ou invalide partait au serveur.
+              if (value == null || value.isEmpty) {
+                if (!errors.contains(kEmailNullError)) {
+                  WidgetsBinding.instance.addPostFrameCallback(
+                      (_) => setState(() => errors.add(kEmailNullError)));
+                }
+                return kEmailNullError;
+              }
+              if (!emailValidatorRegExp.hasMatch(value)) {
+                if (!errors.contains(kInvalidEmailError)) {
+                  WidgetsBinding.instance.addPostFrameCallback(
+                      (_) => setState(() => errors.add(kInvalidEmailError)));
+                }
+                return kInvalidEmailError;
               }
               return null;
             },
@@ -89,7 +95,7 @@ class _ForgotPassFormState extends State<ForgotPassForm> {
                   }
 
                   try {
-                    retourHttp = await http
+                    final http.Response retourHttp = await http
                         .post(Uri.parse('${lienAPI()}demandeReinititPass'),
                             headers: {"Content-Type": "application/json"},
                             body: jsonEncode(param))
@@ -106,22 +112,24 @@ class _ForgotPassFormState extends State<ForgotPassForm> {
                         user = User.fromJson(datas);
                         Get.toNamed(OtpScreen.routeName, arguments: 2);
                       } else {
-                        EasyLoading.showError(datas['message']);
+                        afficherErreur(datas['message']);
                       }
                     } else {
-                      EasyLoading.showError("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
+                      afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
                     }
                   } catch (e) {
                     user.code = 500;
                     user.message =
                         "Une erreur s'est produite veuillez reesayer plus tard";
+                    // Ce bloc de secours n.affichait RIEN : ecran muet en cas de coupure reseau.
+                    afficherErreur("Impossible de contacter le serveur. Verifiez votre connexion et reessayez.");
                     if (kDebugMode) {
                       print(e.toString());
                     }
                   }
                   fermerChargement();
                 } else {
-                  EasyLoading.showInfo(
+                  afficherInfo(
                       "Veuillez vérifier votre connexion internet");
                 }
               }

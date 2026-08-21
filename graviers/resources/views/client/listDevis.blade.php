@@ -53,27 +53,27 @@
                                                 @csrf
                                                 @foreach ($devis->detailDevis as $detail)
                                                     <tr class="pt-30">
-                                                        @foreach ($detail->produit->image as $image)
+                                                        @foreach ($detail->produit?->image as $image)
                                                             <td class="image product-thumbnail pt-40"><img src="/storage/{{ $image->image }}"
                                                         @endforeach
-                                                                alt="{{ $detail->produit->nom }}"></td>
+                                                                alt="{{ $detail->produit?->nom }}"></td>
                                                         <td class="product-des product-name">
-                                                            <h6 class="mb-5 list-devis-product__name">{{ $detail->produit->nom }}</h6>
-                                                            @if(($detail->produit->meilleur_note ?? 0) > 0)
+                                                            <h6 class="mb-5 list-devis-product__name">{{ $detail->produit?->nom }}</h6>
+                                                            @if(($detail->produit?->meilleur_note ?? 0) > 0)
                                                                 <div class="product-rate-cover">
                                                                     <div class="product-rate d-inline-block">
-                                                                        <div class="product-rating" style="width: {{ $detail->produit->meilleur_note }}%"></div>
+                                                                        <div class="product-rating" style="width: {{ $detail->produit?->meilleur_note }}%"></div>
                                                                     </div>
-                                                                    <span class="font-small ml-5 text-muted">({{ round(($detail->produit->meilleur_note * 5) / 100, 1) }})</span>
+                                                                    <span class="font-small ml-5 text-muted">({{ round(($detail->produit?->meilleur_note * 5) / 100, 1) }})</span>
                                                                 </div>
                                                             @endif
                                                         </td>
                                                         <td class="price text-end" data-title="Price">
-                                                            @if(isset($prixPerso[$detail->produit->id]))
-                                                                <strong class="list-devis-price">{{ number_format($prixPerso[$detail->produit->id], 0, '', ' ') }}</strong>
-                                                                <small class="text-muted text-decoration-line-through d-block">{{ number_format($detail->produit->prix_moyen, 0, '', ' ') }}</small>
+                                                            @if(isset($prixPerso[$detail->produit?->id]))
+                                                                <strong class="list-devis-price">{{ number_format($prixPerso[$detail->produit?->id], 0, '', ' ') }}</strong>
+                                                                <small class="text-muted text-decoration-line-through d-block">{{ number_format($detail->produit?->prix_moyen, 0, '', ' ') }}</small>
                                                             @else
-                                                                <strong class="list-devis-price">{{ number_format($detail->produit->prix_moyen, 0, '', ' ') }}</strong>
+                                                                <strong class="list-devis-price">{{ number_format($detail->produit?->prix_moyen, 0, '', ' ') }}</strong>
                                                             @endif
                                                         </td>
                                                         <td class="text-center detail-info" data-title="Stock">
@@ -86,21 +86,25 @@
                                                             </div>
                                                         </td>
                                                         <td class="price text-end" data-title="Total">
-                                                            @if(isset($prixPerso[$detail->produit->id]))
-                                                                <strong class="list-devis-subtotal">{{ number_format($prixPerso[$detail->produit->id] * $detail->qte, 0, '', ' ') }}</strong>
-                                                                @php $total += $prixPerso[$detail->produit->id] * $detail->qte @endphp
+                                                            @if(isset($prixPerso[$detail->produit?->id]))
+                                                                <strong class="list-devis-subtotal">{{ number_format($prixPerso[$detail->produit?->id] * $detail->qte, 0, '', ' ') }}</strong>
+                                                                @php $total += $prixPerso[$detail->produit?->id] * $detail->qte @endphp
                                                             @else
-                                                                <strong class="list-devis-subtotal">{{ number_format($detail->produit->prix_moyen * $detail->qte, 0, '', ' ') }}</strong>
-                                                                @php $total += $detail->produit->prix_moyen * $detail->qte @endphp
+                                                                <strong class="list-devis-subtotal">{{ number_format($detail->produit?->prix_moyen * $detail->qte, 0, '', ' ') }}</strong>
+                                                                @php $total += $detail->produit?->prix_moyen * $detail->qte @endphp
                                                             @endif
                                                         </td>
                                                         <td class="action text-center" data-title="Remove">
-                                                            <a href="{{ route('client.supprimer.produit', $detail->produit->id) }}" class="list-devis-remove" title="Retirer">
-                                                                <i class="fi-rs-trash"></i>
-                                                            </a>
+                                                            {{-- Produit supprimé du catalogue : route() sans paramètre
+                                                                 ferait tomber toute la page (« Missing required parameter »). --}}
+                                                            @if($detail->produit)
+                                                                <a href="{{ route('client.supprimer.produit', $detail->produit->id) }}" class="list-devis-remove" title="Retirer">
+                                                                    <i class="fi-rs-trash"></i>
+                                                                </a>
+                                                            @endif
                                                         </td>
                                                     </tr>
-                                                    <input type="hidden" name="rowId[]" value="{{ $detail->produit->id }}">
+                                                    <input type="hidden" name="rowId[]" value="{{ $detail->produit?->id }}">
                                                 @endforeach
                                         </tbody>
                                     </table>

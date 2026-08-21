@@ -17,9 +17,9 @@ Detail de la demande de location
     <tbody>
         @foreach ($location->detailLocation as $detail )
             <tr style="background-color: #f2f2f2;">
-                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$detail->produit->nom}}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$detail->produit?->nom}}</td>
                 <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$detail->qte}}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{number_format($detail->produit->prix_moyen,'0','',' ')}} fcfa</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{number_format($detail->produit?->prix_moyen,'0','',' ')}} fcfa</td>
                 <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{$detail->nombre_jour}} jour{{($detail->nombre_jour > 1) ? 's': ''}}</td>
                 <td style="border: 1px solid #ddd; padding: 8px; text-align:center">{{number_format($detail->prix,'0','',' ')}}</td>
             </tr>

@@ -267,8 +267,8 @@
                                                         <i class="material-icons md-store"></i>
                                                     </div>
                                                     <div>
-                                                        <strong>{{ $r->agence->code }}</strong>
-                                                        <div class="text-muted small">{{ $r->agence->nom }}</div>
+                                                        <strong>{{ $r->agence?->code }}</strong>
+                                                        <div class="text-muted small">{{ $r->agence?->nom }}</div>
                                                     </div>
                                                 </div>
                                             </td>
