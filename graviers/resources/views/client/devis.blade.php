@@ -32,7 +32,7 @@
                             </div>
                         @endforeach
                     </div>
-                    <p class="btn border text-center"> Montant Total: <span class="fw-bold">  {{ $devi->montant}} FCFA </span> </p>
+                    <p class="btn border text-center"> Montant total: <span class="fw-bold">  {{ $devi->montant}} FCFA </span> </p>
                     <form action="{{route('client.devisAdresse',$devi)}}" class="text-center row">
                         <button class="btn btn-primary mt-2 d-block" type="submit">Passer la commande</button>
                     </form>

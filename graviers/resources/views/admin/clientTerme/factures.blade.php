@@ -60,7 +60,7 @@
                         <tr>
                             <th class="text-center">N° Facture</th>
                             <th class="text-center">Date Facture</th>
-                            <th class="text-center">Code Client</th>
+                            <th class="text-center">Code client</th>
                             <th class="text-center">Client</th>
                             <th class="text-center">N° Commande</th>
                             <th class="text-center">Produit principal</th>
@@ -71,9 +71,9 @@
                             <th class="text-end">Montant TTC</th>
                             <th class="text-end">Frais livraison</th>
                             <th class="text-end">Total à payer</th>
-                            <th class="text-center">Date Échéance</th>
+                            <th class="text-center">Date échéance</th>
                             <th class="text-center">Délai (j)</th>
-                            <th class="text-end">Montant Payé</th>
+                            <th class="text-end">Montant payé</th>
                             <th class="text-end">Reste à Payer</th>
                             <th class="text-center">Jours retard</th>
                             <th class="text-center">Statut</th>
@@ -89,7 +89,7 @@
                             @endphp
                             <tr class="{{ $alerteRetard ? 'table-danger' : '' }}">
                                 <td class="text-center">{{ $l->facture?->numero }}</td>
-                                <td class="text-center">{{ $l->date_facture ? Carbon::parse($l->date_facture)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date_facture ? \Help::dateHeure($l->date_facture) : '-' }}</td>
                                 <td class="text-center">{{ $l->code_client }}</td>
                                 <td>{{ $l->client_nom }}</td>
                                 <td class="text-center">{{ $l->numero_commande }}</td>
@@ -101,7 +101,7 @@
                                 <td class="text-end">{{ Help::formatNombre($l->montant_ttc, true) }}</td>
                                 <td class="text-end">{{ Help::formatNombre($l->frais_livraison, true) }}</td>
                                 <td class="text-end"><strong>{{ Help::formatNombre($l->total_a_payer, true) }}</strong></td>
-                                <td class="text-center">{{ $l->date_echeance ? Carbon::parse($l->date_echeance)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date_echeance ? \Help::dateHeure($l->date_echeance) : '-' }}</td>
                                 <td class="text-center">{{ $l->delai_jours ?? '-' }}</td>
                                 <td class="text-end text-success">{{ Help::formatNombre($l->montant_paye, true) }}</td>
                                 <td class="text-end text-danger">

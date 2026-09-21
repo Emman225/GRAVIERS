@@ -33,7 +33,7 @@
                 <table class="table table-striped" id="liste">
                     <thead style="background-color: #1c57a3; color: white;">
                         <tr>
-                            <th class="text-center">Code Apporteur</th>
+                            <th class="text-center">Code apporteur</th>
                             <th class="text-center">Nom &amp; Prénom</th>
                             <th class="text-center">Téléphone</th>
                             <th class="text-center">Email</th>
@@ -68,7 +68,7 @@
                                         <span class="badge bg-success">Actif</span>
                                     @endif
                                 </td>
-                                <td class="text-end">
+                                <td class="text-nowrap text-end">
                                     <div class="dropdown">
                                         <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm"> <i class="material-icons md-more_horiz"></i> Actions </a>
                                         <div class="dropdown-menu">

@@ -10,7 +10,9 @@ use App\Models\Livreur;
 use App\Models\Livraison;
 use App\Models\ModePaiement;
 use Illuminate\Http\Request;
+use App\Models\TvaCommande;
 use App\Models\CoutLivraison;
+use App\Models\Configuration;
 use App\Models\TypeLivraison;
 use App\Models\DetailCommande;
 use App\Models\DetailLocation;
@@ -188,7 +190,22 @@ class LivraisonController extends Controller
             $idUsr = Crypt::decryptString($request->access);
             $user = User::lire($idUsr);
             if ($user->id > 0) {
-                $retour->data = DetailsLivraison::liste(null, $id);
+                $lignes = DetailsLivraison::liste(null, $id);
+                // LE CODE DE LIVRAISON DE CHAQUE LIGNE (10/09/2026), comme sur le
+                // détail d'une commande : le client le remet au livreur. Une
+                // demande de livraison ne produit pas de bon d'enlèvement. Une
+                // course se rattache à sa ligne par livraison.detail_livraison_id.
+                foreach ($lignes as $ligne) {
+                    $ligne->codes = \Illuminate\Support\Facades\DB::table('livraison')
+                        ->where('detail_livraison_id', $ligne->id)
+                        ->where('provenance', Help::$LIVRAISON)
+                        ->where('accepte', 1)
+                        ->whereNull('deleted_at')
+                        ->orderBy('id')
+                        ->get(['numero as code_livraison'])
+                        ->map(fn ($c) => ['code_livraison' => $c->code_livraison, 'code_enlevement' => null]);
+                }
+                $retour->data = $lignes;
                 $retour->code = 200;
                 $retour->message = 'ok';
             } else {
@@ -230,6 +247,16 @@ class LivraisonController extends Controller
                     }
                 }
 
+                // LA TVA SUR LE TRANSPORT EST UNE OPTION, désactivée par défaut.
+                //
+                // Le réglage se pose sur le site (Paramètres → Livraison) et vaut
+                // pour LES DEUX CANAUX. C'est tout l'enjeu : une même course doit
+                // coûter le même prix depuis le site et depuis le téléphone —
+                // l'écart de 3 600 F entre les deux avait déjà fait l'objet d'un
+                // arbitrage, il n'est pas question de le rouvrir par une option
+                // que le mobile ignorerait.
+                $montantTva = self::tvaSurTransport($montant);
+
                 $depart = AdresseLivraison::lire($request->demande['adresseDepart']);
                 $destination = AdresseLivraison::lire($request->demande['adresseDestination']);
                 $typeLiv = TypeLivraison::lire($request->demande['typeLivraison']);
@@ -238,7 +265,11 @@ class LivraisonController extends Controller
 
                 $retour->data = [
                     "distance" => $request->distance,
-                    "montant" => $montant,
+                    // Ce que le client paiera réellement. Sans TVA — le cas par
+                    // défaut — c'est exactement le tarif de la grille.
+                    "montant" => $montant + $montantTva,
+                    "montant_ht" => $montant,
+                    "tva" => $montantTva,
                     "depart" => $depart->affichage,
                     "destination" => $destination->affichage,
                     "type_livraison" => $typeLiv->libelle,
@@ -260,6 +291,71 @@ class LivraisonController extends Controller
             $retour->message = 'Une erreur s\'est produite code: 500 ' . $th->getMessage();
         }
         return response()->json($retour);
+    }
+
+    /**
+     * LA TVA D'UNE COURSE, SELON L'OPTION.
+     *
+     * Le transport se facture hors taxe par défaut. Le responsable peut activer
+     * la TVA depuis le site (Paramètres → Livraison) ; le réglage vaut alors
+     * pour les demandes faites depuis le site COMME depuis l'application, sans
+     * quoi la même course coûterait deux prix selon le canal.
+     *
+     * Le taux vient de la configuration, comme sur le site — le champ historique
+     * `applique_tva` du client n'est pas consulté, la règle en vigueur étant que
+     * la taxe s'applique à toutes les factures.
+     */
+    private static function tvaSurTransport(float $montantHt): float
+    {
+        $conf = Configuration::first();
+
+        if ((int) ($conf->tva_transport ?? 0) !== 1) {
+            return 0;
+        }
+
+        $taux = ($conf->tva === null || $conf->tva === '') ? 18 : (float) $conf->tva;
+
+        return round($montantHt * $taux / 100);
+    }
+
+    /**
+     * Message de refus si la demande de livraison depasse le credit disponible.
+     *
+     * MEME REGLE, MEMES CHIFFRES ET MEME FORMULATION que pour une commande
+     * (CommandeController) et une location (LocationController) : le client
+     * doit lire la meme explication quel que soit ce qu'il demande.
+     *
+     * Ce controle manquait ICI, et seulement ici. Une demande de livraison
+     * engage pourtant le credit au meme titre : le camion part, le transport
+     * est rendu, et le client a terme paiera plus tard. `encoursCredit()` la
+     * compte d'ailleurs deja dans ce qui est du — elle amputait le plafond des
+     * achats suivants sans jamais etre bornee elle-meme.
+     *
+     * @return string|null  null si la demande passe
+     */
+    private function refusPlafondCredit(?Client $client, float $montant): ?string
+    {
+        if (!$client || !$client->client_a_terme) {
+            return null;
+        }
+
+        $disponible = $client->plafondDisponible();
+
+        if ($disponible === null || $montant <= $disponible) {
+            return null;
+        }
+
+        $format = fn ($m) => number_format($m, 0, ',', ' ') . ' FCFA';
+
+        return sprintf(
+            "Cette demande de livraison de %s dépasse votre crédit disponible. "
+            . "Plafond accordé : %s. Déjà engagé : %s. Reste disponible : %s. "
+            . "Réglez une facture en cours ou réduisez votre demande pour continuer.",
+            $format($montant),
+            $format((float) $client->plafond_credit),
+            $format($client->encoursCredit()),
+            $format($disponible)
+        );
     }
 
     public function enregistrerDemandeLivraison(Request $request)
@@ -315,12 +411,46 @@ class LivraisonController extends Controller
                     }
                 }
 
+                // Même règle qu'au devis, recalculée ici : le montant qui engage
+                // le client ne se déduit pas de ce que l'application a affiché.
+                // TVA du transport propre au client (10/09/2026).
+                $montantTva = Help::tvaTransportPour($client, (float) $montant);
+                // AIRSI : sur le transport TTC ; le net à payer le comprend.
+                $montantAirsi = Help::airsiPour($client, (float) $montant + $montantTva,
+                    (float) $montant, Help::tauxTvaTransportClient($client) / 100);
+                $montantAPayer = $montant + $montantTva + $montantAirsi;
+                // Ce qui engage le crédit : le dû, moins l'avance disponible si
+                // la demande se règle en agence (10/09/2026).
+                $montantACredit = self::montantACredit($request, $client, (float) $montantAPayer);
+
                 if (count($cleLaisse) == count($request->lignes)) {
                     $retour->code = 405;
                     $retour->message = "Contenu vide ou aucun cout de livraison défini";
                 } else if (!$adressesValides) {
                     $retour->code = 405;
                     $retour->message = "Le lieu de prise en charge ou la destination est introuvable. Veuillez les sélectionner à nouveau.";
+                } else if ($refus = $this->refusPlafondCredit($client, $montantACredit)) {
+                    // Le montant retenu est celui qui ENGAGE le client — taxe
+                    // comprise —, et il est recalcule ici : ce que l'application
+                    // a affiche ne fait pas foi. Une avance disponible couvre
+                    // d'abord une demande réglée en agence : seul le reliquat
+                    // engage le crédit (même règle que la commande).
+                    $retour->code = 405;
+                    $retour->message = $refus;
+                } else if (($modeDemande = ModePaiement::lire($request->demande['modePaiement'] ?? 0))
+                    && $modeDemande->en_ligne == 1
+                    && \App\Support\PlafondPaiementEnLigne::depasse($montantAPayer)) {
+                    // LE PLAFOND DU PAIEMENT EN LIGNE — AVANT TOUTE ÉCRITURE.
+                    //
+                    // Le seuil vivait plus bas, écrit à la main, et il ne
+                    // refusait rien : la passerelle était sautée et la demande
+                    // s'enregistrait sans qu'un franc soit encaissé ni que le
+                    // client soit prévenu. Il testait de surcroît
+                    // « < 2 000 000 », quand la commande et la location
+                    // testaient « <= » : le montant exact de deux millions
+                    // était refusé ici et accepté ailleurs.
+                    $retour->code = 400;
+                    $retour->message = \App\Support\PlafondPaiementEnLigne::refus();
                 } else {
                     $demande = new DemandeLivraison();
                     $demande->numero = Help::genererNumeroUnique('demande_livraison');
@@ -333,10 +463,27 @@ class LivraisonController extends Controller
                     $demande->etat_commande = Help::$COMMANDE_EN_ATTENTE;
                     $demande->date_livraison = $request->demande['dateLivraison'];
                     $demande->remise = 0;
+                    // AIRSI figé sur la demande (10/09/2026).
+                    $demande->airsi = $montantAirsi;
                     $demande->statut = Help::$STATUT_ACTIF;
                     $demande->mode_paiement_id = $request->demande['modePaiement'];
                     $demande->type_livraison_id = $request->demande['typeLivraison'];
                     $demande->save();
+
+                    // `montantTotal` reste le HORS TAXE, comme sur le site : la
+                    // taxe vit dans tva_commande, et c'est la facture qui les
+                    // additionne. Le filtre type_affaire est vital — une
+                    // commande, une location et une demande peuvent porter le
+                    // même identifiant dans cette table.
+                    if ($montantTva > 0) {
+                        $mtva = new TvaCommande();
+                        $mtva->client_id = $client->id;
+                        $mtva->commande_id = $demande->id;
+                        $mtva->montant = $montantTva;
+                        $mtva->type_affaire = Help::$LIVRAISON;
+                        $mtva->statut = Help::$STATUT_ACTIF;
+                        $mtva->save();
+                    }
 
                     foreach ($request->lignes as $key => $l) {
                         if (!in_array($key, $cleLaisse)) {
@@ -383,7 +530,37 @@ class LivraisonController extends Controller
                     // Même règle que le site et que les commandes : instrument en ligne
                     // (en_ligne = 1) et montant sous le plafond de la passerelle.
                     $modeLiv = ModePaiement::lire($request->demande['modePaiement'] ?? 0);
-                    if ($modeLiv->en_ligne == 1 && $demande->montantTotal < 2000000) {
+
+                    // Le client qui a choisi le guichet doit savoir ce qu'on
+                    // attend de lui. Le message générique — « nous vous
+                    // contacterons » — laissait croire que rien n'était dû, alors
+                    // que la course se règle au comptoir avant l'enlèvement.
+                    if (self::regleeEnAgence($modeLiv)) {
+                        // AVANCE DU CLIENT (10/09/2026) : une demande réglée « en
+                        // agence » s'impute d'elle-même sur les avances
+                        // disponibles, comme une commande. Le montant à
+                        // présenter au guichet est ce qui reste après l'avance.
+                        $imputationAvance = \App\Services\Avances::imputerSurDemandeLivraison($demande, $client);
+                        $resteGuichet = ($imputationAvance['impute'] ?? 0) >= 1
+                            ? (float) $imputationAvance['reste']
+                            : (float) $montantAPayer;
+
+                        $retour->message = "Votre demande de livraison a bien été prise en compte.
+";
+                        if ($resteGuichet >= 1) {
+                            $retour->message .= "Présentez le numéro " . $demande->numero . " à nos guichets pour régler "
+                                . Help::formatNombre($resteGuichet, true) . ".";
+                        }
+                        if (($imputationAvance['impute'] ?? 0) >= 1) {
+                            $retour->avance_imputee = $imputationAvance['impute'];
+                            $retour->reste_a_regler = $imputationAvance['reste'];
+                            $retour->message .= \App\Services\Avances::messageImputation($imputationAvance, Help::$LIVRAISON);
+                        }
+                    }
+
+                    // Le plafond a ete oppose au client plus haut, avant toute
+                    // ecriture : ici il ne reste que le caractere du mode.
+                    if ($modeLiv->en_ligne == 1) {
                         $codePaiement = Help::getCommandeNo();
                         $nomPrenoms = $client->nom;
                         $arrNoms = explode(" ", $nomPrenoms);
@@ -406,7 +583,9 @@ class LivraisonController extends Controller
                                 'email' => $user->email,
                                 'libelle_article' => "Paiement DALAKOUN",
                                 'quantite' => 1,
-                                'montant' => ceil($montant),
+                                // TTC : on encaisse ce que le client doit, taxe
+                                // comprise le cas échéant.
+                                'montant' => ceil($montantAPayer),
                                 'lib_order' => "Paiement demande de livraison DALAKOUN",
                                 'Url_Retour' => Help::urlPaiement(route("ouvreApp", ['codePaiement' => $codePaiement])),
                                 'Url_Callback' => Help::urlPaiement(route('callBackPaiement')),
@@ -414,7 +593,7 @@ class LivraisonController extends Controller
                             $demande->numero,
                             $codePaiement,
                             $client,
-                            $montant,
+                            $montantAPayer,
                             $demande->mode_paiement_id,
                             $demande->id,
                             Help::$LIVRAISON
@@ -444,5 +623,28 @@ class LivraisonController extends Controller
             $retour->message = 'Une erreur s\'est produite code: 500 ' . $th->getMessage();
         }
         return response()->json($retour);
+    }
+    /** Le mode choisi est-il le règlement au guichet (« Paiement en agence ») ? */
+    private static function regleeEnAgence($mode): bool
+    {
+        // MÊME RÈGLE QUE LE SITE (11/09/2026) : tout mode HORS LIGNE se règle au
+        // guichet — Espèces, Chèque, Virement, Carte, « Paiement en agence ».
+        // Le test portait sur le mot « agence » dans le libellé : une demande
+        // réglée « Espèces » depuis l'application n'imputait pas l'avance du
+        // client et ne lui disait pas quoi présenter au guichet.
+        return $mode && $mode->id > 0 && (int) ($mode->en_ligne ?? 0) === 0;
+    }
+
+    /**
+     * Ce qui engage le crédit du client : le dû, moins l'avance disponible si
+     * la demande se règle en agence (seul ce mode consomme l'avance).
+     */
+    private static function montantACredit(Request $request, $client, float $montantAPayer): float
+    {
+        $mode = ModePaiement::lire($request->demande['modePaiement'] ?? 0);
+
+        return self::regleeEnAgence($mode)
+            ? max(0, $montantAPayer - \App\Services\Avances::soldeDisponible($client))
+            : $montantAPayer;
     }
 }

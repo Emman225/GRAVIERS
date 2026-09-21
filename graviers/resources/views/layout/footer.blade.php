@@ -56,6 +56,7 @@
         <link rel="stylesheet" href="{{ asset('frontend/assets/leaflet/Control.Geocoder.css') }}" />
         <script defer src="{{ asset('frontend/assets/leaflet/leaflet.js') }}"></script>
         <script defer src="{{ asset('frontend/assets/leaflet/Control.Geocoder.js') }}"></script>
+        <script defer src="{{ asset('frontend/assets/leaflet/recherche-lieu.js') }}"></script>
             {{-- <script src="{{ asset('backend/assets/js/custom-chart.js" type="text/javascript') }}"></script> --}}
 
         {{-- <script src="{{ asset('backend/assets/js/vendors/jquery-3.6.0.min.js') }}  "></script>

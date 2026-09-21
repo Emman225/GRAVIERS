@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:mon_gravier_com/globale.dart';
 import 'package:mon_gravier_com/models/Cart.dart';
 import 'package:mon_gravier_com/models/ConfigModel.dart';
 import 'package:mon_gravier_com/screens/cart/cart_screen.dart';
 
+import '../../components/bouton_retour.dart';
+import '../../constants.dart';
 import '../home/components/icon_btn_with_counter.dart';
 import 'components/product_description.dart';
 import 'components/product_images.dart';
@@ -50,66 +50,51 @@ class _DetailsScreenState extends State<DetailsScreen> {
         ModalRoute.of(context)!.settings.arguments as ProductDetailsArguments;
     final product = agrs.product;
     return Scaffold(
-      extendBody: true,
-      extendBodyBehindAppBar: true,
-      backgroundColor: const Color(0xFFF5F6F9),
+      backgroundColor: kScaffoldColor,
       appBar: AppBar(
-        title: const Text("Détails du produit"),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
+        title: const Text("Fiche produit"),
         actions: [
-          Row(
-            children: [
-              Container(
-                margin: const EdgeInsets.only(right: 20),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
+          // La note se lisait « 4.0 ★ » dans une pastille blanche posée sur
+          // l'image, collée au bouton du panier : deux fonctions sans rapport
+          // dans un même cadre.
+          // MÊME GABARIT QUE LE BOUTON DU PANIER, juste à côté.
+          //
+          // C'était une gélule étirée par 12 px de marge de chaque côté : deux
+          // fois plus large que le bouton voisin, elle déséquilibrait la barre.
+          // Elle devient un cercle de 46 px, comme lui.
+          Container(
+            height: 46,
+            width: 46,
+            decoration: const BoxDecoration(
+              color: kChipSurAppBar,
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  product.meilleurNote.toString(),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    height: 1,
+                  ),
                 ),
-                child: Row(
-                  children: [
-                    Text(
-                      product.meilleurNote.toString(),
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.black,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    SvgPicture.asset("assets/icons/Star Icon.svg"),
-                    const SizedBox(width: 16),
-                    IconBtnWithCounter(
-                      svgSrc: "assets/icons/Cart Icon.svg",
-                      press: () =>
-                          Navigator.pushNamed(context, CartScreen.routeName),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+                const SizedBox(width: 1),
+                const Icon(Icons.star_rounded, size: 13, color: kAccentClairColor),
+              ],
+            ),
           ),
+          const SizedBox(width: kSpaceMd),
+          IconBtnWithCounter(
+            svgSrc: "assets/icons/Cart Icon.svg",
+            surFondSombre: true,
+            press: () => Navigator.pushNamed(context, CartScreen.routeName),
+          ),
+          const SizedBox(width: kSpaceLg),
         ],
       ),
       body: ListView(
@@ -202,7 +187,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
                       }
                     } else {
                       afficherErreur(
-                          "Veuillez saisir une quantité supérieur à 0");
+                          "Veuillez saisir une quantité supérieure à 0");
                     }
                   } else {
                     afficherErreur(
@@ -213,7 +198,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
                       "Veuillez choisir des produits en ${paniers.first.product.type_affaire}");
                 }
               },
-              child: const Text("Ajouter au pannier"),
+              child: const Text("Ajouter au panier"),
             ),
           ),
         ),

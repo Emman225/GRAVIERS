@@ -1,7 +1,7 @@
 <x-mail::message>
 
 <div style="text-align:center; margin-bottom: 20px;">
-    <img src="https://graviers.fneconnect.net/frontend/assets/imgs/logo/dalakoun-blanc.png" alt="Logo Granite" width="180" style="max-width:180px; height:auto;">
+    <img src="{{ asset('frontend/assets/imgs/logo/dalakoun-blanc.png') }}" alt="Logo Granite" width="180" style="max-width:180px; height:auto;">
 </div>
 
 Bonjour M./Mme {{$client->prenom}}, veuillez utiliser ce code pour permettre au livreur de valider sa livraison. <br>

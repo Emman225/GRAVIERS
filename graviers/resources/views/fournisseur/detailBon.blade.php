@@ -20,11 +20,18 @@
 
             @if ($bon)
                 <h1> Enlevement : {{ $bon->code_enleve }} </h1>
+                {{-- PLEINE LARGEUR (09/09/2026) : les deux tableaux tenaient dans des
+                     colonnes d'un tiers, coupées et à faire défiler ; ils occupent
+                     désormais toute la largeur, l'un sous l'autre, avec leurs boutons
+                     d'export, et le formulaire de validation vient en dessous. --}}
                 <div class="row mt-5">
-                    <div class="col-6 col-md-4" style="">
+                    <div class="col-12 mb-4">
                         <h5>Détail Produit</h5>
+                        <x-export-buttons table-id="tableProduitBon"
+                                          filename="bon-{{ $bon->code_enleve }}-produit"
+                                          title="Bon {{ $bon->code_enleve }} — produit" />
                         <div class="table-responsive">
-                            <table disabled class="table table-bordered">
+                            <table class="table table-bordered" id="tableProduitBon">
                                 <thead>
                                     <tr>
                                         <th class="text-center" width="40%">Désignation</th>
@@ -59,11 +66,14 @@
                         <!-- table-responsive// -->
 
                     </div>
-                    <div class="col-6 col-md-4 text-center" style="">
+                    <div class="col-12 mb-4">
 
                         <h5>Détail livreur</h5>
+                        <x-export-buttons table-id="tableLivreurBon"
+                                          filename="bon-{{ $bon->code_enleve }}-livreur"
+                                          title="Bon {{ $bon->code_enleve }} — livreur" />
                         <div class="table-responsive">
-                            <table class="table table-bordered">
+                            <table class="table table-bordered" id="tableLivreurBon">
                                 <thead>
                                     <tr>
                                         <th class="text-center" width="40%">Nom prénom</th>
@@ -76,18 +86,18 @@
                                             <a>
                                                 <div class="info ">
                                                     @if ($bon->livraison?->livre_par == 1)
-                                                        {{ $bon->livraison?->livreur?->user?->nom_prenoms }}
+                                                        {{ $bon->livraison?->livreur?->user?->nom_prenoms ?? '—' }}
                                                     @else
-                                                        {{ $bon->livraison?->clientLivreur->nom }}
+                                                        {{ $bon->livraison?->clientLivreur?->nom ?? '—' }}
                                                     @endif
                                                 </div>
                                             </a>
                                         </td>
                                         <td class="text-center">
                                             @if ($bon->livraison?->livre_par == 1)
-                                                {{ $bon->livraison?->livreur?->user?->contact }}
+                                                {{ $bon->livraison?->livreur?->user?->contact ?? '—' }}
                                             @else
-                                                {{ $bon->livraison?->clientLivreur->contact }}
+                                                {{ $bon->livraison?->clientLivreur?->contact ?? '—' }}
                                             @endif
                                         </td>
                                     </tr>
@@ -95,24 +105,20 @@
                             </table>
                         </div>
                     </div>
-                    <div class="col-6 col-md-4 text-center" style="">
+                    <div class="col-12">
 
                         @if ($bon->fournisseur_validation == null)
-                            <form id="validation-bon-form" action="{{ route('sellers.validate', $bon->code_enleve) }}"
-                                method="post">
-                                @csrf
-                                <div class="col-6">
-                                    <input placeholder="Veuillez entrer la quantité servie" required type="number"
-                                        min="0.1" step="any" max="{{ $bon->qte }}" name="qteServi"
-                                        class="form-control" id="qteServiInput">
-                                </div>
-                                <div class="col-6">
-                                    <button class="btn btn-success rounded font-sm mt-5" type="button"
-                                        id="open-confirmation-bon">
-                                        Valider la quantité servie
-                                    </button>
-                                </div>
-                            </form>
+                            {{-- LA QUANTITÉ SERVIE SE SAISIT DANS UNE FENÊTRE (10/09/2026).
+                                 Le champ et le bouton traînaient sous les tableaux ; ils
+                                 sont dans une fenêtre du même dessin que « Dépôt d'une
+                                 avance », ouverte par un seul bouton. La confirmation
+                                 SweetAlert2 avant l'envoi est conservée. --}}
+                            <div class="d-flex justify-content-end mt-2">
+                                <button type="button" class="btn btn-success rounded font-sm" id="ouvrir-servir-bon"
+                                        data-bs-toggle="modal" data-bs-target="#modalServirBon">
+                                    <i class="material-icons md-inventory"></i> Servir ce bon
+                                </button>
+                            </div>
 
                         @endif
 
@@ -126,6 +132,53 @@
     </div>
     <div class="card">
     </div>
+
+    {{-- La fenêtre vit HORS de la carte : le thème pose un transform sur
+         .card:hover, qui capture une fenêtre fixe placée dedans (elle restait
+         sous le voile, grise et décalée). Même rangement que la fenêtre
+         « Dépôt d'une avance ». --}}
+    @if ($bon && $bon->fournisseur_validation == null)
+        <div class="modal fade" id="modalServirBon" tabindex="-1" aria-labelledby="modalServirBonLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <form id="validation-bon-form" action="{{ route('sellers.validate', $bon->code_enleve) }}" method="post">
+                        @csrf
+                        <div class="modal-header bg-primary text-white">
+                            <h5 class="modal-title" id="modalServirBonLabel">
+                                <i class="material-icons md-inventory"></i> Quantité servie — bon {{ $bon->code_enleve }}
+                            </h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fermer"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="row g-3">
+                                <div class="col-6">
+                                    <div class="text-muted small">Bon d'enlèvement</div>
+                                    <strong class="text-dark">{{ $bon->code_enleve }}</strong>
+                                </div>
+                                <div class="col-6">
+                                    <div class="text-muted small">Quantité à récupérer</div>
+                                    <strong class="text-dark">{{ $bon->qte }}</strong>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label" for="qteServiInput">Quantité servie <span class="text-danger">*</span></label>
+                                    <input placeholder="Veuillez entrer la quantité servie" required type="number"
+                                        min="0.1" step="any" max="{{ $bon->qte }}" name="qteServi"
+                                        class="form-control" id="qteServiInput" autocomplete="off">
+                                    <small class="text-muted">Au plus {{ $bon->qte }}, la quantité du bon.</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                            <button class="btn btn-success" type="button" id="open-confirmation-bon">
+                                <i class="material-icons md-check"></i> Valider la quantité servie
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    @endif
 @endsection
 
 @section('jsParts')
@@ -139,6 +192,10 @@
             if (!$form.length || !$qteInput.length || !$confirmBtn.length) {
                 return;
             }
+
+            $('#modalServirBon').on('shown.bs.modal', function () {
+                $qteInput.trigger('focus');
+            });
 
             $confirmBtn.on('click', function(e) {
                 e.preventDefault();

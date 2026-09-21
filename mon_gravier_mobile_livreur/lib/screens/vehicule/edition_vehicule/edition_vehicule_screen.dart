@@ -2,12 +2,12 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:mon_gravier_com_livreur/models/RetourVehicule.dart';
 import 'package:select_searchable_list/select_searchable_list.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../../components/bouton_retour.dart';
 import '../../../globale.dart';
 import '../../../helper/constants.dart';
 
@@ -88,29 +88,9 @@ class _EditionVehiculeScreenState extends State<EditionVehiculeScreen> {
       appBar: AppBar(
         title: const Text(
           "Edition vehicule",
-          style: TextStyle(color: Colors.black),
         ),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       body: ListView(
         physics: const BouncingScrollPhysics(),
@@ -121,7 +101,7 @@ class _EditionVehiculeScreenState extends State<EditionVehiculeScreen> {
             padding: const EdgeInsets.all(8.0),
             child: DropDownTextField(
               textEditingController: typeVehiculeController,
-              title: 'Type vehicule',
+              title: 'Type vehicule *',
               hint: 'Choisir le type de vehicule',
               options: {
                 for (var p in typeVehicules) p.id ?? 0: p.libelle.toString()
@@ -144,7 +124,7 @@ class _EditionVehiculeScreenState extends State<EditionVehiculeScreen> {
               maxLength: 15,
               textCapitalization: TextCapitalization.characters,
               decoration: const InputDecoration(
-                labelText: "Immatriculation",
+                labelText: "Immatriculation *",
                 hintText: "Immatriculation du vehicule",
               ),
             ),
@@ -158,7 +138,7 @@ class _EditionVehiculeScreenState extends State<EditionVehiculeScreen> {
               maxLength: 100,
               textCapitalization: TextCapitalization.characters,
               decoration: const InputDecoration(
-                labelText: "Nom",
+                labelText: "Nom *",
                 hintText: "Nom du vehicule",
               ),
             ),
@@ -184,7 +164,7 @@ class _EditionVehiculeScreenState extends State<EditionVehiculeScreen> {
               textInputAction: TextInputAction.next,
               maxLength: 5,
               decoration: const InputDecoration(
-                labelText: "Capacité",
+                labelText: "Capacité *",
                 hintText: "Capacité du vehicule en tonne",
               ),
             ),
@@ -197,7 +177,7 @@ class _EditionVehiculeScreenState extends State<EditionVehiculeScreen> {
               textInputAction: TextInputAction.next,
               maxLength: 30,
               decoration: const InputDecoration(
-                labelText: "Marque",
+                labelText: "Marque *",
                 hintText: "Marque du vehicule",
               ),
             ),
@@ -210,7 +190,7 @@ class _EditionVehiculeScreenState extends State<EditionVehiculeScreen> {
               textInputAction: TextInputAction.done,
               maxLength: 70,
               decoration: const InputDecoration(
-                labelText: "Modèle",
+                labelText: "Modèle *",
                 hintText: "Modèle du vehicule",
               ),
             ),

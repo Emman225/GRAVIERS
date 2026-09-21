@@ -4,7 +4,6 @@ import 'package:buttons_tabbar/buttons_tabbar.dart';
 import 'package:contained_tab_bar_view/contained_tab_bar_view.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:mon_gravier_com/components/empty_user_widget.dart';
@@ -13,6 +12,8 @@ import 'package:mon_gravier_com/globale.dart';
 import 'package:mon_gravier_com/models/Commande.dart';
 import 'package:mon_gravier_com/screens/commande/components/commande_liste_screen.dart';
 
+import '../../components/bouton_retour.dart';
+import '../../components/onglets.dart';
 import '../../helper/constants.dart';
 import 'components/location_liste_screen.dart';
 
@@ -35,9 +36,13 @@ class CommandeScreenState extends State<CommandeScreen> {
   Commande com = Commande();
   int? retour = Get.arguments;
 
-  chargerCommande() async {
+  chargerCommande({bool sansLoader = false}) async {
     if (await verifierConnexion()) {
-      afficherChargement();
+      // Au glisser, l'indicateur du geste suffit : le voile par-dessus
+      // masquerait justement ce qu'on vient de tirer pour voir.
+      if (sansLoader == false) {
+        afficherChargement();
+      }
 
       var param = {
         "access": user.token.toString(),
@@ -75,9 +80,12 @@ class CommandeScreenState extends State<CommandeScreen> {
                   .where((c) => c.etatCommande == COMMANDE_TERMINE)
                   .toList();
               pagesCommande = [
-                CommandeListeScreen(commandes: commandeAttente),
-                CommandeListeScreen(commandes: commandeEnTraitement),
-                CommandeListeScreen(commandes: commandeTermine),
+                CommandeListeScreen(commandes: commandeAttente,
+                    onRafraichir: () => chargerCommande(sansLoader: true)),
+                CommandeListeScreen(commandes: commandeEnTraitement,
+                    onRafraichir: () => chargerCommande(sansLoader: true)),
+                CommandeListeScreen(commandes: commandeTermine,
+                    onRafraichir: () => chargerCommande(sansLoader: true)),
               ];
 
               var locations = com.data?.location ?? [];
@@ -110,7 +118,9 @@ class CommandeScreenState extends State<CommandeScreen> {
           print(e.toString());
         }
       }
-      fermerChargement();
+      if (sansLoader == false) {
+        fermerChargement();
+      }
     } else {
       afficherInfo("Veuillez vérifier votre connexion internet");
     }
@@ -119,9 +129,12 @@ class CommandeScreenState extends State<CommandeScreen> {
   @override
   void initState() {
     pagesCommande = [
-      CommandeListeScreen(commandes: commandeAttente),
-      CommandeListeScreen(commandes: commandeEnTraitement),
-      CommandeListeScreen(commandes: commandeTermine),
+      CommandeListeScreen(commandes: commandeAttente,
+                    onRafraichir: () => chargerCommande(sansLoader: true)),
+      CommandeListeScreen(commandes: commandeEnTraitement,
+                    onRafraichir: () => chargerCommande(sansLoader: true)),
+      CommandeListeScreen(commandes: commandeTermine,
+                    onRafraichir: () => chargerCommande(sansLoader: true)),
     ];
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -139,7 +152,16 @@ class CommandeScreenState extends State<CommandeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Liste des commandes & locations"),
-        automaticallyImplyLeading: afficheRetour,
+        // Cet écran sert À LA FOIS d'onglet et d'écran ouvert depuis
+        // « Mon espace ». `afficheRetour` distingue les deux : dans un cas on
+        // dépile, dans l'autre on ramène à l'accueil.
+        leading: afficheRetour
+            ? const BoutonRetour()
+            : BoutonRetour(
+                onTap: retourAccueil,
+                tooltip: "Retour à l'accueil",
+              ),
+        automaticallyImplyLeading: false,
       ),
       body: SafeArea(
         child: (user.token == null || user.token == "")
@@ -147,31 +169,13 @@ class CommandeScreenState extends State<CommandeScreen> {
             : Container(
                 width: double.infinity,
                 height: heightOfScreen(context),
-                decoration: const BoxDecoration(
-                  image: DecorationImage(
-                    image: AssetImage("assets/images/bg.jpg"),
-                    fit: BoxFit.cover,
-                    opacity: 0.1,
-                  ),
-                ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: ContainedTabBarView(
-                      tabBarProperties: TabBarProperties(
-                        background: Container(
-                          margin: const EdgeInsets.only(bottom: 5),
-                          decoration: const BoxDecoration(
-                            color: kSecondaryColor,
-                            borderRadius: BorderRadius.all(Radius.circular(8.0)),
-                          ),
-                        ),
-                        indicatorColor: kPrimaryColor,
-                        labelColor: Colors.white,
-                        unselectedLabelColor: Colors.black,
-                      ),
+                      tabBarProperties: ongletsSegmentes(),
                       tabs: const [
-                        Text('Commande', style: white16BoldTextStyle),
-                        Text('Location', style: white16BoldTextStyle),
+                        Text('Commande'),
+                        Text('Location'),
                       ],
                       views: [
                         _listeCommandeWidget(),
@@ -195,19 +199,37 @@ class CommandeScreenState extends State<CommandeScreen> {
       child: Column(
         children: <Widget>[
           ButtonsTabBar(
-            radius: 10,
-            backgroundColor: greenColor,
-            unselectedBackgroundColor: const Color(0xFFE5E1E1),
-            unselectedLabelStyle:
-            const TextStyle(color: blackColor),
-            labelStyle: const TextStyle(
-                color: Colors.white, fontWeight: FontWeight.bold),
+            radius: kRadiusPill,
+                  // 64 = 40 de pastille + 12 d'air au-dessus et au-dessous.
+                  // A 42 sans marge verticale, les onglets touchaient la
+                  // section du dessus et la liste du dessous.
+                  height: 64,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: kSpaceLg),
+                  buttonMargin: const EdgeInsets.symmetric(
+                      vertical: kSpaceMd, horizontal: 3),
+                  backgroundColor: kPrimaryColor,
+                  unselectedBackgroundColor: kSurfaceColor,
+                  borderWidth: 1.4,
+                  borderColor: kPrimaryColor,
+                  // L'onglet inactif etait gris sur gris : rien ne disait qu'il
+                  // etait cliquable. Contour, libelle et pictogramme prennent
+                  // le bleu de la marque — c'est la couleur qui porte
+                  // l'information, le remplissage qui dit lequel est ouvert.
+                  unselectedBorderColor: kPrimaryColor,
+                  labelSpacing: kSpaceSm,
+                  labelStyle: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700),
+                  unselectedLabelStyle: const TextStyle(
+                      color: kPrimaryColor,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600),
             tabs: const [
-              Tab(icon: Icon(Icons.pause), text: "En Attente"),
-              Tab(
-                  icon: Icon(Icons.play_arrow_outlined),
-                  text: "En Traitement"),
-              Tab(icon: Icon(Icons.flag_outlined), text: "Terminée"),
+              Tab(icon: Icon(Icons.pause, size: 17), text: "En Attente"),
+              Tab(icon: Icon(Icons.play_arrow_outlined, size: 17), text: "En Traitement"),
+              Tab(icon: Icon(Icons.flag_outlined, size: 17), text: "Terminée"),
             ],
           ),
           Expanded(
@@ -226,19 +248,37 @@ class CommandeScreenState extends State<CommandeScreen> {
       child: Column(
         children: <Widget>[
           ButtonsTabBar(
-            radius: 10,
-            backgroundColor: greenColor,
-            unselectedBackgroundColor: const Color(0xFFE5E1E1),
-            unselectedLabelStyle:
-            const TextStyle(color: blackColor),
-            labelStyle: const TextStyle(
-                color: Colors.white, fontWeight: FontWeight.bold),
+            radius: kRadiusPill,
+                  // 64 = 40 de pastille + 12 d'air au-dessus et au-dessous.
+                  // A 42 sans marge verticale, les onglets touchaient la
+                  // section du dessus et la liste du dessous.
+                  height: 64,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: kSpaceLg),
+                  buttonMargin: const EdgeInsets.symmetric(
+                      vertical: kSpaceMd, horizontal: 3),
+                  backgroundColor: kPrimaryColor,
+                  unselectedBackgroundColor: kSurfaceColor,
+                  borderWidth: 1.4,
+                  borderColor: kPrimaryColor,
+                  // L'onglet inactif etait gris sur gris : rien ne disait qu'il
+                  // etait cliquable. Contour, libelle et pictogramme prennent
+                  // le bleu de la marque — c'est la couleur qui porte
+                  // l'information, le remplissage qui dit lequel est ouvert.
+                  unselectedBorderColor: kPrimaryColor,
+                  labelSpacing: kSpaceSm,
+                  labelStyle: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700),
+                  unselectedLabelStyle: const TextStyle(
+                      color: kPrimaryColor,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600),
             tabs: const [
-              Tab(icon: Icon(Icons.pause), text: "En Attente"),
-              Tab(
-                  icon: Icon(Icons.play_arrow_outlined),
-                  text: "En Cours"),
-              Tab(icon: Icon(Icons.flag_outlined), text: "Terminée"),
+              Tab(icon: Icon(Icons.pause, size: 17), text: "En Attente"),
+              Tab(icon: Icon(Icons.play_arrow_outlined, size: 17), text: "En Cours"),
+              Tab(icon: Icon(Icons.flag_outlined, size: 17), text: "Terminée"),
             ],
           ),
           Expanded(

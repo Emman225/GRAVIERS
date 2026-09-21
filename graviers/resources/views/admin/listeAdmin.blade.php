@@ -120,7 +120,7 @@
                                 <td class="text-center">
                                     <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">{{ $admin->login }}</code>
                                 </td>
-                                <td>
+                                <td class="text-nowrap">
                                     {{-- Rattachement à un guichet. Il décide de l'agence à laquelle
                                          les encaissements de cet administrateur seront imputés :
                                          elle n'est plus choisie au moment de la saisie. Sans
@@ -135,7 +135,7 @@
                                                 </option>
                                             @endforeach
                                         </select>
-                                        <button type="submit" class="btn btn-sm btn-light rounded" title="Enregistrer l'affectation">
+                                        <button type="submit" class="btn btn-sm btn-success rounded" title="Enregistrer l'affectation">
                                             <i class="material-icons md-save"></i>
                                         </button>
                                     </form>
@@ -153,7 +153,7 @@
                                 <td class="text-center text-muted small">
                                     {{ $admin->created_at ? Carbon::parse($admin->created_at)->locale('fr')->isoFormat('D MMM YYYY') : '-' }}
                                 </td>
-                                <td class="text-end">
+                                <td class="text-nowrap text-end">
                                     @if ($admin->id === Auth::id())
                                         <span class="text-muted small"><em>Votre compte</em></span>
                                     @else
@@ -162,58 +162,56 @@
                                             $estDernierActif = ($totalActifs <= 1 && (int) $admin->statut === 1);
                                         @endphp
 
-                                        <div class="dropdown d-inline">
-                                            <a href="#" data-bs-toggle="dropdown" class="btn btn-light btn-sm rounded">
-                                                <i class="material-icons md-more_horiz"></i> Actions
-                                            </a>
-                                            <div class="dropdown-menu dropdown-menu-end">
+                                        {{-- DES ICONES, COMME SUR LA LISTE DES GESTIONNAIRES.
 
-                                                {{-- Désactiver / Réactiver --}}
-                                                @if ($estDernierActif)
-                                                    <span class="dropdown-item text-muted disabled" title="Dernier admin actif">
-                                                        <i class="material-icons md-block"></i> Désactiver
-                                                    </span>
-                                                @else
-                                                    <form action="{{ route('show.toggleAdminStatus', $admin->id) }}"
-                                                          method="POST"
-                                                          class="d-inline js-delete-form"
-                                                          data-confirm-mode="confirm"
-                                                          data-confirm-title="{{ (int) $admin->statut === 1 ? 'Désactiver' : 'Réactiver' }} le compte"
-                                                          data-confirm-text="{{ (int) $admin->statut === 1
-                                                              ? 'Confirmez-vous la désactivation de ' . $admin->nom_prenoms . ' ? Ce compte ne pourra plus se connecter tant qu\'il ne sera pas réactivé.'
-                                                              : 'Confirmez-vous la réactivation de ' . $admin->nom_prenoms . ' ? Ce compte pourra à nouveau se connecter.' }}"
-                                                          data-confirm-button="Oui, {{ (int) $admin->statut === 1 ? 'désactiver' : 'réactiver' }}">
-                                                        @csrf
-                                                        <button type="submit" class="dropdown-item {{ (int) $admin->statut === 1 ? 'text-warning' : 'text-success' }}">
-                                                            @if ((int) $admin->statut === 1)
-                                                                <i class="material-icons md-block"></i> Désactiver
-                                                            @else
-                                                                <i class="material-icons md-check_circle"></i> Réactiver
-                                                            @endif
-                                                        </button>
-                                                    </form>
-                                                @endif
+                                             Le menu déroulant demandait deux gestes pour une action,
+                                             et cachait ce qu'on pouvait faire. Les deux actions
+                                             tiennent en deux boutons, avec leur nom au survol.
 
-                                                {{-- Supprimer --}}
-                                                @if ($estDernierActif)
-                                                    <span class="dropdown-item text-muted disabled" title="Dernier admin actif">
-                                                        <i class="material-icons md-delete"></i> Supprimer
-                                                    </span>
-                                                @else
-                                                    <form action="{{ route('show.deleteAdmin', $admin->id) }}"
-                                                          method="POST"
-                                                          class="d-inline js-delete-form"
-                                                          data-item-name="{{ $admin->nom_prenoms }}"
-                                                          data-confirm-text="Cette action est irréversible. L'administrateur ne pourra plus se connecter et son compte sera marqué comme supprimé.">
-                                                        @csrf
-                                                        @method('DELETE')
-                                                        <button type="submit" class="dropdown-item text-danger">
-                                                            <i class="material-icons md-delete"></i> Supprimer
-                                                        </button>
-                                                    </form>
-                                                @endif
-                                            </div>
-                                        </div>
+                                             Le cas du DERNIER ADMIN ACTIF garde son bouton, désactivé
+                                             et titré : le faire disparaître laisserait croire à un
+                                             oubli, alors que c'est un garde-fou. --}}
+                                        @if ($estDernierActif)
+                                            <span class="btn btn-sm btn-light rounded disabled"
+                                                  title="Dernier administrateur actif : la désactivation est impossible">
+                                                <i class="material-icons md-block text-muted"></i>
+                                            </span>
+                                            <span class="btn btn-sm btn-light rounded disabled"
+                                                  title="Dernier administrateur actif : la suppression est impossible">
+                                                <i class="material-icons md-delete text-muted"></i>
+                                            </span>
+                                        @else
+                                            <form action="{{ route('show.toggleAdminStatus', $admin->id) }}"
+                                                  method="POST"
+                                                  class="d-inline js-delete-form"
+                                                  data-confirm-mode="confirm"
+                                                  data-confirm-title="{{ (int) $admin->statut === 1 ? 'Désactiver' : 'Réactiver' }} le compte"
+                                                  data-confirm-text="{{ (int) $admin->statut === 1
+                                                      ? 'Confirmez-vous la désactivation de ' . $admin->nom_prenoms . ' ? Ce compte ne pourra plus se connecter tant qu\'il ne sera pas réactivé.'
+                                                      : 'Confirmez-vous la réactivation de ' . $admin->nom_prenoms . ' ? Ce compte pourra à nouveau se connecter.' }}"
+                                                  data-confirm-button="Oui, {{ (int) $admin->statut === 1 ? 'désactiver' : 'réactiver' }}">
+                                                @csrf
+                                                <button type="submit" class="btn btn-sm rounded {{ (int) $admin->statut === 1 ? 'btn-warning' : 'btn-success' }}"
+                                                        title="{{ (int) $admin->statut === 1 ? 'Désactiver ce compte' : 'Réactiver ce compte' }}">
+                                                    @if ((int) $admin->statut === 1)
+                                                        <i class="material-icons md-block"></i>
+                                                    @else
+                                                        <i class="material-icons md-check_circle"></i>
+                                                    @endif
+                                                </button>
+                                            </form>
+                                            <form action="{{ route('show.deleteAdmin', $admin->id) }}"
+                                                  method="POST"
+                                                  class="d-inline js-delete-form"
+                                                  data-item-name="{{ $admin->nom_prenoms }}"
+                                                  data-confirm-text="Cette action est irréversible. L'administrateur ne pourra plus se connecter et son compte sera marqué comme supprimé.">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit" class="btn btn-sm btn-danger rounded" title="Supprimer ce compte">
+                                                    <i class="material-icons md-delete"></i>
+                                                </button>
+                                            </form>
+                                        @endif
                                     @endif
                                 </td>
                             </tr>

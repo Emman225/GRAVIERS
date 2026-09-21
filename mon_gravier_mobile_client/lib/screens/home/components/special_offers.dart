@@ -1,84 +1,83 @@
 import 'package:flutter/material.dart';
-import 'package:mon_gravier_com/helper/constants.dart';
+import 'package:mon_gravier_com/screens/products/products_screen.dart';
 
+import '../../../components/image_reseau.dart';
+import '../../../constants.dart';
 import '../../../models/ConfigModel.dart';
 import 'section_title.dart';
 
+/// BANDEAUX PROMOTIONNELS DU MILIEU D'ACCUEIL.
+///
+/// La section s'affichait même sans aucune bannière : un titre suivi d'une
+/// bande vide. Elle disparaît maintenant quand il n'y a rien à montrer.
+///
+/// Le titre portait par ailleurs une faute — « Specialement pour vous » — sur
+/// l'écran le plus vu de l'application.
 class SpecialOffers extends StatelessWidget {
+  const SpecialOffers({super.key, required this.items});
 
-  List<Bannieres> items = [];
+  final List<Bannieres> items;
 
-  SpecialOffers({
-    super.key,
-    required this.items
-  });
-
-  // @override
   @override
   Widget build(BuildContext context) {
+    if (items.isEmpty) return const SizedBox.shrink();
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.symmetric(horizontal: kSpaceXl),
           child: SectionTitle(
             showVoirPlus: false,
-            title: "Specialement pour vous",
+            title: "Spécialement pour vous",
             press: () {},
           ),
         ),
+        const SizedBox(height: kSpaceMd),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: kSpaceXl),
+          physics: const BouncingScrollPhysics(),
           child: Row(
-            children:[
-              ...List.generate(items.length, (index) {
-                return SpecialOfferCard(
-                  image: items[index].image.toString(),
-                  category: items[index].titre.toString(),
-                  sousTitre: items[index].sousTitre.toString(),
-                  online: true,
-                  numOfBrands: 0,
-                  press: () {
-                    // Navigator.pushNamed(context, ProductsScreen.routeName);
-                  },
-                );
-              })
-              // SpecialOfferCard(
-              //   image: "assets/images/Image Banner 2.png",
-              //   category: "Smartphone",
-              //   numOfBrands: 18,
-              //   press: () {
-              //   },
-              // ),
-              // SpecialOfferCard(
-              //   image: "assets/images/Image Banner 3.png",
-              //   category: "Fashion",
-              //   numOfBrands: 24,
-              //   press: () {
-              //   },
-              // ),
+            children: [
+              for (int i = 0; i < items.length; i++)
+                Padding(
+                  padding: EdgeInsets.only(
+                      right: i == items.length - 1 ? 0 : kSpaceMd),
+                  child: SpecialOfferCard(
+                    image: items[i].image.toString(),
+                    category: items[i].titre.toString(),
+                    sousTitre: items[i].sousTitre.toString(),
+                    online: true,
+                    numOfBrands: 0,
+                    // Une bannière FLASH ouvre les offres du moment (09/09/2026).
+                    press: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ProductsScreen(
+                          titre: (items[i].titre ?? '').trim().isEmpty ? 'Offres flash' : items[i].titre!.trim(),
+                          selection: 'flash',
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
       ],
     );
   }
-
-  getWidget() {
-    return items
-        .map((e) => SpecialOfferCard(
-      image: e.image.toString(),
-      category: e.titre.toString(),
-      sousTitre: e.sousTitre.toString(),
-      online: true,
-      numOfBrands: 0,
-      press: () {
-        // Navigator.pushNamed(context, ProductsScreen.routeName);
-      },
-    ))
-        .toList();
-  }
 }
 
+/// VIGNETTE DE BANNIÈRE.
+///
+/// Le voile sombre partait du HAUT alors que Material place naturellement le
+/// regard en bas d'une image : le texte se posait donc sur la partie la plus
+/// chargée du visuel, et un sous-titre un peu long débordait sans être coupé.
+///
+/// Le dégradé part maintenant du bas, le texte s'y adosse, et titre comme
+/// sous-titre sont bornés à une et deux lignes.
 class SpecialOfferCard extends StatelessWidget {
   const SpecialOfferCard({
     super.key,
@@ -101,65 +100,81 @@ class SpecialOfferCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 20),
-      child: GestureDetector(
-        onTap: press,
-        child: SizedBox(
-          width: myWidth,
-          height: myHeight,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: Stack(
-              children: [
-                online
-                    ? Image.network(
-                        image,
-                        fit: BoxFit.cover,
-                  height: myHeight,
-                  width: heightOfScreen(context),
-                      )
-                    : Image.asset(
-                        image,
-                        fit: BoxFit.cover,
+    final String secondeLigne =
+        online ? sousTitre : "$numOfBrands références";
+
+    return GestureDetector(
+      onTap: press,
+      child: SizedBox(
+        width: myWidth,
+        height: myHeight,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(kRadiusMd),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              online
+                  ? ImageReseau(
+                      url: image,
+                      fit: BoxFit.cover,
+                      icone: Icons.image_outlined,
+                    )
+                  : Image.asset(image, fit: BoxFit.cover),
+
+              // Voile : assez dense en bas pour garantir la lisibilité du
+              // texte blanc, transparent en haut pour ne pas ternir le visuel.
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      Color(0xE6101828),
+                      Color(0x99101828),
+                      Colors.transparent,
+                    ],
+                    stops: [0, 0.55, 1],
+                  ),
+                ),
+              ),
+
+              Positioned(
+                left: kSpaceLg,
+                right: kSpaceLg,
+                bottom: kSpaceMd,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      category,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        height: 1.2,
                       ),
-                Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black54,
-                        Colors.black38,
-                        Colors.black26,
-                        Colors.transparent,
-                      ],
                     ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 15,
-                    vertical: 10,
-                  ),
-                  child: Text.rich(
-                    TextSpan(
-                      style: const TextStyle(color: Colors.white),
-                      children: [
-                        TextSpan(
-                          text: "$category\n",
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
+                    if (secondeLigne.trim().isNotEmpty &&
+                        secondeLigne != 'null') ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        secondeLigne,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                          height: 1.3,
                         ),
-                        TextSpan(text: online ? sousTitre : "$numOfBrands Brands")
-                      ],
-                    ),
-                  ),
+                      ),
+                    ],
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

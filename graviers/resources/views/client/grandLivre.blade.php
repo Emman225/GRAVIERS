@@ -89,7 +89,7 @@
                                                             $montantPaiement += $payeFacture;
                                                         @endphp
                                                         <tr>
-                                                            <td><small>{{ $facture->created_at->format('d/m/Y') }}</small></td>
+                                                            <td><small>{{ \Help::dateHeure($facture->created_at) }}</small></td>
                                                             <td>{{ $facture->commande?->paiements->libelle ?? '—' }}</td>
                                                             <td><span class="grand-livre-num">{{ $facture->numero }}</span></td>
                                                             {{-- Facturé --}}

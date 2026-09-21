@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Logs;
+use App\Models\Configuration;
 use App\Models\User;
 use App\Models\Client;
 use Illuminate\Http\Request;
@@ -80,12 +81,10 @@ class Help
     public static $CODE_PASS_OUBLIE = 2;
     public static $CODE_CONNEXION = 3;
 
-    // public static $URL_BASE_FICHIER = "https://gravierci.com/public/storage/";
-    // public static $URL_BASE_FICHIER = "https://test.gravierci.com/public/storage/";
-    // public static $URL_BASE_FICHIER = "https://apigravier.fneconnect.net/storage/";
     // Source unique des images = stockage du site web (où l'admin téléverse les
     // produits). Le mobile lit donc les mêmes images que le catalogue web.
-    public static $URL_BASE_FICHIER = "https://graviers.fneconnect.net/storage/";
+    // 12/09/2026 : valeur par défaut ; AppServiceProvider la remplace par URL_SITE/storage/ au démarrage.
+    public static $URL_BASE_FICHIER = "https://mongravier.com/storage/";
 
     public function __construct() {}
 
@@ -97,7 +96,21 @@ class Help
         if (preg_match('/(https?:\/\/.+)$/', $path, $matches)) {
             return $matches[1];
         }
-        return self::$URL_BASE_FICHIER . $path;
+        // L'adresse suit URL_SITE (.env), plus aucun hôte en dur (17/09/2026).
+        return self::baseFichiers() . $path;
+    }
+
+    /** La base des fichiers servis : le stockage du site (URL_SITE/storage/). */
+    public static function baseFichiers(): string
+    {
+        // Hors application Laravel (essai unitaire), la base historique.
+        try {
+            $site = trim((string) config('constantes.url_site'));
+        } catch (\Throwable $e) {
+            $site = '';
+        }
+
+        return $site !== '' ? rtrim($site, '/') . '/storage/' : self::$URL_BASE_FICHIER;
     }
 
     public static function sansAccent($string) {
@@ -365,6 +378,124 @@ class Help
         return str_replace("avant", "", $dateDonnee->diffForHumans($dateActuelle));
     }
 
+    /**
+     * LA TVA SUR LE TRANSPORT, POUR TOUTES LES AFFAIRES (point 5, 07/09/2026).
+     *
+     * Même règle que le site (Help::tvaSurTransport) : la case « TVA sur le
+     * transport » du paramétrage vaut pour les ventes et les locations comme
+     * pour les demandes de livraison. Le taux est celui du client (0 s'il
+     * n'est pas assujetti), et le montant est figé sur l'affaire.
+     */
+    /**
+     * TVA marchandise du client, en pourcentage (10/09/2026) : appliquée par
+     * défaut, retirable par client (applique_tva à 0). Même règle que le site.
+     */
+    public static function tauxTvaClient($client): float
+    {
+        if ($client && $client->applique_tva !== null && (int) $client->applique_tva === 0) {
+            return 0.0;
+        }
+        $taux = \App\Models\Configuration::first()?->tva;
+
+        return ($taux === null || $taux === '') ? 18.0 : (float) $taux;
+    }
+
+    /**
+     * TVA sur le transport POUR UN CLIENT, en pourcentage : nulle si la
+     * configuration ne taxe pas le transport ou si ce client en est dispensé
+     * (applique_tva_transport à 0), indépendamment de la TVA marchandise.
+     */
+    public static function tauxTvaTransportClient($client): float
+    {
+        $conf = \App\Models\Configuration::first();
+        if ((int) ($conf?->tva_transport ?? 0) !== 1) {
+            return 0.0;
+        }
+        if ($client && $client->applique_tva_transport !== null && (int) $client->applique_tva_transport === 0) {
+            return 0.0;
+        }
+        $taux = $conf?->tva;
+
+        return ($taux === null || $taux === '') ? 18.0 : (float) $taux;
+    }
+
+    public static function tvaTransportPour($client, float $coutTransport): float
+    {
+        if ($coutTransport <= 0) {
+            return 0.0;
+        }
+
+        return (float) round($coutTransport * self::tauxTvaTransportClient($client) / 100);
+    }
+
+    /** Le client est soumis à l'AIRSI s'il n'a pas déclaré un régime réel (RNI / RSI). */
+    public static function soumisAirsi($client): bool
+    {
+        if (!$client) {
+            return false;
+        }
+        $v = strtoupper(trim((string) ($client->regime_imposition ?? '')));
+        foreach (['RNI', 'RSI'] as $code) {
+            if ($v === $code || preg_match('/^' . $code . '\s*[—\-–]/u', $v)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** Taux de l'AIRSI en pourcentage (5 par défaut). */
+    public static function tauxAirsi(): float
+    {
+        $taux = \App\Models\Configuration::first()?->taux_airsi;
+
+        return ($taux === null || $taux === '') ? 5.0 : (float) $taux;
+    }
+
+    /** L'AIRSI dû sur une base TTC (HT net + TVA) : 0 pour un client au réel. */
+    public static function airsiPour($client, float $baseTtc, ?float $htNet = null, ?float $tauxTva = null,
+        float $transport = 0, float $tauxTvaTransport = 0): float
+    {
+        if ($baseTtc <= 0 || !self::soumisAirsi($client)) {
+            return 0.0;
+        }
+        $taux = self::tauxAirsi();
+
+        // Le transport entre dans l'assiette, comme la DGI (lot 97, 16/09/2026) ;
+        // même règle que le site : l'AIRSI figé porte l'écart d'arrondi.
+        if ($htNet !== null && $tauxTva !== null && $htNet > 0 && $transport > 0) {
+            $netDgi = round(($htNet * (1 + $tauxTva) + $transport * (1 + $tauxTvaTransport)) * (1 + $taux / 100));
+            $base = round($baseTtc) + round($transport) + round($transport * $tauxTvaTransport);
+
+            return (float) max(0, $netDgi - $base);
+        }
+
+        // L'ARRONDI DE LA DGI (lot 94, 16/09/2026), même règle que le site :
+        // net = arrondi(HT × (1 + TVA) × (1 + AIRSI)) ; l'AIRSI figé porte l'écart
+        // d'arrondi (taux de TVA en fraction, 0,18).
+        if ($htNet !== null && $tauxTva !== null && $htNet > 0) {
+            $netDgi = round($htNet * (1 + $tauxTva) * (1 + $taux / 100));
+
+            return (float) max(0, $netDgi - round($baseTtc));
+        }
+
+        return (float) round($baseTtc * $taux / 100);
+    }
+
+    public static function tvaSurTransport(float $coutTransport, float $tauxPourcent): float
+    {
+        if ($coutTransport <= 0 || $tauxPourcent <= 0) {
+            return 0.0;
+        }
+
+        $conf = \App\Models\Configuration::first();
+        if ((int) ($conf->tva_transport ?? 0) !== 1) {
+            return 0.0;
+        }
+
+        return (float) round($coutTransport * $tauxPourcent / 100);
+    }
+
     public static function ecrireLog($fn, $titre, $details, $user_id) {
         $log = new Logs();
         $log->fn = $fn;
@@ -384,6 +515,110 @@ class Help
         $lonDelta = $lon2 - $lon1;
         $angle = 2 * asin(sqrt(pow(sin($latDelta / 2), 2) + cos($lat1) * cos($lat2) * pow(sin($lonDelta / 2), 2)));
         return intVal($angle * $earthRadius);
+    }
+    /**
+     * LES POINTS DE FIDÉLITÉ GAGNÉS POUR UN MONTANT ENCAISSÉ.
+     *
+     * UNE SEULE RÈGLE, POUR TOUS LES CANAUX : X francs réellement encaissés
+     * donnent 1 point. Trois règles s'appliquaient auparavant selon la façon de
+     * payer — 200 points forfaitaires au guichet, 1 à 15 selon une grille par
+     * le mobile, rien depuis le site — si bien que le CANAL décidait de la
+     * récompense, ce qu'aucun client n'aurait compris.
+     *
+     * Sur ce qui est ENCAISSÉ, jamais sur le montant commandé : un acompte
+     * rapporte au prorata, et une commande impayée ne rapporte rien.
+     *
+     * Le résultat est tronqué, non arrondi : 1 999 F ne peuvent pas valoir
+     * 2 points quand la règle en annonce 1 pour 1 000. Mieux vaut promettre
+     * moins et tenir.
+     */
+    public static function pointsPour($montant): int
+    {
+        $parPoint = (float) (Configuration::first()->montant_pour_un_point ?? 0);
+
+        // Paramètre absent ou nul : on n'attribue rien plutôt que de diviser
+        // par zéro. Un écran de paramétrage mal rempli ne doit pas casser un
+        // encaissement.
+        if ($parPoint <= 0) {
+            return 0;
+        }
+
+        return (int) floor(max(0, (float) $montant) / $parPoint);
+    }
+
+    /**
+     * PLANCHER DE PAIEMENT : combien de points le client peut réellement poser
+     * sur cette commande.
+     *
+     * Les points pouvaient couvrir la totalité d'une commande, et le total à
+     * payer tombait à ZÉRO. C'était une impasse quel que soit le mode choisi :
+     * la passerelle était appelée avec 0, l'encaissement au guichet refusait le
+     * montant nul (`min:1`), et le virement supposait un justificatif de 0 —
+     * alors que les points, eux, étaient déjà débités.
+     *
+     * Les points ne réduisent donc le total que jusqu'à `montant_minimum_a_payer`.
+     * Le reliquat RESTE au compte du client : rien n'est perdu, la remise est
+     * seulement étalée sur la commande suivante.
+     *
+     * Le calcul, en partant du total réellement dû :
+     *
+     *     total = (ht − remise) × (1 + tva) + livraison   ⩾   plancher
+     *  ⟺  ht − remise                                     ⩾   (plancher − livraison) / (1 + tva)
+     *  ⟺  remise                                          ⩽   ht − htMinimum
+     *
+     * La livraison n'est jamais effacée par une remise : dès qu'elle atteint le
+     * plancher à elle seule, les points peuvent couvrir toute la marchandise —
+     * le client paiera son transport, et le total ne sera pas nul.
+     *
+     * @param float $ht          Marchandise hors taxe, avant toute remise.
+     * @param float $remisePromo Remise du code promo, déjà calculée.
+     * @param float $tauxTva     Taux de TVA en POURCENTAGE (18 pour 18 %).
+     * @param float $livraison   Coût de livraison, hors remise.
+     * @param float $valeurPoint Ce que vaut un point, en francs.
+     * @param float $demandes    Points que le client souhaite utiliser.
+     * @param float $solde       Points réellement détenus par le client.
+     *
+     * @return float Points utilisables, jamais supérieurs au solde ni à la demande.
+     */
+    public static function pointsUtilisables(
+        float $ht,
+        float $remisePromo,
+        float $tauxTva,
+        float $livraison,
+        float $valeurPoint,
+        float $demandes,
+        float $solde
+    ): float {
+        $possible = min(max(0.0, $demandes), max(0.0, $solde));
+
+        // Un point sans valeur ne réduit rien : inutile d'en consommer, et
+        // surtout pas de diviser par zéro.
+        if ($possible <= 0 || $valeurPoint <= 0) {
+            return 0.0;
+        }
+
+        $plancher = (float) (Configuration::first()->montant_minimum_a_payer ?? 0);
+
+        // Plancher non paramétré : on ne bride rien, l'ancien comportement
+        // s'applique. Mieux vaut cela qu'un plancher inventé.
+        if ($plancher <= 0) {
+            return $possible;
+        }
+
+        $coefficient = 1 + (max(0.0, $tauxTva) / 100);
+        $htMinimum = max(0.0, ($plancher - max(0.0, $livraison)) / $coefficient);
+
+        // Ce que la remise TOTALE ne doit pas dépasser, puis ce qu'il reste
+        // pour les points une fois le code promo honoré : la remise promo est
+        // un engagement commercial déjà pris, ce sont les points qui cèdent.
+        $remiseMax = max(0.0, $ht - $htMinimum);
+        $pourLesPoints = max(0.0, $remiseMax - max(0.0, $remisePromo));
+
+        // Arrondi À L'INFÉRIEUR : un point entamé serait un point facturé au
+        // client sans qu'il en voie l'effet entier.
+        $utilisables = floor($pourLesPoints / $valeurPoint);
+
+        return min($possible, max(0.0, $utilisables));
     }
 }
 
@@ -406,4 +641,5 @@ class Retour
     public $montantPoint;
     public $device;
     public $cat;
+
 }

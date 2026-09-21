@@ -119,7 +119,23 @@ class ApporteurController extends Controller
         ]);
     }
     public function register(){
-        return view('apporteur.register');
+        // Les listes que le formulaire propose. Sans elles, les trois menus
+        // deroulants seraient vides — et un champ obligatoire vide est un
+        // formulaire impossible a envoyer.
+        return view('apporteur.register', [
+            'pays'          => \App\Models\Pays::orderBy('id')->get(),
+            'villes'        => \App\Models\Ville::orderBy('id')->get(),
+            // EXACTEMENT la liste que l'application mobile de l'apporteur
+            // propose : meme methode, meme regle. « listeTous » y ajoutait le
+            // reglement en agence, qui n'est pas un instrument mais un lieu, et
+            // un apporteur inscrit depuis le site pouvait choisir une preference
+            // introuvable dans son application.
+            'modesPaiement' => \App\Models\ModePaiement::listePourApporteur(),
+            // Le pied de page du site public parcourt les categories : sans
+            // elles, la page tombe en erreur 500 — et l'erreur ne vient pas du
+            // formulaire, ce qui la rend deroutante a diagnostiquer.
+            'categories'    => \App\Models\Categorie::where('statut', 1)->get(),
+        ]);
     }
     public function loginPage(){
         return view('apporteur.login');
@@ -195,8 +211,11 @@ class ApporteurController extends Controller
                 'montant'       => (float) $d->montant,
                 // 1 = acceptée, 2 = refusée, NULL/0 = en attente.
                 'statut'        => (int) ($d->paye ?? 0),
+                // Point 20 : validée → « À payer » → « Effectuée ».
+                'etat_reglement' => $d->etat_reglement,
+                'libelle_etat'   => $d->libelleReglement(),
                 'mode'          => $d->modePaiement?->libelle,
-                'date_paiement' => (int) $d->paye === 1 ? $d->updated_at : null,
+                'date_paiement' => (int) $d->paye === 1 ? ($d->date_effectuee ?? $d->updated_at) : null,
                 'origine'       => 'Vous',
                 'detail'        => 'Demande de paiement',
             ]);
@@ -225,6 +244,9 @@ class ApporteurController extends Controller
                     'montant'       => (float) $p->montant,
                     // Un règlement enregistré est un versement fait.
                     'statut'        => 1,
+                    // Point 20 (09/09/2026) : « À payer » puis « Effectuée », comme une demande.
+                    'etat_reglement' => $p->etat_reglement,
+                    'libelle_etat'   => $p->libelleReglement(),
                     'mode'          => $p->modePaiement?->libelle,
                     'date_paiement' => $p->date_paiement ?? $p->created_at,
                     'origine'       => "L'entreprise",
@@ -296,10 +318,33 @@ class ApporteurController extends Controller
                 "nom_prenom" => "required|string|min:3|max:255",
                 "email" => "required|string|email:rfc,dns|max:255|unique:users,email",
                 "contact" => "required|digits_between:8,15|unique:users,contact",
-                "adresse" => "required|string|min:3|max:255",
+                // NI ADRESSE NI ZONE D'INTERVENTION : l'application ne les demande
+                // pas, et les exiger ici donnait deux dossiers differents pour un
+                // meme apporteur selon l'endroit ou il s'inscrivait. Les deux
+                // colonnes acceptent l'absence de valeur et restent modifiables
+                // depuis la fiche.
+                // LES MEMES RENSEIGNEMENTS QUE L'APPLICATION MOBILE.
+                //
+                // Le site n'en demandait qu'une partie : ni pays, ni ville, ni
+                // numero de piece, ni mode de paiement. Un meme apporteur
+                // n'avait donc pas le meme dossier selon l'endroit ou il
+                // s'inscrivait, et la fiche restait a completer a la main.
+                "pays" => "required|integer|exists:pays,id",
+                "ville" => "required|integer|exists:ville,id",
+                "numero_piece" => "required|string|min:3|max:50",
+                // « exists » ne suffit pas : le reglement en agence EXISTE dans la
+                // table, il n'est simplement pas un mode de VERSEMENT. Un envoi
+                // direct du formulaire pouvait donc enregistrer une preference que
+                // l'application ne sait pas afficher. On borne a la liste
+                // reellement proposee.
+                "mode_paiement" => ["required", "integer", \Illuminate\Validation\Rule::in(
+                    \App\Models\ModePaiement::listePourApporteur()->pluck('id')->all()
+                )],
                 "recto" => "required|file|mimes:jpg,jpeg,png,pdf|max:5120",
                 "verso" => "required|file|mimes:jpg,jpeg,png,pdf|max:5120",
-                "password" => "required|string|min:8|max:100",
+                // « confirmed » compare avec password_confirmation : le mot de
+                // passe est saisi masque, une faute de frappe ne se voit pas.
+                "password" => "required|string|min:8|max:100|confirmed",
             ],[
                 "nom_prenom.required" => "Le nom complet est obligatoire !",
                 "nom_prenom.string" => "Le nom complet doit être une chaîne de caractères.",
@@ -316,11 +361,6 @@ class ApporteurController extends Controller
                 "contact.digits_between" => "Le numéro de contact doit contenir entre 8 et 15 chiffres.",
                 "contact.unique" => "Ce numéro de contact est déjà utilisé.",
 
-                "adresse.required" => "L'adresse est obligatoire !",
-                "adresse.string" => "L'adresse doit être une chaîne de caractères.",
-                "adresse.min" => "L'adresse doit contenir au moins 3 caractères.",
-                "adresse.max" => "L'adresse ne doit pas dépasser 255 caractères.",
-
                 "recto.required" => "La pièce recto est obligatoire !",
                 "recto.file" => "Le fichier recto est invalide.",
                 "recto.mimes" => "La pièce recto doit être au format JPG, JPEG, PNG ou PDF.",
@@ -335,6 +375,12 @@ class ApporteurController extends Controller
                 "password.string" => "Le mot de passe est invalide.",
                 "password.min" => "Le mot de passe doit contenir au moins 8 caractères.",
                 "password.max" => "Le mot de passe ne doit pas dépasser 100 caractères.",
+                "password.confirmed" => "Les deux mots de passe ne correspondent pas !",
+
+                "pays.required" => "Veuillez choisir votre pays !",
+                "ville.required" => "Veuillez choisir votre ville !",
+                "numero_piece.required" => "Le numéro de votre pièce est obligatoire !",
+                "mode_paiement.required" => "Veuillez choisir votre mode de paiement préféré !",
             ]);
 
             // dd($request->email);
@@ -378,11 +424,14 @@ class ApporteurController extends Controller
                 'login' => $code,
                 'password' => Help::HashPassword($request->password),
                 'email' => $request->email,
-                'adresse' => $request->adresse,
                 'type_user_id' => $typeUserId,
                 'contact' => $request->contact,
                 'token' => $numeroToken,
                 'nom_prenoms' => $request->nom_prenom,
+                // Le pays et la ville vivent sur le compte utilisateur, comme
+                // pour un client : c'est la que les autres ecrans les lisent.
+                'pays_id' => $request->pays,
+                'ville_id' => $request->ville,
                 'statut' => 2
             ];
             // dd($dataUser);
@@ -395,8 +444,8 @@ class ApporteurController extends Controller
                 'user_id' => $userId,
                 'piece_recto' => $recto,
                 'piece_verso' => $verso,
-                'zone_intervention' => $request->zone_intervention,
-
+                'numero_piece' => $request->numero_piece,
+                'mode_paiement_id' => $request->mode_paiement,
             ];
             $nom = $request->nom_prenom;
 

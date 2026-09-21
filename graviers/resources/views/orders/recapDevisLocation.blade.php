@@ -17,14 +17,14 @@
 @endif
 
 @if($fne_adresse)
-    @section('adresse_livraison', ucwords($fne_adresse))
+    @section('adresse_livraison', \Help::phrase($fne_adresse))
 @endif
 
 @section('articles')
     @if(isset($location))
-        <div style="background:#d4edda; padding:8px; text-align:center; margin-bottom:10px; font-weight:bold; color:#155724;">Location Validée</div>
+        <div style="background:#d4edda; padding:8px; text-align:center; margin-bottom:10px; font-weight:bold; color:#155724;">Location validée</div>
         <div style="margin-bottom:10px;">
-            <p style="font-size:9pt;"><strong>Date de location :</strong> {{ ucfirst($location->created_at->dayName) . ' ' . $location->created_at->isoFormat('LL') }} à {{ Carbon::parse($location->created_at)->format('H:i') }}</p>
+            <p style="font-size:9pt;"><strong>Date de location :</strong> {{ ucfirst($location->created_at->dayName) . ' ' . $location->created_at->isoFormat('LL') }} à {{ Carbon::parse($location->created_at)->format('H:i:s') }}</p>
             <p style="font-size:9pt;"><strong>Numéro :</strong> {{ $location->numero }}</p>
         </div>
     @endif
@@ -41,7 +41,15 @@
             </tr>
         </thead>
         <tbody>
-            @php $totalHT = 0; $index = 0; $i = 0; $livraison = 0; $Promo = 0; $point = 0; @endphp
+            @php
+                $totalHT = 0; $index = 0; $i = 0; $Promo = 0; $point = 0;
+                // Le transport est une ligne du tableau (09/09/2026), taxée quand le
+                // paramétrage « Appliquer la TVA au transport » l'a décidé.
+                $livraison    = isset($location) ? (float) ($location->cout_livraison_client ?? 0) : (float) (session('0')['cout_livraison'] ?? 0);
+                $tvaTransport = isset($location) ? (float) ($location->tva_transport ?? 0) : (float) (session('0')['tva_transport'] ?? 0);
+                // Le numéro de bon de commande interne en colonne Réf, « 01 - N° » (13/09/2026).
+                $refBon = \Help::referenceBonDeCommande(isset($location) ? ($location->numero_bon_commande ?? null) : session('numero_bon_commande'));
+            @endphp
 
             @if(isset($location))
                 @foreach($location->detailLocation as $detail)
@@ -50,8 +58,8 @@
                         $totalHT += $montant; $index++;
                     @endphp
                     <tr>
-                        <td class="col-ref">{{ str_pad($index, 2, '0', STR_PAD_LEFT) }}</td>
-                        <td class="col-designation">{{ ucwords($detail->produit?->nom) }}</td>
+                        <td class="col-ref">{{ \Help::referenceLigne($index, $refBon) }}</td>
+                        <td class="col-designation">{{ \Help::phrase($detail->produit?->nom) }}</td>
                         <td class="col-qte">{{ $detail->qte }}</td>
                         <td class="col-pu">{{ number_format($detail->prix ?? $detail->produit?->prix_moyen, 0, '', ' ') }}</td>
                         <td class="col-unite">Du {{ $detail->debut }} au {{ $detail->fin }}</td>
@@ -65,8 +73,8 @@
                         $totalHT += $montant; $index++;
                     @endphp
                     <tr>
-                        <td class="col-ref">{{ str_pad($index, 2, '0', STR_PAD_LEFT) }}</td>
-                        <td class="col-designation">{{ ucwords($produit->model->nom) }}</td>
+                        <td class="col-ref">{{ \Help::referenceLigne($index, $refBon) }}</td>
+                        <td class="col-designation">{{ \Help::phrase($produit->model->nom) }}</td>
                         <td class="col-qte">{{ $produit->qty }}</td>
                         <td class="col-pu">{{ number_format($produit->price, 0, '', ' ') }}</td>
                         <td class="col-unite">Du {{ Carbon::parse(session('debuts')[$i])->format('d-m-Y') }} au {{ Carbon::parse(session('fins')[$i])->format('d-m-Y') }}</td>
@@ -74,6 +82,18 @@
                     </tr>
                     @php $i++; @endphp
                 @endforeach
+            @endif
+
+            {{-- La ligne du transport (six colonnes ici), avec sa mention de TVA. --}}
+            @if($livraison > 0 && $tvaTransport > 0)
+                <tr>
+                    <td class="col-ref"></td>
+                    <td class="col-designation">Coût de livraison — TVA ({{ $config->tva ?? 0 }}%)</td>
+                    <td class="col-qte">1</td>
+                    <td class="col-pu">{{ number_format($livraison, 0, '', ' ') }}</td>
+                    <td class="col-unite">Forfait</td>
+                    <td class="col-montant">{{ number_format($livraison, 0, '', ' ') }}</td>
+                </tr>
             @endif
         </tbody>
     </table>
@@ -84,21 +104,25 @@
         $totalTVA = session('0') && isset(session('0')['tva']) ? session('0')['tva'] : 0;
         if(isset($location)) {
             $totalTVA = session('0')['tva'] ?? 0;
-            $totalAPayer = $location->montant_total ?? ($totalHT + $totalTVA);
+            // Ce que la location coûte réellement (transport et sa TVA compris).
+            $airsi = (float) ($location->airsi ?? 0);
+            $totalAPayer = $location->montantAPayer();
             if(session('point_reduc') && isset($reduc)) $point = $reduc->montant_point * session('point_reduc');
             if(session('reduction_id') && isset($promo)) $Promo = (session('totalLocation') ?? $totalHT) * $promo->taux_reduction / 100;
         } else {
-            if(session('0') && isset(session('0')['cout_livraison'])) $livraison = session('0')['cout_livraison'];
+            // $livraison et $tvaTransport viennent de la tête du tableau.
             if(session('point_reduc') && isset($reduc)) $point = $reduc->montant_point * session('point_reduc');
             if(session('reduction_id') && isset($promo)) $Promo = (session('totalLocation') ?? $totalHT) * $promo->taux_reduction / 100;
-            $totalAPayer = $totalHT - ($Promo + $point) + $totalTVA + $livraison;
+            // AIRSI (10/09/2026) : sur le HT net de remise + TVA.
+            $airsi = \Help::airsiPour(Auth::user()?->client, max(0, $totalHT - ($Promo + $point)) + $totalTVA);
+            $totalAPayer = $totalHT - ($Promo + $point) + $totalTVA + $livraison + $tvaTransport + $airsi;
         }
     @endphp
 
     <table class="fne-totaux-outer"><tr><td class="fne-totaux-spacer"></td><td class="fne-totaux-content"><table class="fne-totaux">
-        <tr><td class="label">TOTAL HT</td><td class="valeur">{{ number_format($totalHT, 0, '', ' ') }}</td></tr>
-        <tr><td class="label">TVA ({{ $config->tva ?? 0 }}%)</td><td class="valeur">{{ number_format($totalTVA, 0, '', ' ') }}</td></tr>
-        @if($livraison > 0)
+        <tr><td class="label">TOTAL HT</td><td class="valeur">{{ number_format($totalHT + ($tvaTransport > 0 ? $livraison : 0), 0, '', ' ') }}</td></tr>
+        <tr><td class="label">TVA ({{ $config->tva ?? 0 }}%)</td><td class="valeur">{{ number_format($totalTVA + $tvaTransport, 0, '', ' ') }}</td></tr>
+        @if($livraison > 0 && $tvaTransport <= 0)
         <tr><td class="label">Coût livraison</td><td class="valeur">{{ number_format($livraison, 0, '', ' ') }}</td></tr>
         @endif
         @if($Promo > 0)
@@ -107,6 +131,7 @@
         @if($point > 0)
         <tr><td class="label">Réduction par point</td><td class="valeur">-{{ number_format($point, 0, '', ' ') }}</td></tr>
         @endif
+        @include('document.partials._ligne_airsi', ['airsi' => $airsi ?? 0])
         <tr><td class="label" style="font-size:10pt;">TOTAL A PAYER</td><td class="valeur" style="font-size:10pt; font-weight:bold;">{{ number_format($totalAPayer, 0, '', ' ') }}</td></tr>
     </table></td></tr></table>
 @endsection
@@ -118,9 +143,10 @@
         <tbody>
             <tr>
                 <td>TVA {{ $config->tva ?? 0 }}% sur HT</td>
-                <td class="text-right">{{ number_format($totalHT, 0, '', ' ') }}</td>
+                {{-- Assiette = articles + transport taxé ; taxes = les deux TVA (09/09/2026). --}}
+                <td class="text-right">{{ number_format($totalHT + ($tvaTransport > 0 ? $livraison : 0), 0, '', ' ') }}</td>
                 <td class="text-center">{{ $config->tva ?? 0 }}%</td>
-                <td class="text-right">{{ number_format($totalTVA, 0, '', ' ') }}</td>
+                <td class="text-right">{{ number_format($totalTVA + $tvaTransport, 0, '', ' ') }}</td>
             </tr>
         </tbody>
     </table>

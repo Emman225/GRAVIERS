@@ -117,6 +117,12 @@ class ComptabiliteController extends Controller
                 $baseHt  = max(0, (float) $doc->montant_total - (float) ($doc->remise ?? 0));
                 $date    = $doc->date_location ?? $doc->created_at;
                 $service = 'Location';
+                // La TVA sur le transport (point 5) est collectée avec celle de
+                // la marchandise : elle entre dans l'état, base comprise.
+                if ((float) ($doc->tva_transport ?? 0) > 0) {
+                    $tva    += (float) $doc->tva_transport;
+                    $baseHt += (float) ($doc->cout_livraison_client ?? 0);
+                }
                 break;
 
             case \Help::$LIVRAISON:
@@ -140,6 +146,10 @@ class ComptabiliteController extends Controller
                 $baseHt  = max(0, $doc->montantHT() - (float) ($doc->remise ?? 0));
                 $date    = $doc->date_commande ?? $doc->created_at;
                 $service = 'Vente';
+                if ((float) ($doc->tva_transport ?? 0) > 0) {
+                    $tva    += (float) $doc->tva_transport;
+                    $baseHt += (float) ($doc->cout_livraison_client ?? 0);
+                }
         }
 
         $netAPayer = (float) $doc->montantAPayer();
@@ -166,6 +176,161 @@ class ComptabiliteController extends Controller
             // base a bougé après le calcul de la taxe. Signalé, jamais corrigé
             // en silence : l'écriture d'origine reste la référence comptable.
             'anomalie'      => $baseHt > 0 && abs($taux - $tauxConfig) > 0.5,
+        ];
+    }
+
+    /**
+     * État d'AIRSI collecté (10/09/2026).
+     *
+     * MÊME LECTURE QUE L'ÉTAT DE TVA, mêmes deux chiffres :
+     *
+     *  - l'AIRSI FACTURÉ est celui figé sur les affaires de la période ;
+     *  - l'AIRSI ENCAISSÉ en est la part que le client a réellement réglée,
+     *    au prorata du règlement.
+     *
+     * Il n'existe pas de table d'écritures pour l'AIRSI, à la différence de
+     * la TVA (tva_commande) : le montant est figé sur le document lui-même à
+     * sa création (colonnes commande.airsi, location.airsi,
+     * demande_livraison.airsi — cf. Help::airsiPour). C'est donc le document
+     * qui fait foi. Un client au réel (RNI, RSI) n'en porte aucun : il
+     * n'apparaît pas ici, et c'est voulu.
+     *
+     * Une affaire annulée, ou dont le paiement en ligne n'a jamais abouti,
+     * n'a donné lieu à aucune facture : elle est écartée, sinon son acompte
+     * figurerait « à encaisser » pour une vente que personne ne servira.
+     */
+    public function airsiCollectee(Request $request)
+    {
+        $tauxConfig = \Help::tauxAirsi();
+
+        $du = $request->filled('du')
+            ? Carbon::parse($request->input('du'))->startOfDay()
+            : Carbon::today()->startOfMonth();
+        $au = $request->filled('au')
+            ? Carbon::parse($request->input('au'))->endOfDay()
+            : Carbon::today()->endOfDay();
+
+        $service = $request->input('service', 'TOUS');
+
+        $lignes = collect();
+
+        if (in_array($service, ['TOUS', \Help::$VENTE], true)) {
+            Commande::with(['client', 'detailCommande', 'TvaCommande'])
+                ->where('airsi', '>', 0)->orderBy('id')->get()
+                ->each(fn (Commande $c) => $lignes->push($this->ligneDAirsi($c, \Help::$VENTE, $tauxConfig)));
+        }
+        if (in_array($service, ['TOUS', \Help::$LOCATION], true)) {
+            Location::with(['client', 'detailLocation', 'tvaLocation'])
+                ->where('airsi', '>', 0)->orderBy('id')->get()
+                ->each(fn (Location $l) => $lignes->push($this->ligneDAirsi($l, \Help::$LOCATION, $tauxConfig)));
+        }
+        if (in_array($service, ['TOUS', \Help::$LIVRAISON], true)) {
+            DemandeLivraison::with('client')
+                ->where('airsi', '>', 0)->orderBy('id')->get()
+                ->each(fn (DemandeLivraison $d) => $lignes->push($this->ligneDAirsi($d, \Help::$LIVRAISON, $tauxConfig)));
+        }
+
+        // La période porte sur la date du DOCUMENT, comme pour la TVA.
+        $lignes = $lignes->filter()
+            ->filter(fn ($l) => $l->date && $l->date->between($du, $au))
+            ->sortByDesc('date')
+            ->values();
+
+        $totaux = (object) [
+            'base'            => $lignes->sum('base'),
+            'airsi_facture'   => $lignes->sum('airsi_facture'),
+            'airsi_encaisse'  => $lignes->sum('airsi_encaisse'),
+            'net_a_payer'     => $lignes->sum('net_a_payer'),
+            'encaisse'        => $lignes->sum('encaisse'),
+        ];
+        $totaux->airsi_a_encaisser = max(0, $totaux->airsi_facture - $totaux->airsi_encaisse);
+
+        $parService = $lignes->groupBy('service')->map(fn ($g, $nom) => (object) [
+            'service'        => $nom,
+            'nb'             => $g->count(),
+            'base'           => $g->sum('base'),
+            'airsi_facture'  => $g->sum('airsi_facture'),
+            'airsi_encaisse' => $g->sum('airsi_encaisse'),
+        ])->sortByDesc('airsi_facture')->values();
+
+        return view('admin.comptabilite.airsiCollectee', [
+            'lignes'      => $lignes,
+            'totaux'      => $totaux,
+            'parService'  => $parService,
+            'tauxConfig'  => $tauxConfig,
+            'du'          => $du,
+            'au'          => $au,
+            'service'     => $service,
+            'nbAnomalies' => $lignes->where('anomalie', true)->count(),
+        ]);
+    }
+
+    /**
+     * Une ligne de l'état d'AIRSI, construite depuis le document qui le porte.
+     *
+     * LA BASE est celle de Help::airsiPour au moment de la création : HT net
+     * de remise + TVA de la marchandise pour une vente ou une location (le
+     * transport n'y entre pas) ; transport + TVA du transport pour une
+     * demande de livraison, qui ne facture que du transport.
+     */
+    private function ligneDAirsi($doc, string $type, float $tauxConfig): ?object
+    {
+        if (!$doc->affaireVivante()) {
+            return null;
+        }
+
+        switch ($type) {
+            case \Help::$LOCATION:
+                $ht = (float) $doc->detailLocation->sum('prix');
+                if ($ht <= 0) {
+                    $ht = (float) $doc->montant_total;
+                }
+                $base    = max(0, $ht - (float) ($doc->remise ?? 0)) + (float) ($doc->tvaLocation->montant ?? 0);
+                $date    = $doc->date_location ?? $doc->created_at;
+                $service = 'Location';
+                break;
+
+            case \Help::$LIVRAISON:
+                $tva = (float) TvaCommande::where('commande_id', $doc->id)
+                    ->where('type_affaire', \Help::$LIVRAISON)
+                    ->where('statut', \Help::$STATUT_ACTIF)
+                    ->sum('montant');
+                $base    = (float) $doc->montantTotal + $tva;
+                $date    = $doc->created_at;
+                $service = 'Demande de livraison';
+                break;
+
+            default: // VENTE
+                $base    = max(0, $doc->montantHT() - (float) ($doc->remise ?? 0)) + (float) ($doc->TvaCommande->montant ?? 0);
+                $date    = $doc->date_commande ?? $doc->created_at;
+                $service = 'Vente';
+        }
+
+        $airsi     = (float) $doc->airsi;
+        $netAPayer = (float) $doc->montantAPayer();
+        $encaisse  = (float) $doc->montantPayeComptant();
+
+        // Part réglée, plafonnée à 1 : un trop-perçu ne crée pas d'acompte.
+        $part = $netAPayer > 0 ? min(1, $encaisse / $netAPayer) : 0.0;
+
+        $taux = $base > 0 ? $airsi / $base * 100 : 0.0;
+
+        return (object) [
+            'date'           => $date ? Carbon::parse($date) : null,
+            'numero'         => $doc->numero ?? ('#' . $doc->id),
+            'client'         => $doc->client?->display_name ?? '-',
+            'service'        => $service,
+            'base'           => round($base),
+            'taux'           => $taux,
+            'airsi_facture'  => round($airsi),
+            'net_a_payer'    => round($netAPayer),
+            'encaisse'       => round($encaisse),
+            'airsi_encaisse' => round($airsi * $part),
+            'solde'          => $part >= 1 ? 'Soldée' : ($encaisse > 0 ? 'Partielle' : 'Impayée'),
+            // Le montant figé reste la référence ; un écart se signale, il ne se
+            // corrige pas en silence. Il se juge EN FRANCS : l'acompte est
+            // arrondi au franc, et 8 F sur 150 F (5,33 %) n'est pas une anomalie.
+            'anomalie'       => $base > 0 && abs($airsi - round($base * $tauxConfig / 100)) > 1,
         ];
     }
 
@@ -314,7 +479,12 @@ class ComptabiliteController extends Controller
                 ];
 
             case \Help::$LOCATION:
-                $loc = Location::with('client')->find($l->detail_livraison_id);
+                // Une course de location porte l'id de sa LIGNE dans
+                // detail_commande_id (voir Location::courses) ; detail_livraison_id
+                // n'est renseigné que pour les demandes de livraison. Lu ici sur
+                // la mauvaise colonne jusqu'au 10/09/2026 : les locations
+                // manquaient à l'état des bénéfices.
+                $loc = \App\Models\DetailLocation::with('location.client')->find($l->detail_commande_id)?->location;
                 if (!$loc) { return null; }
                 return (object) [
                     'id'        => $loc->id,

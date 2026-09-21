@@ -59,6 +59,11 @@ class HomeController extends Controller
             'bannieres' => Banniere::liste(),
             'produits' => $prods,
             'mode_paiements' => ModePaiement::listePourClient(),
+            // Liste propre à la demande de livraison : les mêmes opérateurs, plus
+            // le règlement au guichet. Servie SOUS UNE AUTRE CLÉ pour que les
+            // applications déjà installées, qui ne la lisent pas, gardent
+            // exactement le comportement d'aujourd'hui.
+            'mode_paiements_livraison' => ModePaiement::listePourDemandeLivraison(),
             'type_livraisons' => TypeLivraison::liste(),
             'unites' => UniteProduit::liste(),
             'pays' => Pays::liste(),
@@ -95,6 +100,8 @@ class HomeController extends Controller
                     'nom_etablissement' => $config->nom_etablissement ?? '',
                     'nom_pdv'           => $config->nom_pdv ?? '',
                     'tva'               => $config->tva ?? 0,
+                    // La TVA s'applique-t-elle au transport ? (point 5)
+                    'tva_transport'     => (int) ($config->tva_transport ?? 0),
                     'devise'            => $config->devise ?? 'FCFA',
                 ],
             ]);
@@ -120,9 +127,30 @@ class HomeController extends Controller
             if ($user->id > 0) {
                 $client = Client::lireSurUser($user->id);
                 $config = Configuration::find(1);
-                $retour->tva = $client->applique_tva == true ? $config->tva : 0;
+                // TVA marchandise propre au client (10/09/2026) : appliquée par défaut, retirable.
+                $retour->tva = \Help::tauxTvaClient($client);
+                // La TVA s'applique-t-elle au transport ? L'application
+                // affiche la ligne ; le montant vient toujours du serveur.
+                // Transport taxé POUR CE CLIENT (configuration et dispense propre au client).
+                $retour->tvaTransport = \Help::tauxTvaTransportClient($client) > 0 ? 1 : 0;
+                // AIRSI : taux pour ce client (0 s'il est au réel), pour l'afficher dans le panier.
+                $retour->tauxAirsi = \Help::soumisAirsi($client) ? \Help::tauxAirsi() : 0;
                 $retour->nombrePoint = $client->point;
                 $retour->montantPoint = $config->montant_point;
+                // Avance disponible du client (point 19) : déduite d'elle-même
+                // de ses commandes réglées en agence.
+                $retour->soldeAvance = \App\Services\Avances::soldeDisponible($client);
+                // Crédits à régler en agence (10/09/2026) : dû, payé, en attente
+                // de validation, reste — le tableau de bord du mobile les affiche
+                // comme le site.
+                $retour->creditsEnAgence = \App\Services\Avances::creditsEnAgenceDetail($client);
+                // PLANCHER DE PAIEMENT, transmis à l'application.
+                //
+                // Sans lui, le mobile afficherait un total que le serveur ne
+                // retiendra pas : l'écran annoncerait 0 F pendant que la
+                // commande serait enregistrée à 1 000 F. Les deux calculs
+                // doivent partir de la même règle.
+                $retour->montantMinimum = $config->montant_minimum_a_payer ?? 0;
                 $retour->devise = $config->devise;
                 $retour->code = 200;
                 $retour->message = 'ok';

@@ -6,7 +6,6 @@ import 'package:date_field/date_field.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:mon_gravier_com/globale.dart';
@@ -18,6 +17,7 @@ import 'package:mon_gravier_com/models/adresse_de_livraison.dart';
 import 'package:mon_gravier_com/screens/edition_adresse/edition_adresse_screen.dart';
 import 'package:select_searchable_list/select_searchable_list.dart';
 
+import '../../components/bouton_retour.dart';
 import '../../constants.dart';
 import '../cart/components/check_out_card.dart';
 
@@ -315,56 +315,47 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
       appBar: AppBar(
         title: const Text(
           "Autres Informations",
-          style: TextStyle(color: Colors.black),
         ),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       body: Container(
               width: double.infinity,
               height: heightOfScreen(context),
-              decoration: const BoxDecoration(
-                image: DecorationImage(
-                  image: AssetImage("assets/images/bg.jpg"),
-                  fit: BoxFit.cover,
-                  opacity: 0.1,
-                ),
-              ),
               child: ListView(
                 physics: const BouncingScrollPhysics(),
                 children: [
                   addVerticalSpace(20),
                   if (_montantTotal > _montantMaxLigne) ...[
-                    Row(
-                      mainAxisAlignment: mainCenter,
-                      crossAxisAlignment: crossCenter,
-                      children: [
-                        const Icon(Icons.info, color: redColor, size: 30),
-                        addHorizontalSpace(10),
-                        Text(
-                          "Pour les montants supérieur à ${formaterMontant(_montantMaxLigne)}, \nvous devez: faire un virement bancaire, \npayer en agence, \neffectuer plusieurs commandes",
-                          style: const TextStyle(color: redColor, fontSize: 12),
-                        )
-                      ],
+                    // C'est une CONTRAINTE de paiement, pas une erreur : elle
+                    // s'affichait en rouge vif derriere un pictogramme de
+                    // 30 px, et le texte portait ses propres retours a la
+                    // ligne, qui tombaient n'importe ou selon la largeur.
+                    Container(
+                      padding: const EdgeInsets.all(kSpaceMd),
+                      decoration: BoxDecoration(
+                        color: kWarningSoftColor,
+                        borderRadius: BorderRadius.circular(kRadiusMd),
+                        border: Border.all(
+                            color: kWarningColor.withValues(alpha: 0.25)),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.info_outline,
+                              color: kWarningColor, size: 18),
+                          const SizedBox(width: kSpaceMd),
+                          Expanded(
+                            child: Text(
+                              "Au-dela de ${formaterMontant(_montantMaxLigne)}, "
+                              "le paiement en ligne n'est pas possible. Reglez "
+                              "par virement bancaire, en agence, ou repartissez "
+                              "votre commande en plusieurs fois.",
+                              style: kCorpsSecondaireStyle,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     addVerticalSpace(10),
                   ],
@@ -373,7 +364,7 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
                       padding: const EdgeInsets.all(8.0),
                       child: DropDownTextField(
                         textEditingController: typeLivraisonController,
-                        title: 'Type de livraison',
+                        title: 'Type de livraison *',
                         hint: 'Choisir votre type de livraison',
                         options: {
                           for (var p in _listTypeLivraison)
@@ -396,11 +387,12 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
                         padding: const EdgeInsets.all(8.0),
                         child: DateTimeFormField(
                           decoration: const InputDecoration(
-                            hintStyle: TextStyle(color: Colors.black45),
-                            errorStyle: TextStyle(color: Colors.redAccent),
-                            border: OutlineInputBorder(),
+                                                                                    border: OutlineInputBorder(),
                             suffixIcon: Icon(Icons.event_note),
-                            labelText: 'Date de livraison',
+                            labelText: 'Date de livraison *',
+                            // Le délai toléré (lot 81, 15/09/2026), lu en choisissant la date.
+                            helperText: kMentionDelaiLivraison,
+                            helperMaxLines: 3,
                           ),
                           initialValue: DateTime.parse(_date),
                           use24hFormat: true,
@@ -419,7 +411,7 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
                       padding: const EdgeInsets.all(8.0),
                       child: DropDownTextField(
                         textEditingController: adresseController,
-                        title: 'Adresse de livraison',
+                        title: 'Adresse de livraison *',
                         hint: 'Choisir votre adresse de livraison',
                         options: {
                           for (var p in _listAdresse)
@@ -446,7 +438,7 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
                       padding: const EdgeInsets.all(8.0),
                       child: DropDownTextField(
                         textEditingController: modePaiementController,
-                        title: 'Mode de paiement',
+                        title: 'Mode de paiement *',
                         hint: 'Choisir un mode de paiement',
                         options: {
                           for (var p in _listModePaiement)
@@ -468,7 +460,7 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
                         padding: const EdgeInsets.all(8.0),
                         child: DropDownTextField(
                           textEditingController: moyenPaiementController,
-                          title: 'Moyen de paiement',
+                          title: 'Moyen de paiement *',
                           hint: 'Choisir un moyen de paiement',
                           options: {
                             for (var p in _listMoyenPaiement)
@@ -494,7 +486,7 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
                           textInputAction: TextInputAction.next,
                           textCapitalization: TextCapitalization.characters,
                           decoration: const InputDecoration(
-                            labelText: "Banque",
+                            labelText: "Banque *",
                             hintText: "Saisissez la banque ici...",
                           ),
                         ),
@@ -507,7 +499,7 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
                           textInputAction: TextInputAction.next,
                           textCapitalization: TextCapitalization.characters,
                           decoration: const InputDecoration(
-                            labelText: "Numéro de compte",
+                            labelText: "Numéro de compte *",
                             hintText: "Saisissez le N° de compte ici...",
                           ),
                         ),
@@ -519,7 +511,7 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
                           controller: refController,
                           textInputAction: TextInputAction.next,
                           decoration: const InputDecoration(
-                            labelText: "Référence opérations",
+                            labelText: "Référence opérations *",
                             hintText: "Saisissez la référence ici...",
                           ),
                         ),
@@ -528,11 +520,9 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
                         padding: const EdgeInsets.all(8.0),
                         child: DateTimeFormField(
                           decoration: const InputDecoration(
-                            hintStyle: TextStyle(color: Colors.black45),
-                            errorStyle: TextStyle(color: Colors.redAccent),
-                            border: OutlineInputBorder(),
+                                                                                    border: OutlineInputBorder(),
                             suffixIcon: Icon(Icons.event_note),
-                            labelText: 'Date de l\'opération',
+                            labelText: 'Date de l\'opération *',
                           ),
                           initialValue: DateTime.parse(
                               DateFormat('yyyy-MM-dd').format(DateTime.now())),
@@ -554,15 +544,16 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
                           controller: recuController,
                           textInputAction: TextInputAction.next,
                           decoration: const InputDecoration(
-                            labelText: "Reçu de l'opération",
+                            labelText: "Reçu de l'opération *",
                             hintText: "Chargez le reçu ici...",
                           ),
                         ),
                       ),
                     ],
                   ],
-                  if (paniers.first.product.type_affaire == VENTE &&
-                      user.code_parrain == ENTREPRISE) ...[
+                  // Le bon de commande interne : pour une ENTREPRISE, vente ET
+                  // location (09/09/2026, même règle que le site).
+                  if (user.code_parrain == ENTREPRISE) ...[
                     Padding(
                       padding: const EdgeInsets.all(8.0),
                       child: TextFormField(
@@ -570,7 +561,7 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
                         controller: numBlController,
                         textInputAction: TextInputAction.next,
                         decoration: const InputDecoration(
-                          labelText: "N°Bon de commande interne",
+                          labelText: "N° Bon de commande interne *",
                           hintText: "Saisissez le numéro ici...",
                         ),
                       ),
@@ -584,7 +575,7 @@ class _ChoixAdresseScreenState extends State<ChoixAdresseScreen> {
                         controller: blController,
                         textInputAction: TextInputAction.next,
                         decoration: const InputDecoration(
-                          labelText: "Votre bon de commande",
+                          labelText: "Votre bon de commande *",
                           hintText: "Chargez le bon de cde ici...",
                         ),
                       ),

@@ -57,7 +57,10 @@
                 <div class="col-lg-4-5">
                     <div class="shop-product-fillter">
                         <div class="totall-product">
-                            <p>Nous Avons trouvé <strong class="text-brand"> {{$produits->count()}} </strong> Articles pour vous!</p>
+                            {{-- total() et non count() : depuis la pagination, count()
+                                 ne compte que la page affichee, et la phrase annoncerait
+                                 20 articles sur une categorie qui en compte 60. --}}
+                            <p>Nous Avons trouvé <strong class="text-brand"> {{$produits->total()}} </strong> Articles pour vous!</p>
                         </div>
                         <div class="sort-by-product-area">
 
@@ -66,17 +69,28 @@
                                     <div class="sort-by">
                                         <span><i class="fi-rs-apps-sort"></i>Trier par :</span>
                                     </div>
+                                    {{-- Le tri EN COURS, pas un libelle fige. L'entete
+                                         affichait « Tendance » en dur : le visiteur ne
+                                         pouvait pas savoir sur quoi la liste etait
+                                         classee. --}}
                                     <div class="sort-by-dropdown-wrap">
-                                        <span> Tendance <i class="fi-rs-angle-small-down"></i></span>
+                                        <span> {{ $tris[$tri] }} <i class="fi-rs-angle-small-down"></i></span>
                                     </div>
                                 </div>
                                 <div class="sort-by-dropdown">
                                     <ul>
-                                        <li><a class="active" href="#">Tendance</a></li>
-                                        <li><a href="#">Prix croissant</a></li>
-                                        <li><a href="#">Prix décroissant</a></li>
-                                        <li><a href="#">Date</a></li>
-                                        <li><a href="#">Meilleure note</a></li>
+                                        {{-- Les cinq entrees pointaient sur « # » : le menu
+                                             s'ouvrait, se refermait, et ne triait rien.
+                                             Chacune porte maintenant son critere, en
+                                             conservant le filtre par prix deja pose. --}}
+                                        @foreach ($tris as $cle => $libelle)
+                                            <li>
+                                                <a class="{{ $tri === $cle ? 'active' : '' }}"
+                                                   href="{{ request()->fullUrlWithQuery(['tri' => $cle, 'page' => null]) }}">
+                                                    {{ $libelle }}
+                                                </a>
+                                            </li>
+                                        @endforeach
                                     </ul>
                                 </div>
                             </div>
@@ -123,7 +137,7 @@
                                         <div>
                                             {{-- <span class="font-small text-muted">By <a href="vendor-details-1.html">NestFood</a></span> --}}
                                         </div>
-                                        <div class="product-card-bottom">
+                                        <div class="product-card-bottom d-flex flex-column">
                                             <div class="product-price">
                                                 @if(isset($prixPerso[$produit->id]))
                                                     <span> {{number_format($prixPerso[$produit->id],0,'','.')}} fcfa</span>
@@ -147,23 +161,21 @@
 
                     </div>
                     <!--product grid-->
-                    {{-- <div class="pagination-area mt-20 mb-20">
-                        <nav aria-label="Page navigation example">
-                            <ul class="pagination justify-content-start">
-                                <li class="page-item">
-                                    <a class="page-link" href="#"><i class="fi-rs-arrow-small-left"></i></a>
-                                </li>
-                                <li class="page-item"><a class="page-link" href="#">1</a></li>
-                                <li class="page-item active"><a class="page-link" href="#">2</a></li>
-                                <li class="page-item"><a class="page-link" href="#">3</a></li>
-                                <li class="page-item"><a class="page-link dot" href="#">...</a></li>
-                                <li class="page-item"><a class="page-link" href="#">6</a></li>
-                                <li class="page-item">
-                                    <a class="page-link" href="#"><i class="fi-rs-arrow-small-right"></i></a>
-                                </li>
-                            </ul>
-                        </nav>
-                    </div> --}}
+                {{-- UNE PAGINATION QUI DIT LA VERITE.
+
+                     La page annoncait « 1 2 3 ... 6 » en dur, quel que soit le nombre
+                     d'articles : six pages pour quatre produits, et aucun lien ne menait
+                     nulle part. Le bloc entier avait fini par etre mis en commentaire.
+
+                     Attention en le modifiant : un commentaire Blade NE S'IMBRIQUE PAS.
+                     Ouvrir un second commentaire a l'interieur d'un premier fait fermer
+                     celui-ci trop tot ; tout ce qui suit, marqueur de fermeture compris,
+                     s'affiche alors en clair dans la page. --}}
+                <div class="pagination-area mt-20 mb-20">
+                    <nav aria-label="Pagination des produits">
+                        {{ $produits->onEachSide(1)->links() }}
+                    </nav>
+                </div>
                     {{-- Section "Promo du jour" de démonstration du thème (produits factices,
                          textes en anglais et prix en dollars) désactivée. --}}
                     @if(false)
@@ -366,7 +378,10 @@
                     @endif
                     <!--End Deals-->
                 </div>
-                @include('client.categorieEtFiltreur')
+                {{-- Le filtre par prix n'a de sens que sur cette page : la barre
+                     laterale est partagee avec trois autres vues, ou il ne
+                     filtrerait rien. On le demande explicitement. --}}
+                @include('client.categorieEtFiltreur', ['filtrePrix' => true])
             </div>
         </div>
     </main>

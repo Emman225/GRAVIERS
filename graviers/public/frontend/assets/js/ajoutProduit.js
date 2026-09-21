@@ -50,7 +50,7 @@
         data: formData,
         method: "POST",
         success: function(data) {
-            alert(data);
+            alerte(data);
         },
         error: function(xhr, status, error) {
             console.error('Erreur:', error);
@@ -505,17 +505,17 @@ function soumettre(form){
     // ecoute de la réponse de la requete
     console.log(ajax);
     ajax.onreadystatechange = function(){
-        alert('ok')
+        /* alert('ok') de débogage retiré (10/09/2026) */
         // si la requete a bien fonctionné
         if(this.readyState == 4 && this.status == 200){
             // conversion en objet javascript
             let data = JSON.parse(this.responseText);
 
-            alert(data.status + ' - ' + data.message)
+            alerte(data.status + ' - ' + data.message)
         }
 
         if(this.status == 500){
-            alert(this.responseText);
+            alerte(this.responseText);
         }
     }
 
@@ -529,6 +529,29 @@ function soumettre(form){
     return false
 }
 // import axios from "axios";
+/**
+ * LE RESTANT SE CALCULE, IL NE SE DEVINE PAS.
+ *
+ * Il etait ajuste a la main a chaque ajout ou retrait de camion, en soustrayant
+ * la capacite. Depuis que le gestionnaire peut MODIFIER la quantite confiee a
+ * chaque camion, cette arithmetique-la ne tient plus : le restant se lit sur la
+ * somme reellement saisie.
+ */
+function recalculerRestantLivraison(detail){
+
+    let demande = parseFloat($('#qte'+detail).attr('data-demande')) || 0;
+    let somme = 0;
+
+    $('#listCar'+detail).find('input[name="qte[]"]').each(function(){
+        somme += parseFloat($(this).val()) || 0;
+    });
+
+    let restant = demande - somme;
+    if(restant < 0) restant = 0;
+
+    $('#qte'+detail).html(restant);
+}
+
 function vehiculeSelected(id,detail){
 
     $.ajax({
@@ -585,21 +608,19 @@ function vehiculeSelected(id,detail){
                 }else{
                     $('.erreur').html('')
                     if(qte < 0){
+                        // Le camion est plus grand que ce qui reste : il n'emporte
+                        // que le reste.
                         qteEnlevee = data.capacite + qte
-                        console.log('moin')
-                        $('#qte'+data.detail).html('')
-                        $('#qte'+data.detail).html(0)
-                        $('.qte'+data.detail).append('<h4 class="card-title mb-4">Quantité restant:'+0+'</h4>')
                     }else{
-                        console.log('sup ou égale')
                         // $('#listCar'+data.detail).append('<tr><td class="text-center"><input type="hidden" id="id[]" name="id[]" value="'+data.idCar+'">'+data.marque+'</td><td class="text-center">'+data.capacite+'</td><td class="text-center">'+data.immatriculation+'</td><td class="text-center"><a onclick="supprimerUneLigne('+data.capacite+','+data.detail+','+data.vehicule_id+','+qte+')"  class="btn btn-danger">x</a></td> <td style="display: none;"> '+data.vehicule_id+'</td></tr>')
                         // $('#listCar'+data.detail).append('<tr><td class="text-center"><input type="hidden" id="id[]" name="id[]" value="'+data.idCar+'">'+data.marque+'</td><td class="text-center">'+data.capacite+'</td><td class="text-center">'+data.immatriculation+'</td><td class="text-center"><a onclick="supprimerUneLigne('+data.capacite+','+data.detail+','+data.vehicule_id+','+qte+')"  class="btn btn-danger">x</a></td> <td style="display: none;"> '+data.vehicule_id+'</td></tr>')
-                        // = data.capacite;
-                        $('#qte'+data.detail).html('')
-                        $('#qte'+data.detail).html(qte)
-                        $('.qte'+data.detail).append('<h4 class="card-title mb-4">Quantité restant:'+qte+'</h4>')
+                        qteEnlevee = data.capacite
                     }
-                    $('#listCar'+data.detail).append('<tr><td class="text-center"><input type="hidden" id="id[]" name="id[]" value="'+data.idCar+'">'+data.marque+'</td><td class="text-center">'+data.capacite+'</td><td class="text-center">'+data.immatriculation+'</td><td class="text-center"><a onclick="supprimerUneLigne('+data.capacite+','+data.detail+','+data.vehicule_id+','+qteEnlevee+')"  class="btn btn-danger">x</a></td> <td style="display: none;"> '+data.vehicule_id+'</td></tr>')
+                    // Le champ « quantite » suit son camion dans la meme ligne :
+                    // id[] et qte[] arrivent donc au serveur dans le meme ordre,
+                    // et retirer une ligne les retire tous les deux.
+                    $('#listCar'+data.detail).append('<tr><td class="text-center"><input type="hidden" id="id[]" name="id[]" value="'+data.idCar+'">'+data.marque+'</td><td class="text-center">'+data.capacite+'</td><td class="text-center">'+data.immatriculation+'</td><td class="text-center"><input type="number" min="0" step="any" class="form-control form-control-sm text-center" name="qte[]" value="'+qteEnlevee+'" oninput="recalculerRestantLivraison('+data.detail+')"></td><td class="text-center"><a onclick="supprimerUneLigne('+data.capacite+','+data.detail+','+data.vehicule_id+','+qteEnlevee+')"  class="btn btn-danger">x</a></td> <td style="display: none;"> '+data.vehicule_id+'</td></tr>')
+                    recalculerRestantLivraison(data.detail);
                     $('#button'+data.detail).attr('disabled', false);
 
                 }
@@ -618,7 +639,7 @@ function vehiculeSelected(id,detail){
 
 function deleteRow(matricule,capacite){
 
-    alert('ok');
+    /* alert('ok') de débogage retiré (10/09/2026) */
 
     console.log(parseInt($('#qte').text())+capacite)
 
@@ -762,9 +783,10 @@ function updateProductList(products) {
     // Attacher les gestionnaires d'événements pour la suppression
     $('.delete-product').on('click', function(e) {
         e.preventDefault();
-        if (confirm('Voulez vous supprimer ce produit?')) {
-            deleteProduct($(this).data('id'));
-        }
+        var id = $(this).data('id');
+        // SweetAlert2, jamais confirm() natif (10/09/2026).
+        confirmer('Voulez-vous supprimer ce produit ?', { title: 'Retirer du panier', confirmText: 'Oui, supprimer', danger: true })
+            .then(function (ok) { if (ok) { deleteProduct(id); } });
     });
 }
 
@@ -783,7 +805,7 @@ function showError(message) {
             confirmButtonColor: '#ea580c',
         });
     } else {
-        alert(message);
+        alerte(message);
     }
 }
 

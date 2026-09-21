@@ -21,5 +21,9 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Schema::defaultStringLength(255);
+
+        // 12/09/2026 : les images du catalogue sont servies par le SITE ; son adresse
+        // vient du .env (URL_SITE), plus jamais du code.
+        \Help::$URL_BASE_FICHIER = rtrim((string) config('constantes.url_site'), '/') . '/storage/';
     }
 }

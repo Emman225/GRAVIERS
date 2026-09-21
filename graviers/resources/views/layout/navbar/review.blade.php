@@ -74,7 +74,7 @@
                             </ul>
                         </td>
                         <td>10.03.2020</td>
-                        <td class="text-end">
+                        <td class="text-nowrap text-end">
                             <a href="#" class="btn btn-md rounded font-sm">Detail</a>
                             <div class="dropdown">
                                 <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm"> <i class="material-icons md-more_horiz"></i> </a>
@@ -107,7 +107,7 @@
                             </ul>
                         </td>
                         <td>04.12.2019</td>
-                        <td class="text-end">
+                        <td class="text-nowrap text-end">
                             <a href="#" class="btn btn-md rounded font-sm">Detail</a>
                             <div class="dropdown">
                                 <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm"> <i class="material-icons md-more_horiz"></i> </a>
@@ -140,7 +140,7 @@
                             </ul>
                         </td>
                         <td>25.05.2020</td>
-                        <td class="text-end">
+                        <td class="text-nowrap text-end">
                             <a href="#" class="btn btn-md rounded font-sm">Detail</a>
                             <div class="dropdown">
                                 <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm"> <i class="material-icons md-more_horiz"></i> </a>
@@ -173,7 +173,7 @@
                             </ul>
                         </td>
                         <td>01.06.2020</td>
-                        <td class="text-end">
+                        <td class="text-nowrap text-end">
                             <a href="#" class="btn btn-md rounded font-sm">Detail</a>
                             <div class="dropdown">
                                 <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm"> <i class="material-icons md-more_horiz"></i> </a>
@@ -206,7 +206,7 @@
                             </ul>
                         </td>
                         <td>13.03.2020</td>
-                        <td class="text-end">
+                        <td class="text-nowrap text-end">
                             <a href="#" class="btn btn-md rounded font-sm">Detail</a>
                             <div class="dropdown">
                                 <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm"> <i class="material-icons md-more_horiz"></i> </a>
@@ -239,7 +239,7 @@
                             </ul>
                         </td>
                         <td>21.02.2020</td>
-                        <td class="text-end">
+                        <td class="text-nowrap text-end">
                             <a href="#" class="btn btn-md rounded font-sm">Detail</a>
                             <div class="dropdown">
                                 <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm"> <i class="material-icons md-more_horiz"></i> </a>
@@ -272,7 +272,7 @@
                             </ul>
                         </td>
                         <td>23.03.2020</td>
-                        <td class="text-end">
+                        <td class="text-nowrap text-end">
                             <a href="#" class="btn btn-md rounded font-sm">Detail</a>
                             <div class="dropdown">
                                 <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm"> <i class="material-icons md-more_horiz"></i> </a>
@@ -305,7 +305,7 @@
                             </ul>
                         </td>
                         <td>20.02.2020</td>
-                        <td class="text-end">
+                        <td class="text-nowrap text-end">
                             <a href="#" class="btn btn-md rounded font-sm">Detail</a>
                             <div class="dropdown">
                                 <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm"> <i class="material-icons md-more_horiz"></i> </a>
@@ -338,7 +338,7 @@
                             </ul>
                         </td>
                         <td>10.03.2020</td>
-                        <td class="text-end">
+                        <td class="text-nowrap text-end">
                             <a href="#" class="btn btn-md rounded font-sm">Detail</a>
                             <div class="dropdown">
                                 <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm"> <i class="material-icons md-more_horiz"></i> </a>

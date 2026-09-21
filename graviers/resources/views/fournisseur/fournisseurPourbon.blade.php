@@ -10,7 +10,7 @@
     <div class="content-header">
         <h2 class="content-title">Liste des fournisseurs </h2>
         <div>
-            <a href="{{ route('show.registerSeller') }}" class="btn btn-primary"><i class="material-icons md-plus"></i> Ajouter Nouveau</a>
+            <a href="{{ route('show.registerSeller') }}" class="btn btn-primary"><i class="material-icons md-plus"></i> Ajouter nouveau</a>
         </div>
     </div>
     <div class="card mb-4">
@@ -67,8 +67,8 @@
                                     <p> {{$fournisseur->contact1}} </p>
                                     <p> {{$fournisseur->contact2}} </p>
                                 </td>
-                                <td class="text-end">
-                                    <a href="{{route('show.bonParFournisseur',$fournisseur)}}" class="btn btn-sm btn-brand rounded font-sm mt-15">Détails des enlèvements</a>
+                                <td class="text-nowrap text-end">
+                                    <a href="{{route('show.bonParFournisseur',$fournisseur)}}" class="btn btn-sm btn-info rounded font-sm mt-15" title="Détails des enlèvements"><i class="material-icons md-local_shipping"></i></a>
                                 </td>
 
                             </tr>

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:mon_gravier_com_livreur/globale.dart';
 import 'package:mon_gravier_com_livreur/models/Cart.dart';
+import '../../../components/bouton_retour.dart';
+import '../../../constants.dart';
 import '../../models/Product.dart';
 import 'components/product_description.dart';
 import 'components/product_images.dart';
@@ -43,30 +44,11 @@ class _DetailsScreenState extends State<DetailsScreen> {
     return Scaffold(
       extendBody: true,
       extendBodyBehindAppBar: true,
-      backgroundColor: const Color(0xFFF5F6F9),
+      backgroundColor: kSurfaceMutedColor,
       appBar: AppBar(
         title: const Text("Détails du produit"),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
         actions: [
           Row(
             children: [
@@ -152,7 +134,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
                   afficherErreur("Veuillez saisir une quantité valide");
                 }
               },
-              child: const Text("Ajouter au pannier"),
+              child: const Text("Ajouter au panier"),
             ),
           ),
         ),

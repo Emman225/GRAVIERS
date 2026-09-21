@@ -16,8 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.21+22
-
+version: 1.0.0+1
 environment:
   sdk: ">=3.1.0 <4.0.0"
 
@@ -51,7 +50,6 @@ dependencies:
   carousel_slider: ^5.0.0
   flutter_easyloading: ^3.0.5
   item_count_number_button: ^1.9.2
-  amazon_like_filter: ^1.0.0
   select_searchable_list: ^0.1.05
   location_picker_flutter_map: ^2.0.0
   buttons_tabbar: ^1.3.10
@@ -124,6 +122,10 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
+    # Les fichiers .ttf sont deja embarques par la section « fonts » ci-dessous,
+    # mais rootBundle.load() ne les atteint de facon garantie que s'ils sont
+    # aussi declares comme ressources : le PDF les charge par ce chemin.
+    - assets/fonts/muli/
   fonts:
     - family: Muli
       fonts:

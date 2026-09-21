@@ -54,7 +54,7 @@
                         <tr>
                             <th class="text-center">N° Livraison</th>
                             <th class="text-center">Date Livraison</th>
-                            <th class="text-center">Code Livreur</th>
+                            <th class="text-center">Code livreur</th>
                             <th class="text-center">Nom Livreur</th>
                             <th class="text-center">N° Cmd liée</th>
                             <th class="text-center">Client final</th>
@@ -65,7 +65,11 @@
                             <th class="text-end">Forfait base</th>
                             <th class="text-end">Frais km</th>
                             <th class="text-end">Total dû livreur</th>
-                            <th class="text-end">Montant Payé</th>
+                            {{-- D ou vient la remuneration : la grille du livreur, ou le
+                                 repli sur son mode de tarification. Le montant seul ne
+                                 permettait pas de les distinguer. --}}
+                            <th class="text-center">Tarif appliqué</th>
+                            <th class="text-end">Montant payé</th>
                             <th class="text-end">Reste à Payer</th>
                             <th class="text-center">Statut</th>
                             <th class="text-center">Date paiement</th>
@@ -81,7 +85,7 @@
                             @endphp
                             <tr class="{{ $alerte ? 'table-warning' : '' }}">
                                 <td class="text-center"><strong>{{ $l->numero_liv }}</strong></td>
-                                <td class="text-center">{{ $l->date_livraison ? Carbon::parse($l->date_livraison)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date_livraison ? \Help::dateHeure($l->date_livraison) : '-' }}</td>
                                 <td class="text-center">{{ $l->code_livreur }}</td>
                                 <td>{{ $l->nom_livreur }}</td>
                                 <td class="text-center">{{ $l->numero_commande }}</td>
@@ -97,15 +101,20 @@
                                 <td class="text-end">{{ $l->forfait_base ? Help::formatNombre($l->forfait_base, true) : '-' }}</td>
                                 <td class="text-end">{{ $l->frais_km ? Help::formatNombre($l->frais_km, true) : '-' }}</td>
                                 <td class="text-end"><strong>{{ Help::formatNombre($l->total_du, true) }}</strong></td>
+                                <td class="text-center">
+                                    <span class="badge {{ $l->vient_grille ? 'bg-success' : ($l->source_tarif === 'Tarif livreur' ? 'bg-warning text-dark' : 'bg-light text-muted border') }}">
+                                        {{ $l->source_tarif }}
+                                    </span>
+                                </td>
                                 <td class="text-end text-success">{{ Help::formatNombre($l->montant_paye, true) }}</td>
                                 <td class="text-end text-danger"><strong>{{ Help::formatNombre($l->reste_a_payer, true) }}</strong></td>
                                 <td class="text-center"><span class="badge {{ $badge }}">{{ $statut }}</span></td>
-                                <td class="text-center">{{ $l->date_paiement ? Carbon::parse($l->date_paiement)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date_paiement ? \Help::dateHeure($l->date_paiement) : '-' }}</td>
                                 <td>{{ $l->observations ?? '-' }}</td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="18" class="text-center text-muted">
+                                <td colspan="19" class="text-center text-muted">
                                     Aucune livraison enregistrée.
                                 </td>
                             </tr>
@@ -118,6 +127,7 @@
                                 <td class="text-end">{{ Help::formatNombre($totalForfait, true) }}</td>
                                 <td class="text-end">{{ Help::formatNombre($totalKm, true) }}</td>
                                 <td class="text-end">{{ Help::formatNombre($totalDu, true) }}</td>
+                                <td></td>
                                 <td class="text-end text-success">{{ Help::formatNombre($totalPaye, true) }}</td>
                                 <td class="text-end text-danger">{{ Help::formatNombre($totalReste, true) }}</td>
                                 <td colspan="3"></td>

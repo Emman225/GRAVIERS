@@ -6,6 +6,11 @@ class ConfigModel {
   List<Bannieres>? bannieres;
   List<Produits>? produits;
   List<ModePaiements>? modePaiements;
+  // Les modes proposes sur une demande de livraison : les memes operateurs
+  // que ci-dessus, plus le reglement au guichet. Une liste separee, car
+  // l'ecran de commande n'utilise `modePaiements` que pour designer
+  // l'operateur d'un paiement EN LIGNE, ou le guichet n'a pas de sens.
+  List<ModePaiements>? modePaiementsLivraison;
   List<Unites>? unites;
   List<TypeLivraisons>? typeLivraisons;
   List<Pays>? pays;
@@ -19,6 +24,7 @@ class ConfigModel {
        this.bannieres,
        this.produits,
        this.modePaiements,
+       this.modePaiementsLivraison,
         this.typeLivraisons,
        this.pays,
         this.unites,
@@ -59,6 +65,16 @@ class ConfigModel {
       modePaiements = <ModePaiements>[];
       json['mode_paiements'].forEach((v) {
         modePaiements!.add(ModePaiements.fromJson(v));
+      });
+    }
+    // Cle absente si le serveur n'est pas encore a jour : l'ecran de demande
+    // retombe alors sur `modePaiements`, c'est-a-dire sur le comportement
+    // d'avant. Une version installee ne casse jamais parce que le serveur a
+    // pris de l'avance, ni l'inverse.
+    if (json['mode_paiements_livraison'] != null) {
+      modePaiementsLivraison = <ModePaiements>[];
+      json['mode_paiements_livraison'].forEach((v) {
+        modePaiementsLivraison!.add(ModePaiements.fromJson(v));
       });
     }
     if (json['type_livraisons'] != null) {
@@ -108,6 +124,10 @@ class ConfigModel {
     if (modePaiements != null) {
       data['mode_paiements'] =
           modePaiements!.map((v) => v.toJson()).toList();
+    }
+    if (modePaiementsLivraison != null) {
+      data['mode_paiements_livraison'] =
+          modePaiementsLivraison!.map((v) => v.toJson()).toList();
     }
     if (this.unites != null) {
       data['unites'] = this.unites!.map((v) => v.toJson()).toList();

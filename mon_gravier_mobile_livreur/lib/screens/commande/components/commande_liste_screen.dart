@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:mon_gravier_com_livreur/constants.dart';
 
 import 'package:mon_gravier_com_livreur/helper/constants.dart';
 import 'package:mon_gravier_com_livreur/screens/details_commande/details_commande_screen.dart';
 import 'package:searchable_listview/searchable_listview.dart';
 
+import '../../../components/etat_vide.dart';
 import '../../../globale.dart';
 import '../../../models/Commande.dart';
 
@@ -20,13 +20,6 @@ class CommandeListeScreen extends StatelessWidget {
       body: Container(
         width: double.infinity,
         height: heightOfScreen(context),
-        decoration: const BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage("assets/images/bg.jpg"),
-            fit: BoxFit.cover,
-            opacity: 0.1,
-          ),
-        ),
         child: Padding(
           padding: const EdgeInsets.all(15.0),
           child: SearchableList<DetailsCommande>(
@@ -90,7 +83,7 @@ class CommandeListeScreen extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              'Paiement: ${c.modePaiement}',
+                              'Paiement : ${c.modePaiement}',
                               style: const TextStyle(
                                 color: Colors.black,
                                 fontWeight: FontWeight.bold,
@@ -110,15 +103,12 @@ class CommandeListeScreen extends StatelessWidget {
                 ),
               ),
             ),
-            emptyWidget: const Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.error,
-                  color: Colors.red,
-                ),
-                Text('Aucune donnée'),
-              ],
+            emptyWidget: const EtatVide(
+              compact: true,
+              icone: Icons.receipt_long_outlined,
+              titre: "Aucune commande ici",
+              message:
+                  "Les commandes de cet état apparaîtront dans cette liste.",
             ),
             initialList: commandes,
             filter: (p0) {
@@ -129,16 +119,10 @@ class CommandeListeScreen extends StatelessWidget {
                       c.modePaiement.toString().contains(p0)))
                   .toList();
             },
-            inputDecoration: InputDecoration(
-              labelText: "Recherchez...",
-              fillColor: Colors.white,
-              focusedBorder: OutlineInputBorder(
-                borderSide: const BorderSide(
-                  color: kPrimaryColor,
-                  width: 1.0,
-                ),
-                borderRadius: BorderRadius.circular(10.0),
-              ),
+            inputDecoration: const InputDecoration(
+              hintText: "Rechercher...",
+              floatingLabelBehavior: FloatingLabelBehavior.never,
+              prefixIcon: Icon(Icons.search, size: 20),
             ),
           ),
         ),

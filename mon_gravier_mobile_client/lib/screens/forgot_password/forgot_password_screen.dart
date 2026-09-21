@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../components/bouton_retour.dart';
 import '../../components/continuer_san_compte.dart';
 import '../../helper/constants.dart';
 import 'components/forgot_pass_form.dart';
@@ -13,27 +14,8 @@ class ForgotPasswordScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Mot de passe oublié"),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       body: SingleChildScrollView(
         child: Padding(

@@ -70,7 +70,7 @@
                                 @if ($commande)
                                     <div class="ticket-produit__commande">
                                         Commande <strong>{{ $commande->numero }}</strong>
-                                        du {{ Carbon::parse($commande->created_at)->format('d/m/Y') }}
+                                        du {{ \Help::dateHeure($commande->created_at) }}
                                         @if ($detail->etat_livraison === 'LIVREE')
                                             <span class="ticket-livre"><i class="fi-rs-check"></i> livré</span>
                                         @endif
@@ -89,7 +89,7 @@
                                 <strong>Un ticket est déjà ouvert pour ce produit.</strong>
                                 <p>
                                     Objet : « {{ $ticket->objet }} », ouvert le
-                                    {{ Carbon::parse($ticket->created_at)->format('d/m/Y') }}.
+                                    {{ \Help::dateHeure($ticket->created_at) }}.
                                     Suivez son avancement depuis vos tickets ; inutile d'en ouvrir un second.
                                 </p>
                                 <a href="{{ route('client.mesTicketsSAV') }}" class="ticket-btn ticket-btn--principal">

@@ -82,6 +82,11 @@ class Commande extends Model
         return $this->montantHT()
             + (float) ($this->TvaCommande->montant ?? 0)
             + (float) ($this->cout_livraison_client ?? 0)
+            // TVA sur le transport (point 5, 07/09/2026), figée à la commande :
+            // le site la compte dans le dû, l'API doit dire le même reste.
+            + (float) ($this->tva_transport ?? 0)
+            // AIRSI figé sur la commande (10/09/2026) : fait partie du net à payer.
+            + (float) ($this->airsi ?? 0)
             - (float) ($this->remise ?? 0);
     }
 
@@ -170,7 +175,10 @@ class Commande extends Model
         adresse_livraison.complement_adresse as adresse,
         tva_commande.montant as montant_tva,
         bl_client.numero as numero_bl,
-        concat('$url',bl_client.fichier) as fichier_bl")
+        concat('$url',bl_client.fichier) as fichier_bl,
+        (SELECT COUNT(*) FROM paiement p
+           WHERE p.service = 'COMMANDE' AND p.service_id = commande.id AND p.statut = 1
+             AND p.agence_id IS NULL AND p.caissier_id IS NULL AND p.deleted_at IS NULL) as paye_en_ligne")
             ->orderBy('commande.id', 'desc')
             ->leftJoin('mode_paiement', 'mode_paiement.id', '=', 'commande.mode_paiement_id')
             ->leftJoin('adresse_livraison', 'adresse_livraison.id', '=', 'commande.adresse_livraison_id')

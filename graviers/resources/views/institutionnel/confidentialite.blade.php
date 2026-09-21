@@ -22,7 +22,7 @@
     <div class="page-inst__corps">
 
         <div class="page-inst__carte">
-            <h2><i class="material-icons md-badge"></i> 1. Qui traite vos données</h2>
+            <h2><i class="material-icons md-assignment_ind"></i> 1. Qui traite vos données</h2>
             <p>
                 Le responsable du traitement est <strong>{{ $raisonSociale }}</strong>,
                 exploitant de la plateforme accessible à l'adresse
@@ -30,7 +30,7 @@
             </p>
             <p>
                 Pour toute question relative à vos données personnelles, écrivez à
-                <a href="mailto:info@fneconnect.net">info@fneconnect.net</a> ou utilisez notre
+                <a href="mailto:{{ \Help::emailContact() }}">{{ \Help::emailContact() }}</a> ou utilisez notre
                 <a href="{{ route('contact') }}">formulaire de contact</a>.
             </p>
         </div>
@@ -132,7 +132,7 @@
         </div>
 
         <div class="page-inst__carte">
-            <h2><i class="material-icons md-cookie"></i> 7. Cookies</h2>
+            <h2><i class="material-icons md-info"></i> 7. Cookies</h2>
             <p>
                 Le site dépose les cookies strictement nécessaires à son fonctionnement : maintien de
                 votre session une fois connecté, conservation de votre panier d'une page à l'autre, et

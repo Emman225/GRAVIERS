@@ -11,7 +11,7 @@
         <meta property="og:url" content="" />
         <meta property="og:image" content="" />
         <!-- Favicon -->
-        <link rel="shortcut icon" type="image/x-icon" href="assets/imgs/theme/favicon.svg" />
+        @include('layout._favicon')
         <!-- Template CSS -->
         <script src="assets/js/vendors/color-modes.js"></script>
         <link href="assets/css/main.css?v=6.0" rel="stylesheet" type="text/css" />

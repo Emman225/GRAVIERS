@@ -21,6 +21,9 @@
 
                     </header>
                     <div class="card-body">
+                        <x-export-buttons table-id="liste"
+                                          filename="liste-des-agents"
+                                          title="Liste des agents" />
                         <div class="table-responsive">
                             <table id="liste" class="table table-striped">
                                 <thead >
@@ -48,7 +51,7 @@
                                         </td>
                                         <td> {{$agent->email}} </td>
 
-<td>
+<td class="text-nowrap">
     {{-- Rattachement à un guichet : c'est lui qui décide de l'agence à
          laquelle les encaissements de cette personne seront imputés. Il
          était auparavant choisi au moment de la saisie, ce qui permettait
@@ -63,7 +66,7 @@
                 </option>
             @endforeach
         </select>
-        <button type="submit" class="btn btn-sm btn-light rounded" title="Enregistrer l'affectation">
+        <button type="submit" class="btn btn-sm btn-success rounded" title="Enregistrer l'affectation">
             <i class="material-icons md-save"></i>
         </button>
     </form>
@@ -76,10 +79,10 @@
                                             <span>{{ Carbon::parse($agent->created_at)->format('d-m-Y'); }}</span>
 
                                         </td>
-                                        <td class="text-end">
+                                        <td class="text-nowrap text-end">
 
-                                                <a href="{{route('show.AgentUpdate',$agent)}}" class="btn btn-sm font-sm rounded btn-brand"> <i class="material-icons md-edit"></i> Modifier </a>
-                                                <a href="javascript:void(0)" class="btn btn-sm font-sm btn-light rounded" onclick="deleteAgentAction({{ $agent->id }}, '{{ addslashes($agent->user?->nom_prenoms ?? 'cet agent') }}'); return false;"> <i class="material-icons md-delete_forever"></i> Supprimer </a>
+                                                <a href="{{route('show.AgentUpdate',$agent)}}" class="btn btn-sm font-sm rounded btn-primary" title="Modifier"><i class="material-icons md-edit"></i></a>
+                                                <a href="javascript:void(0)" class="btn btn-sm font-sm btn-danger rounded" onclick="deleteAgentAction({{ $agent->id }}, '{{ addslashes($agent->user?->nom_prenoms ?? 'cet agent') }}'); return false;" title="Supprimer"><i class="material-icons md-delete_forever"></i></a>
                                         </td>
                                     </tr>
                                     @endforeach

@@ -27,6 +27,41 @@ class DemandeLivraison extends Model
         'type_demande_livraison_id',
     ];
 
+    /**
+     * Total net dû sur la demande : transport (montantTotal, hors taxe) + TVA
+     * sur le transport si elle a été figée avec la demande − remise. Même
+     * formule que le site (App\Models\DemandeLivraison::montantAPayer).
+     */
+    public function montantAPayer(): float
+    {
+        $tva = (float) TvaCommande::where('commande_id', $this->id)
+            ->where('type_affaire', Help::$LIVRAISON)
+            ->where('statut', Help::$STATUT_ACTIF)
+            ->sum('montant');
+
+        // AIRSI figé sur la demande (10/09/2026).
+        $net = (float) $this->montantTotal + $tva + (float) ($this->airsi ?? 0) - (float) ($this->remise ?? 0);
+
+        return $net < 0 ? 0.0 : $net;
+    }
+
+    /** Ce qui a réellement été encaissé sur la demande (lignes validées). */
+    public function montantPayeComptant(): float
+    {
+        return (float) LignePaiement::where('service', Help::$LIVRAISON)
+            ->where('service_id', $this->id)
+            ->where('statut', Help::$STATUT_ACTIF)
+            ->sum('montant');
+    }
+
+    /** Reste dû ; un résidu < 1 fcfa est considéré comme nul. */
+    public function montantRestantDu(): float
+    {
+        $reste = $this->montantAPayer() - $this->montantPayeComptant();
+
+        return $reste < 1 ? 0.0 : $reste;
+    }
+
     public static function liste($client_id, $etat_commande = null, $mode_paiement_id = null, $type_livraison_id = null)
     {
         return DemandeLivraison::distinct()

@@ -7,6 +7,16 @@
 <x-notify::notify />
 @section('contenu')
 
+    {{-- CLÉ PROPRE, ET NON « error » : Flasher capte success/error/warning/info
+         et les rejoue en bulle éphémère. Un code non transmis doit rester à
+         l'écran tant que le gestionnaire n'a pas prévenu son client. --}}
+    @if (session('code_non_envoye'))
+        <div class="alert alert-danger">
+            <strong>Code de validation non transmis.</strong><br>
+            {{ session('code_non_envoye') }}
+        </div>
+    @endif
+
 <x-notify::notify />
     <div class="screen-overlay"></div>
 
@@ -29,8 +39,11 @@
 
                 <!-- card-header end// -->
                 <div class="card-body">
+                    <x-export-buttons table-id="listeLocationsEnAttente"
+                                      filename="locations-en-attente"
+                                      title="Locations en attente" />
                     <div class="table-responsive">
-                        <table class="table table-hover table-bordered">
+                        <table id="listeLocationsEnAttente" class="table table-hover table-bordered">
                             <thead>
                                 <tr>
                                     <th class="text-center" style="background-color: #1c57a3; color: white; border-top-left-radius:5px">N°</th>
@@ -64,57 +77,66 @@
                                         <td class="text-center"> {{Carbon::parse($location->created_at)->format('d-m-Y')}} </td>
 
                                         <td class="text-center">
-                                            @if ($location->statut == 1)
-                                            <span class="badge rounded-pill alert-success text-danger">Aucun
-                                                paiement effectué</span>
-                                        @elseif($location->statut == 2)
-                                            <span class="badge rounded-pill alert-success text-warning">paiement
-                                                en cours...</span>
-                                        @elseif($location->statut == 3)
+                                            {{-- CETTE PASTILLE LIT L ARGENT, PAS UN DRAPEAU.
+                                                 Voir Location::etatPaiement(). --}}
+                                            @php $etatPaiement = $location->etatPaiement(); @endphp
+                                            @if ($etatPaiement === 'SOLDE')
                                             <span class="badge rounded-pill alert-success text-success">Paiement
                                                 soldé</span>
+                                        @elseif ($etatPaiement === 'PARTIEL')
+                                            <span class="badge rounded-pill alert-success text-warning">paiement
+                                                en cours...</span>
+                                        @else
+                                            <span class="badge rounded-pill alert-success text-danger">Aucun
+                                                paiement effectué</span>
                                         @endif
                                         </td>
 
-                                        <td class="text-end">
+                                        <td class="text-nowrap text-end">
                                             @php
                                                 // Paiement soldé (ou client à terme) exigé avant validation et facture FNE, comme pour les commandes.
-                                                $paiementOk = $location->statut == 3 || $location->client?->client_a_terme == 1;
+                                                // L'ARGENT, PAS LE DRAPEAU : voir Location::estSoldee().
+                                                $paiementOk = $location->estSoldee() || $location->client?->client_a_terme == 1;
                                             @endphp
                                             @if ($location->etatLibelle() === 'EN ATTENTE')
                                                 @if ($paiementOk)
-                                                    <a href="{{ route('show.validerLocationPage', $location) }}" class="btn btn-sm btn-primary rounded font-sm">Valider &amp; affecter</a>
+                                                    <a href="{{ route('show.validerLocationPage', $location) }}" class="btn btn-sm btn-primary rounded font-sm" title="Valider &amp; affecter"><i class="material-icons md-check_circle"></i></a>
                                                 @endif
                                             @elseif ($location->etatLibelle() === 'EN COURS')
-                                                <a href="{{ route('show.retourLocationPage', $location) }}" class="btn btn-sm btn-success rounded font-sm">Retour matériel</a>
+                                                <a href="{{ route('show.retourLocationPage', $location) }}" class="btn btn-sm btn-success rounded font-sm" title="Retour matériel"><i class="material-icons md-assignment_return"></i></a>
                                             @endif
                                             {{-- Paiement seulement si la location n'est pas déjà soldée (statut 3).
                                                  Le bouton mène au GUICHET des encaissements, avec agence, reçu et
                                                  seconde signature. L'écran de paiement historique, qui écrivait un
                                                  règlement validé d'un seul clic, a été retiré. --}}
-                                            @if ($location->statut != 3)
+                                            @if (!$location->estSoldee())
                                                 <a href="{{ route('show.encaissements.locations', ['location' => $location->numero]) }}"
-                                                   class="btn btn-sm rounded font-sm">Faire un paiement</a>
+                                                   class="btn btn-sm btn-warning rounded font-sm" title="Encaisser le reste"><i class="material-icons md-payments"></i></a>
                                             @endif
                                             {{-- Facture FNE : générer (une fois, paiement soldé exigé) puis consulter. --}}
                                             @if ($location->factureFne)
-                                                <a href="{{ route('orders.factureLocation', ['facture' => $location->factureFne->id, 'action' => 'voir']) }}" target="_blank" class="btn btn-sm btn-outline-secondary rounded font-sm">Voir facture</a>
+                                                <a href="{{ route('orders.factureLocation', ['facture' => $location->factureFne->id, 'action' => 'voir']) }}" target="_blank" class="btn btn-sm btn-info rounded font-sm" title="Voir facture"><i class="material-icons md-visibility"></i></a>
                                             @elseif ($paiementOk)
                                                 <form action="{{ route('orders.genererFactureLocation', $location) }}" method="post" style="display:inline-block">
                                                     @csrf
-                                                    <button type="submit" class="btn btn-sm btn-outline-primary rounded font-sm"
-                                                        onclick="return confirm('Générer la facture FNE de cette location ?');">Générer facture</button>
+                                                    <button type="submit" class="btn btn-sm btn-secondary rounded font-sm"
+                                                        onclick="return confirm('Générer la facture FNE de cette location ?');" title="Générer facture"><i class="material-icons md-receipt_long"></i></button>
                                                 </form>
                                             @endif
-                                            {{-- Supprimer une location "fantôme" : EN ATTENTE et SANS AUCUN paiement
-                                                 (statut 1). Dès qu'un acompte est encaissé (statut 2), la suppression
-                                                 disparaît : on ne supprime pas une location sur laquelle il y a de
-                                                 l'argent. Confirmation via SweetAlert2 (cf. jsParts). --}}
-                                            @if ($location->statut == 1)
+                                            {{-- Supprimer une location « fantôme » : EN ATTENTE et SANS AUCUN
+                                                 paiement. Dès qu'un acompte est encaissé, la suppression
+                                                 disparaît : on ne supprime pas une location sur laquelle il y a
+                                                 de l'argent.
+
+                                                 LA QUESTION SE POSE À L'ARGENT, PAS AU DRAPEAU. `statut` reste
+                                                 à 1 quand un chemin de paiement oublie de le poser : une
+                                                 location réellement encaissée proposait alors sa suppression.
+                                                 Confirmation via SweetAlert2 (cf. jsParts). --}}
+                                            @if ($location->etatPaiement() === 'AUCUN')
                                                 <form action="{{ route('show.supprimerLocation', $location) }}" method="post" style="display:inline-block"
-                                                      class="form-suppr-location" data-numero="{{ $location->numero }}">
+                                                      class="d-inline form-suppr-location" data-numero="{{ $location->numero }}">
                                                     @csrf
-                                                    <button type="submit" class="btn btn-sm btn-outline-danger rounded font-sm">Supprimer</button>
+                                                    <button type="submit" class="btn btn-sm btn-danger rounded font-sm" title="Supprimer"><i class="material-icons md-delete"></i></button>
                                                 </form>
                                             @endif
                                         </td>

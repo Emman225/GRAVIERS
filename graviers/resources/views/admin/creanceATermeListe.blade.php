@@ -24,6 +24,9 @@
         </header>
 
         <div class="card-body">
+            <x-export-buttons table-id="liste"
+                              filename="creances-client-a-terme"
+                              title="Créances client à terme" />
             <div class="table-responsive">
                 <table class="table table-striped" id="liste">
                     <thead style="background-color: #1c57a3; color: white;">
@@ -46,11 +49,9 @@
                                 <td class="text-end text-danger">
                                     <strong>{{ Help::formatNombre($ligne->solde, true) }}</strong>
                                 </td>
-                                <td class="text-center">
+                                <td class="text-nowrap text-center">
                                     <a href="{{ route('grandLivre.clientATerme') }}?client_id={{ $ligne->client?->id }}"
-                                       class="btn btn-sm btn-primary">
-                                        <i class="material-icons md-visibility align-middle"></i> Détails
-                                    </a>
+                                       class="btn btn-sm btn-primary" title="Détails"><i class="material-icons md-visibility align-middle"></i></a>
                                 </td>
                             </tr>
                         @empty

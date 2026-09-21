@@ -10,7 +10,7 @@
     <div class="content-header">
         <h2 class="content-title">Grand livre des Clients BE (Ordinaires) </h2>
         {{-- <div>
-            <a href="{{ route('sellers.register') }}" class="btn btn-primary"><i class="material-icons md-plus"></i> Ajouter Nouveau</a>
+            <a href="{{ route('sellers.register') }}" class="btn btn-primary"><i class="material-icons md-plus"></i> Ajouter nouveau</a>
         </div> --}}
     </div>
 
@@ -33,6 +33,9 @@
         </header>
         <!-- card-header end// -->
         <div class="card-body">
+            <x-export-buttons table-id="liste"
+                              filename="grand-livre-clients-ordinaires"
+                              title="Grand livre — clients ordinaires" />
             <div class="table-responsive">
                 <table class="table table-striped" id="liste">
                     {{-- @dd($founisseurs) --}}

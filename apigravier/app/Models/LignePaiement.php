@@ -21,6 +21,9 @@ class LignePaiement extends Model
         'date_paiement',
         'montant',
         'statut',
+        // L'affaire réglée (10/09/2026) : même colonnes que le site.
+        'service',
+        'service_id',
     ];
 
     public static function lire($id)

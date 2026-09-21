@@ -27,6 +27,31 @@
                 </div>
             </div>
             {{-- <a href="{{route('client.modifierAdresseLivraison',$commande)}}" class="btn btn-primary mb-10">changer d'adresse de livraison</a> --}}
+            {{-- Les codes de la location (10/09/2026) : code de livraison à remettre au
+                 livreur, ou bon d'enlèvement à remettre au fournisseur si le client
+                 retire lui-même. Copiables, partageables par WhatsApp. --}}
+            @php $coursesLocation = $location->coursesAcceptees(); $livraisonLocation = $location->etatLivraison(); @endphp
+            <p class="mb-15" id="etatLocation">
+                <span class="badge bg-primary">{{ $location->etatLibelle() }}</span>
+                @if ($livraisonLocation)
+                    <span class="badge {{ in_array($livraisonLocation['code'], ['LIVREE', 'RETIREE']) ? 'bg-success' : 'bg-info text-dark' }} js-etat-livraison-location">{{ $livraisonLocation['libelle'] }}</span>
+                @endif
+            </p>
+            @if ($coursesLocation->isNotEmpty())
+                <div class="alert alert-light border mb-20" id="codesLocation">
+                    <strong class="d-block mb-5">
+                        {{ $location->estRetraitSurPlace() ? "Bon d'enlèvement à présenter au fournisseur" : 'Code de livraison à remettre au livreur' }}
+                    </strong>
+                    @foreach ($coursesLocation as $courseLocation)
+                        @include('client._codesLivraison', [
+                            'livraison' => $courseLocation,
+                            'numeroCommande' => $location->numero,
+                            'libelleAffaire' => 'location',
+                            'queEnlevement' => $location->estRetraitSurPlace(),
+                        ])
+                    @endforeach
+                </div>
+            @endif
             <div class="row">
                 <div class="col-lg-11">
 

@@ -29,8 +29,11 @@
 
                 <!-- card-header end// -->
                 <div class="card-body">
+                    <x-export-buttons table-id="listeLivraisonsHistorique"
+                                      filename="historique-des-livraisons"
+                                      title="Historique des livraisons" />
                     <div class="table-responsive">
-                        <table class="table table-hover table-bordered">
+                        <table id="listeLivraisonsHistorique" class="table table-hover table-bordered">
                             <thead>
                                 <tr>
 

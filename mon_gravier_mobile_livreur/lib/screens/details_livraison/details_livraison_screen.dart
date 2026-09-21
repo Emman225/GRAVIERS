@@ -2,16 +2,16 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:mon_gravier_com_livreur/globale.dart';
 import 'package:http/http.dart' as http;
 import 'package:mon_gravier_com_livreur/helper/constants.dart';
-import 'package:mon_gravier_com_livreur/models/RetourVehicule.dart';
 import 'package:mon_gravier_com_livreur/models/details_livraison.dart';
 import 'package:mon_gravier_com_livreur/models/retour_livraison.dart';
 import 'package:mon_gravier_com_livreur/screens/livraison/components/livraison_effectuee_screen.dart';
 
+import '../../../components/bouton_retour.dart';
+import '../../../components/code_partageable.dart';
 import '../../constants.dart';
 
 class DetailsLivraisonScreen extends StatefulWidget {
@@ -115,33 +115,16 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
       appBar: AppBar(
         title: const Text(
           "Détails livraison et décision livraison",
-          style: TextStyle(color: Colors.black),
         ),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       bottomNavigationBar: livraison.etatLivraison == LIVRAISON_LIVREE ? null : Padding(
         padding: const EdgeInsets.all(15.0),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+        Row(
           children: [
             Expanded(
               child: ElevatedButton(
@@ -188,20 +171,32 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
             ],
           ],
         ),
+        // « Refuser » vient EN DESSOUS des autres actions, sur toute la
+        // largeur : il flottait auparavant au milieu de l'écran, par-dessus le
+        // contenu, et se confondait avec les boutons du bas.
+        if (livraison.etatLivraison == LIVRAISON_EN_ATTENTE) ...[
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: redColor,
+                side: const BorderSide(color: redColor),
+              ),
+              onPressed: _actionEnCours ? null : () => _refusLivraison(),
+              icon: const Icon(Icons.close),
+              label: const Text('Refuser la livraison'),
+            ),
+          ),
+        ],
+          ],
+        ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: livraison.etatLivraison == LIVRAISON_EN_ATTENTE ? FloatingActionButton.extended(
-        backgroundColor: redColor,
-        foregroundColor: Colors.black,
-        onPressed: _actionEnCours ? null : () => _refusLivraison(),
-        icon: const Icon(Icons.close, color: whiteColor),
-        label: const Text('Refuser livraison', style: white12MediumTextStyle),
-      )  : null,
       body: ListView(children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 50),
           decoration: BoxDecoration(
-            color: const Color(0xFFF5F6F9),
+            color: kSurfaceMutedColor,
             borderRadius: BorderRadius.circular(15),
           ),
           child: Image.network(ligneCommande.image ??
@@ -212,75 +207,47 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if(livraison.accepte == 1 && ('${livraison.code_enlevement ?? ''}').trim().isNotEmpty) ...[
-                Text('N°BE: ${livraison.code_enlevement}',
-                  style: const TextStyle(
-                    color: Colors.red,
-                    fontWeight: FontWeight.bold,
-                  ),
+              // LE BON D'ENLÈVEMENT D'ABORD : c'est ce que le livreur remet au
+              // fournisseur. Copiable, partageable par WhatsApp (08/09/2026).
+              if (livraison.accepte == 1 &&
+                  ('${livraison.code_enlevement ?? ''}').trim().isNotEmpty) ...[
+                CodePartageable(
+                  libelle: 'Numéro bon enlèvement',
+                  valeur: '${livraison.code_enlevement}'.trim(),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: kSpaceMd),
               ],
-              Text(
-                "Article: ${ligneCommande.nom}",
-                style: const TextStyle(color: Colors.black, fontSize: 16),
-                maxLines: 2,
-              ),
-              const SizedBox(height: 8),
-              Text.rich(
-                TextSpan(
-                  text: livraison.etatLivraison == LIVRAISON_LIVREE
-                      ? "Qte livrer: $qteLivree ${ligneCommande.unite}"
-                      : "Qte à livrer: $qteLivree ${ligneCommande.unite}",
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w600, color: kPrimaryColor),
+              // LIBELLÉ ET VALEUR SE DISTINGUENT : le libellé en petites
+              // capitales grises, la valeur en gras, une ligne par information.
+              _Fiche(lignes: [
+                _Info('Article', '${ligneCommande.nom ?? ''}'),
+                _Info(
+                  livraison.etatLivraison == LIVRAISON_LIVREE
+                      ? 'Quantité livrée'
+                      : 'Quantité à livrer',
+                  '$qteLivree ${ligneCommande.unite ?? ''}',
+                  couleur: kPrimaryColor,
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                "Date livraison: ${formaterDate(livraison.dateLivraison ?? 'dd/MM/yyyy')}",
-                style: const TextStyle(color: Colors.redAccent, fontSize: 16),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                "Cout livraison: ${formaterMontant(livraison.coutLivraison?.toDouble() ?? 0)}",
-                style: const TextStyle(
-                  color: Colors.blue,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              if (livraison.accepte == 1) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Client: ${livraison.nomClient} - ${livraison.contactClient}',
-                  style: const TextStyle(
-                    color: Colors.green,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                if (('${livraison.nom_fournisseur ?? ''}').trim().isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'Fournisseur: ${livraison.nom_fournisseur}  \nTel Four. : ${livraison.tel_fournisseur}',
-                    style: black16BoldTextStyle,
-                  ),
-                ],
-              ],
-              if (('${livraison.adresse_fournisseur ?? ''}').trim().isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Adresse Four. : ${livraison.adresse_fournisseur}',
-                  style: const TextStyle(
-                    color: Colors.black,
-                  ),
-                ),
-              ],
-              Text(
-                'Adresse de livraison: ${livraison.adresse}',
-                style: const TextStyle(
-                  color: Colors.black,
-                ),
-              ),
+                _Info('Date de livraison',
+                    formaterDate(livraison.dateLivraison ?? 'dd/MM/yyyy'),
+                    couleur: kErrorColor),
+                _Info('Coût de la livraison',
+                    formaterMontant(livraison.coutLivraison?.toDouble() ?? 0),
+                    couleur: kPrimaryMidColor),
+                if (livraison.accepte == 1)
+                  _Info('Client',
+                      '${livraison.nomClient ?? ''} - ${livraison.contactClient ?? ''}',
+                      couleur: kSuccessColor),
+                if (livraison.accepte == 1 &&
+                    ('${livraison.nom_fournisseur ?? ''}').trim().isNotEmpty)
+                  _Info('Fournisseur', '${livraison.nom_fournisseur}'),
+                if (livraison.accepte == 1 &&
+                    ('${livraison.tel_fournisseur ?? ''}').trim().isNotEmpty)
+                  _Info('Téléphone Fournisseur', '${livraison.tel_fournisseur}'),
+                if (('${livraison.adresse_fournisseur ?? ''}').trim().isNotEmpty)
+                  _Info('Adresse Fournisseur', '${livraison.adresse_fournisseur}'),
+                _Info('Adresse de livraison', '${livraison.lieuAffiche}'),
+              ]),
               const SizedBox(height: 70),
             ],
           ),
@@ -402,6 +369,11 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
               livraison = UneLivraison.fromJson(datas['data']);
             });
             afficherSucces(datas['message']);
+            // La course est acceptée : on revient à la liste, qui se
+            // recharge au retour. Rester ici laissait le livreur sur un
+            // écran dont les boutons venaient de changer.
+            _retourALaListe();
+            return;
           } else {
             afficherErreur(datas['message']);
           }
@@ -422,6 +394,14 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
     } else {
       afficherInfo("Veuillez vérifier votre connexion internet");
     }
+  }
+
+  /// Ferme l'indicateur de chargement puis quitte l'écran ; la liste
+  /// précédente se recharge d'elle-même au retour.
+  void _retourALaListe() {
+    fermerChargement();
+    if (mounted) setState(() => _actionEnCours = false);
+    if (mounted) Get.back(result: true);
   }
 
   refuserLivraison() async {
@@ -458,6 +438,9 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
               livraison = UneLivraison.fromJson(datas['data']);
             });
             afficherSucces(datas['message']);
+            // Course refusée : elle n'est plus à proposer, on revient à la liste.
+            _retourALaListe();
+            return;
           } else {
             afficherErreur(datas['message']);
           }
@@ -478,5 +461,73 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
     } else {
       afficherInfo("Veuillez vérifier votre connexion internet");
     }
+  }
+}
+
+
+/// Une information de la fiche : un libellé et sa valeur.
+class _Info {
+  final String libelle;
+  final String valeur;
+  final Color couleur;
+
+  const _Info(this.libelle, this.valeur, {this.couleur = kTextColor});
+}
+
+/// La fiche : une carte, une ligne par information, le libellé au-dessus de
+/// la valeur pour que les deux ne se confondent jamais.
+class _Fiche extends StatelessWidget {
+  final List<_Info> lignes;
+
+  const _Fiche({required this.lignes});
+
+  @override
+  Widget build(BuildContext context) {
+    final visibles = lignes.where((l) => l.valeur.trim().isNotEmpty).toList();
+    return Container(
+      decoration: BoxDecoration(
+        color: kSurfaceColor,
+        borderRadius: BorderRadius.circular(kRadiusMd),
+        border: Border.all(color: kBorderColor),
+        boxShadow: kShadowSoft,
+      ),
+      child: Column(
+        children: [
+          for (int i = 0; i < visibles.length; i++) ...[
+            if (i > 0)
+              const Divider(height: 1, thickness: 1, color: kBorderColor),
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: kSpaceMd, vertical: kSpaceSm + 2),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    visibles[i].libelle.toUpperCase(),
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.6,
+                      color: kTextMutedColor,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    visibles[i].valeur,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: visibles[i].couleur,
+                      height: 1.25,
+                    ),
+                    softWrap: true,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }

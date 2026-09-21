@@ -51,7 +51,7 @@
                                 </td>
                                 <td> {{ $gestionnaire->email }} </td>
 
-<td>
+<td class="text-nowrap">
     {{-- Rattachement à un guichet : c'est lui qui décide de l'agence à
          laquelle les encaissements de cette personne seront imputés. Il
          était auparavant choisi au moment de la saisie, ce qui permettait
@@ -66,7 +66,7 @@
                 </option>
             @endforeach
         </select>
-        <button type="submit" class="btn btn-sm btn-light rounded" title="Enregistrer l'affectation">
+        <button type="submit" class="btn btn-sm btn-success rounded" title="Enregistrer l'affectation">
             <i class="material-icons md-save"></i>
         </button>
     </form>
@@ -79,14 +79,13 @@
                                     <span>{{ Carbon::parse($gestionnaire->created_at)->format('d-m-Y') }}</span>
 
                                 </td>
-                                <td class="text-end">
+                                <td class="text-nowrap text-end">
 
                                     <a href="{{ route('show.editGestionnaire', $gestionnaire) }}"
-                                        class="btn btn-sm font-sm rounded btn-brand"> <i class="material-icons md-edit"></i>
-                                        Modifier </a>
-                                    <a href="javascript:void(0)" class="btn btn-sm font-sm btn-light rounded"
-                                        onclick="deleteGestionnaireAction({{ $gestionnaire->id }}, '{{ addslashes($gestionnaire->user?->nom_prenoms ?? 'ce gestionnaire') }}'); return false;"> <i
-                                            class="material-icons md-delete_forever"></i> Supprimer </a>
+                                        class="btn btn-sm font-sm rounded btn-primary" title="Modifier"><i class="material-icons md-edit"></i></a>
+                                    <a href="javascript:void(0)" class="btn btn-sm font-sm btn-danger rounded"
+                                        onclick="deleteGestionnaireAction({{ $gestionnaire->id }}, '{{ addslashes($gestionnaire->user?->nom_prenoms ?? 'ce gestionnaire') }}'); return false;" title="Supprimer"><i
+                                            class="material-icons md-delete_forever"></i></a>
                                 </td>
                             </tr>
                         @endforeach

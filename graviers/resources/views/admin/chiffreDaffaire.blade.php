@@ -68,6 +68,29 @@
         </header>
 
         <div class="card-body">
+            {{-- CE QUI N'ENTRE PAS DANS LE CHIFFRE D'AFFAIRES, ET POURQUOI. --}}
+            @if (($bonsDeLocation ?? 0) > 0 || ($sansPrix['bons'] ?? 0) > 0)
+                <div class="alert alert-warning">
+                    @if (($bonsDeLocation ?? 0) > 0)
+                        <div>
+                            <strong>{{ $bonsDeLocation }} bon(s) de location</strong> ne sont pas comptés ici :
+                            une location n'est pas une vente, et se lit sur l'état des locations.
+                        </div>
+                    @endif
+                    @if (($sansPrix['bons'] ?? 0) > 0)
+                        <div @class(['mt-2' => ($bonsDeLocation ?? 0) > 0])>
+                            <strong>{{ $sansPrix['bons'] }} bon(s) ne retrouvent plus leur ligne de commande</strong>
+                            ({{ number_format($sansPrix['qte'], 2, ',', ' ') }} en quantité servie).
+                            Le prix facturé au client est inconnu : lui prêter celui du catalogue
+                            gonflerait le chiffre d'affaires d'une recette jamais facturée.
+                        </div>
+                    @endif
+                </div>
+            @endif
+
+            <x-export-buttons table-id="liste"
+                              filename="chiffre-d-affaire-par-famille"
+                              title="Chiffre d'affaire par famille" />
             <div class="table-responsive">
                 <table class="table table-striped align-middle" id="liste">
                     <thead>

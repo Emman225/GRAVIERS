@@ -22,6 +22,9 @@
                     <a href="{{route('grandLivre.clientOrdinaireFactures',$client)}}" class="btn btn-md rounded bg-info">Factures</a>
                 </div>
                     <div class="card-body">
+                        <x-export-buttons table-id="liste"
+                                          filename="grand-livre-paiements-client"
+                                          title="Grand livre — paiements du client" />
                         <div class="table-responsive">
                             <table id="liste" class="table table-striped">
                                 <thead>
@@ -66,8 +69,8 @@
                                         <td class="text-center">
                                             <span> {{$ligne->userPaie?->nom_prenoms}} </span>
                                         </td>
-                                        <td class="text-end">
-                                            <a href="{{route('paye.facture',['reference' => $ligne->id, 'action' => 'telecharger'])}}" class="btn btn-sm font-sm rounded btn-brand"> <i class="material-icons md-edit"></i> Télécharger </a>
+                                        <td class="text-nowrap text-end">
+                                            <a href="{{route('paye.facture',['reference' => $ligne->id, 'action' => 'telecharger'])}}" class="btn btn-sm font-sm rounded btn-secondary" title="Télécharger le reçu"><i class="material-icons md-get_app"></i></a>
                                         </td>
                                     </tr>
 

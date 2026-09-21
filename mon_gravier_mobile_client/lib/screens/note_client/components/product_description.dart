@@ -4,7 +4,6 @@ import 'package:mon_gravier_com/helper/constants.dart';
 import 'package:mon_gravier_com/models/ConfigModel.dart';
 
 import '../../../components/custom_surfix_icon.dart';
-import '../../../constants.dart';
 import '../../../globale.dart';
 
 class ProductDescription extends StatelessWidget {

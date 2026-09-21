@@ -68,6 +68,31 @@ class DetailLivraison extends Model
             ->sum('qte');
     }
 
+    /**
+     * QUANTITÉ RÉELLEMENT LIVRÉE AU CLIENT sur cette ligne.
+     *
+     * À ne pas confondre avec la quantité AFFECTÉE : un camion peut être
+     * chargé sans avoir encore roulé. Le back-office ne montrait que le reste à
+     * confier — un article livré à 20 sur 25 y ressemblait donc à un article
+     * dont on n'avait rien fait, alors que le client avait reçu sa marchandise
+     * et que le livreur avait clôturé sa course.
+     *
+     * Seules les courses à l'état LIVREE comptent : une course affectée, en
+     * route, ou refusée n'a rien remis au client.
+     */
+    public function qteLivree(): float
+    {
+        return (float) $this->livraisons
+            ->where('etat_livraison', \Help::$LIVRAISON_LIVREE)
+            ->sum('qte');
+    }
+
+    /** La marchandise a-t-elle été remise au client, en totalité ? */
+    public function estEntierementLivree(): bool
+    {
+        return $this->qteLivree() >= (float) $this->qte;
+    }
+
     /** Ce qu'il reste à confier à un camion sur cette ligne. */
     public function qteRestanteAAffecter(): float
     {
@@ -81,15 +106,38 @@ class DetailLivraison extends Model
     }
 
     /**
-     * Une course a-t-elle été refusée sans avoir été reconfiée depuis ?
+     * Une course a-t-elle été refusée SANS AVOIR ÉTÉ RECONFIÉE DEPUIS ?
      *
      * C'est le signal qui manquait au back-office : la demande restait affichée
      * « EN TRAITEMENT » sans rien dire du refus, et personne ne pouvait savoir
      * qu'une réaffectation était attendue.
+     *
+     * « DEPUIS » est le mot important. La règle se contentait d'un refus
+     * quelque part et d'une quantité encore à confier — deux faits sans
+     * rapport : une ligne de 25 sacs confiée à un camion de 20 en garde 5 à
+     * placer, refus ou pas. Le badge restait donc allumé après la
+     * réaffectation, et même après la livraison, réclamant un travail déjà
+     * fait. Un signal qui crie sans raison finit par ne plus être lu.
+     *
+     * Un refus est en attente tant qu'AUCUNE course n'a été créée après lui sur
+     * cette ligne. La quantité qui reste à placer, elle, se lit à part : c'est
+     * « Quantité restant » sur l'écran de traitement.
      */
     public function attendUneReaffectation(): bool
     {
-        return $this->livraisons->where('accepte', Livraison::REFUSEE)->isNotEmpty()
-            && $this->qteRestanteAAffecter() > 0;
+        $refus = $this->livraisons->where('accepte', Livraison::REFUSEE);
+
+        if ($refus->isEmpty()) {
+            return false;
+        }
+
+        $dernierRefus = $refus->max('id');
+
+        $reconfieeDepuis = $this->livraisons
+            ->where('accepte', '!=', Livraison::REFUSEE)
+            ->where('id', '>', $dernierRefus)
+            ->isNotEmpty();
+
+        return !$reconfieeDepuis && $this->qteRestanteAAffecter() > 0;
     }
 }

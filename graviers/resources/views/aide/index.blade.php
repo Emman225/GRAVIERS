@@ -108,7 +108,7 @@
         <div class="col-xl-3 col-md-6">
             <a href="#faq" class="aide-quick-card">
                 <div class="aide-quick-icon" style="background: linear-gradient(135deg, #1c57a3, #134380)">
-                    <i class="material-icons md-quiz"></i>
+                    <i class="material-icons md-help"></i>
                 </div>
                 <div class="aide-quick-text">
                     <div class="aide-quick-title">Questions fréquentes</div>
@@ -155,7 +155,7 @@
     <div class="card dash-card mb-4" id="faq">
         <div class="card-header dash-card-header">
             <h5 class="dash-card-title">
-                <i class="material-icons md-quiz text-primary"></i>
+                <i class="material-icons md-help text-primary"></i>
                 Questions fréquentes
                 <span class="badge bg-primary-light text-primary ms-2" style="font-size:0.7rem">{{ $typeLabel }}</span>
             </h5>
@@ -204,7 +204,7 @@
                 <div class="col-md-4">
                     <div class="aide-tuto-card">
                         <div class="aide-tuto-thumb" style="background: linear-gradient(135deg, #1c57a3, #134380)">
-                            <i class="material-icons md-rocket_launch"></i>
+                            <i class="material-icons md-flight_takeoff"></i>
                         </div>
                         <div class="aide-tuto-body">
                             <h6 class="aide-tuto-title">Démarrer en 5 minutes</h6>
@@ -276,7 +276,7 @@
                                 </select>
                             </div>
                             <div class="col-12">
-                                <label class="premium-field-label" for="message"><i class="material-icons md-edit_note"></i> Votre message</label>
+                                <label class="premium-field-label" for="message"><i class="material-icons md-edit"></i> Votre message</label>
                                 <textarea id="message" class="form-control" name="message" rows="5" required placeholder="Décrivez votre demande avec autant de détails que possible..."></textarea>
                             </div>
                             <div class="col-12 text-end">

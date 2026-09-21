@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../constants.dart';
+
 class TopRoundedContainer extends StatelessWidget {
   const TopRoundedContainer({
     super.key,
@@ -19,8 +21,8 @@ class TopRoundedContainer extends StatelessWidget {
       decoration: BoxDecoration(
         color: color,
         borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(40),
-          topRight: Radius.circular(40),
+          topLeft: Radius.circular(kRadiusLg),
+          topRight: Radius.circular(kRadiusLg),
         ),
       ),
       child: child,

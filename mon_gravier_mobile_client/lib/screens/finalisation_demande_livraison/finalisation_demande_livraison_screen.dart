@@ -4,6 +4,7 @@ import 'package:mon_gravier_com/globale.dart';
 import 'package:mon_gravier_com/models/resume_demande_livraison.dart';
 import 'package:mon_gravier_com/screens/details_demande_livraison/components/check_out_card.dart';
 
+import '../../components/bouton_retour.dart';
 import '../../helper/constants.dart';
 import 'components/cart_card.dart';
 
@@ -44,40 +45,13 @@ class _FinalisationDemandeLivraisonScreenState
       appBar: AppBar(
         title: const Text(
           "Finalisation demande de livraison",
-          style: TextStyle(color: Colors.black),
         ),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       body: Container(
               width: double.infinity,
               height: heightOfScreen(context),
-              decoration: const BoxDecoration(
-                image: DecorationImage(
-                  image: AssetImage("assets/images/bg.jpg"),
-                  fit: BoxFit.cover,
-                  opacity: 0.1,
-                ),
-              ),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 5),
                 child: ConstrainedBox(
@@ -144,7 +118,25 @@ class _FinalisationDemandeLivraisonScreenState
                               const Text("Coût de livraison", style: black18BoldTextStyle,),
                               Divider(color: grayColor,),
                               Text("Distance: $distance km x${paniers.length}"),
-                              Text("Cout de livraison: ${formaterMontant(detail.montant?.toDouble() ?? 0)}"),
+
+                              // LA TAXE, QUAND IL Y EN A UNE.
+                              //
+                              // La TVA sur le transport est une option du
+                              // back-office. Activee, le total depasse le tarif
+                              // de la grille : le client doit voir d'ou vient
+                              // l'ecart, sinon le prix parait faux. Desactivee,
+                              // le cout du transport EST le total, et afficher
+                              // « TVA : 0 » sur chaque course entretiendrait le
+                              // doute sur ce qui est facture.
+                              if ((detail.tva ?? 0) > 0) ...[
+                                Text("Coût du transport : ${formaterMontant(detail.montantHt?.toDouble() ?? 0)}"),
+                                Text("TVA : ${formaterMontant(detail.tva?.toDouble() ?? 0)}"),
+                                Text(
+                                  "Total à payer : ${formaterMontant(detail.montant?.toDouble() ?? 0)}",
+                                  style: black18BoldTextStyle,
+                                ),
+                              ] else
+                                Text("Coût de la livraison : ${formaterMontant(detail.montant?.toDouble() ?? 0)}"),
                               addVerticalSpace(10),
                             ],
                           ),

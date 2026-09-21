@@ -1,5 +1,5 @@
 @extends('layout.main')
-@section('title','Traitement Ticket')
+@section('title', 'Traitement ticket')
 
 @section('contenu')
 

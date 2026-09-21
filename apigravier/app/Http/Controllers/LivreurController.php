@@ -7,6 +7,7 @@ use Retour;
 use App\Models\Pays;
 use App\Models\User;
 use App\Models\Ville;
+use App\Models\Enlevement;
 use App\Models\Livreur;
 use App\Models\Commande;
 use App\Models\Location;
@@ -507,6 +508,53 @@ class LivreurController extends Controller
                     }
                 }
 
+                // PROVENANCE LOCATION : LA LOCATION REDEVIENT AFFECTABLE.
+                //
+                // Le refus ne touchait rien du côté location. Or l'écran qui
+                // propose une affectation ne liste que les locations « EN
+                // ATTENTE » : restée « EN COURS », la location DISPARAISSAIT de
+                // la liste, sans que rien ne signale pourquoi. Le gestionnaire
+                // n'avait plus aucun moyen de la confier à un autre livreur.
+                //
+                // On ne détache la location que si PLUS AUCUNE course active ne
+                // la couvre : une location à plusieurs matériels peut n'avoir
+                // qu'une de ses courses refusée, et les autres continuent.
+                if ($livraison->provenance === Help::$LOCATION && $livraison->detail_commande_id) {
+                    // Sur une location, `detail_commande_id` porte l'id du
+                    // detail_location — d'où le détour pour retrouver la
+                    // location elle-même.
+                    $locationId = DB::table('detail_location')
+                        ->where('id', $livraison->detail_commande_id)
+                        ->value('location_id');
+
+                    if ($locationId) {
+                        $detailsDeLaLocation = DB::table('detail_location')
+                            ->where('location_id', $locationId)
+                            ->pluck('id');
+
+                        $encoreCouverte = DB::table('livraison')
+                            ->whereIn('detail_commande_id', $detailsDeLaLocation)
+                            ->where('provenance', Help::$LOCATION)
+                            ->where('accepte', '!=', 3)
+                            ->whereNull('deleted_at')
+                            ->exists();
+
+                        if (!$encoreCouverte) {
+                            // Le livreur et le véhicule sont détachés en même
+                            // temps que l'état : les laisser renseignés ferait
+                            // croire, sur la fiche, que la course est toujours
+                            // confiée à celui qui vient de la refuser.
+                            DB::table('location')
+                                ->where('id', $locationId)
+                                ->update([
+                                    'etat_location' => Help::$LOCATION_EN_ATTENTE,
+                                    'livreur_id'    => null,
+                                    'vehicule_id'   => null,
+                                ]);
+                        }
+                    }
+                }
+
                 if ($livraison->detail_livraison_id) {
                     $detail = DB::table('detail_livraison')
                         ->where('id', $livraison->detail_livraison_id)
@@ -604,10 +652,52 @@ class LivreurController extends Controller
                     return response()->json($retour);
                 }
 
+                // LE FOURNISSEUR DOIT AVOIR SERVI LE BON.
+                //
+                // Rien ne le vérifiait : une course pouvait être clôturée — et le
+                // livreur crédité — alors que le bon d'enlèvement n'avait jamais
+                // été servi. La vente n'entrait alors dans AUCUN chiffre
+                // d'affaires (« CA détaillé », « CA par famille » et le
+                // récapitulatif des ventes ne comptent que les bons portant une
+                // `fournisseur_validation`), et le fournisseur n'était dû de
+                // rien alors que sa marchandise était partie.
+                //
+                // Le contrôle ne s'applique QUE s'il existe un bon.
+                //
+                // MISE À JOUR DU 28/08/2026 : les LOCATIONS en produisent
+                // désormais un, comme les ventes — le livreur doit pouvoir
+                // prouver au fournisseur qu'il est autorisé à retirer le
+                // matériel. Elles passent donc sous ce contrôle : une location
+                // ne se clôture plus tant que le fournisseur n'a pas validé son
+                // bon. C'est voulu, et c'est la même règle que pour une vente.
+                //
+                // Les demandes de livraison, elles, n'ont toujours aucun bon :
+                // le client transporte SA marchandise, aucun fournisseur n'est
+                // concerné. Le contrôle les laisse passer.
+                $bon = Enlevement::where('livraison_id', $livraison->id)
+                    ->where('statut', Help::$STATUT_ACTIF)
+                    ->first();
+
+                if ($bon && empty($bon->fournisseur_validation)) {
+                    DB::rollBack();
+                    $retour->code = 409;
+                    $retour->message = "Le fournisseur n'a pas encore validé le bon d'enlèvement "
+                        . ($bon->code_enleve ? '(' . $bon->code_enleve . ') ' : '')
+                        . ": la livraison ne peut pas être clôturée. Demandez-lui de valider son bon.";
+                    return response()->json($retour);
+                }
+
                 $livraison->etat_livraison = Help::$LIVRAISON_LIVREE;
                 $livraison->date_livraison = date("Y-m-d H:i:s");
+                // La date de livraison effective, imprimée sur le bon de livraison (lot 84).
+                if (\Illuminate\Support\Facades\Schema::hasColumn('livraison', 'date_livree')) {
+                    $livraison->date_livree = date("Y-m-d H:i:s");
+                }
                 $livraison->note_livreur = $request->note;
                 $livraison->save();
+                // Le bon de livraison part au client entreprise par le site (lot 84,
+                // 15/09/2026), après la réponse, jamais bloquant.
+                \App\Services\BonDeLivraisonDistant::envoyerApresLaReponse($livraison);
 
                 $livreur = Livreur::lire($livraison->livreur_id);
                 $livreur->solde += $livraison->cout_livraison;
@@ -623,8 +713,17 @@ class LivreurController extends Controller
                         // sinon on reste en EN TRAITEMENT (pour refléter une livraison partielle).
                         $com = Commande::lire($det->commande_id);
 
-                        // Met à jour qte_livree de la ligne courante
-                        $det->qte_livree = (float) ($det->qte_livree ?? 0) + (float) $livraison->qte;
+                        // CE QUE LE FOURNISSEUR A SERVI, ET NON CE QUI A ÉTÉ DEMANDÉ.
+                        //
+                        // On ajoutait `livraison->qte`, la quantité demandée. Un
+                        // enlèvement partiel — 5 t servies sur 15 — créditait le
+                        // client de 15 et la commande passait TERMINEE alors
+                        // qu'il restait 10 t à servir. Même défaut que sur le
+                        // site, corrigé de la même façon.
+                        $det->qte_livree = min(
+                            (float) $det->qte,
+                            (float) ($det->qte_livree ?? 0) + $livraison->quantiteRemise()
+                        );
 
                         // L'ÉTAT de la ligne n'était pas mis à jour ici, alors que
                         // le site le fait dans son propre écran de validation
@@ -667,6 +766,11 @@ class LivreurController extends Controller
                         $loc = Location::lire($det->location_id);
                         $loc->etat_location = Help::$LOCATION_EN_COURS;
                         $loc->save();
+                        // La ligne livrée suit (10/09/2026) : l'application l'affiche.
+                        if ($det->id > 0 && $det->etat_location === Help::$LOCATION_EN_ATTENTE) {
+                            $det->etat_location = Help::$LOCATION_EN_COURS;
+                            $det->save();
+                        }
                         break;
 
                     case 'LIVRAISON':
@@ -788,6 +892,12 @@ class LivreurController extends Controller
                 'paiement_livreur.created_at',
                 'mode_paiement.libelle as mode_paiement',
             ])
+            // Point 20 (09/09/2026) : l'état du circuit « À payer → Effectuée »
+            // du règlement, quand la colonne existe (migration du back-office).
+            ->when(
+                Schema::hasColumn('paiement_livreur', 'etat_reglement'),
+                fn ($q) => $q->addSelect('paiement_livreur.etat_reglement')
+            )
             ->get();
 
         foreach ($regles as $r) {
@@ -806,6 +916,9 @@ class LivreurController extends Controller
                 'user_valide2_id'  => null,
                 'date_validation'  => $r->date_paiement,
                 'paye'             => 1,
+                // L'application lit etat_reglement : EFFECTUEE → « Effectué »,
+                // autre valeur → « Validé — paiement en cours », vide → « Payé: OUI ».
+                'etat_reglement'   => $r->etat_reglement ?? null,
                 'statut'           => Help::$STATUT_ACTIF,
                 'deleted_at'       => null,
                 'created_at'       => $r->created_at,

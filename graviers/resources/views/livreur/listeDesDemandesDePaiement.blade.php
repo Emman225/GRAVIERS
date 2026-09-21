@@ -51,7 +51,7 @@
         </div>
         <div class="col-xl-3 col-lg-6 col-md-6">
             <div class="kpi-card kpi-card-success">
-                <div class="kpi-card-icon"><i class="material-icons md-paid"></i></div>
+                <div class="kpi-card-icon"><i class="material-icons md-payment"></i></div>
                 <div class="kpi-card-body">
                     <div class="kpi-card-label">Reçus</div>
                     <div class="kpi-card-value">{{ $totalPayees }}</div>
@@ -82,6 +82,9 @@
             </h5>
         </div>
         <div class="card-body p-0">
+            <x-export-buttons table-id="demandesTable"
+                              filename="demandes-de-paiement"
+                              title="Demandes de paiement" />
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0" id="demandesTable">
                     <thead class="table-light">
@@ -102,7 +105,7 @@
                                     <strong class="text-primary">{{ $m->reference }}</strong>
                                     <br><small class="text-muted">{{ $m->detail }}</small>
                                 </td>
-                                <td>{{ $m->date ? Carbon::parse($m->date)->format('d/m/Y') : '—' }}</td>
+                                <td>{{ $m->date ? \Help::dateHeure($m->date) : '—' }}</td>
                                 <td>
                                     {{-- Qui a lancé le versement : vous, ou l'entreprise de sa
                                          propre initiative. Les seconds n'étaient visibles nulle
@@ -116,7 +119,13 @@
                                 <td class="text-end fw-bold">{{ number_format($m->montant, 0, ',', ' ') }} FCFA</td>
                                 <td class="text-center">
                                     @if($m->statut === 1)
-                                        <span class="badge bg-success">Payé</span>
+                                        @if (($m->etat_reglement ?? null) === \App\Models\DemandePaiement::EFFECTUEE)
+                                            <span class="badge bg-success">Effectuée</span>
+                                        @elseif (!empty($m->etat_reglement))
+                                            <span class="badge bg-info text-dark">Validée — à payer</span>
+                                        @else
+                                            <span class="badge bg-success">Payé</span>
+                                        @endif
                                     @elseif($m->statut === 2)
                                         <span class="badge bg-danger">Refusé</span>
                                     @else
@@ -126,7 +135,7 @@
                                 <td>{{ $m->statut === 1 ? ($m->mode ?? '—') : '—' }}</td>
                                 <td>
                                     @if($m->date_paiement)
-                                        <small>{{ Carbon::parse($m->date_paiement)->format('d/m/Y') }}</small>
+                                        <small>{{ \Help::dateHeure($m->date_paiement) }}</small>
                                     @else
                                         <span class="text-muted">—</span>
                                     @endif

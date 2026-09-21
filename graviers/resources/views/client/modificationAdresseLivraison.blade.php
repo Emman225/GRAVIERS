@@ -322,7 +322,7 @@
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
 
-        var geocoder = L.Control.geocoder({
+        var geocoder = creerRechercheLieu({
             defaultMarkGeocode: false
         }).addTo(map);
 

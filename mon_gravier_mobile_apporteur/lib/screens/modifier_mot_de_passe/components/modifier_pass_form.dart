@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:mon_gravier_com_apporteur/globale.dart';
@@ -67,7 +66,7 @@ class _ModifierPassFormState extends State<ModifierPassForm> {
               obscureText: true,
               textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
-                labelText: "Mot de passe actuel",
+                labelText: "Mot de passe actuel *",
                 hintText: "Entrez votre Mot de passe actuel",
                 floatingLabelBehavior: FloatingLabelBehavior.always,
                 suffixIcon: CustomSurffixIcon(svgIcon: "assets/icons/Lock.svg"),
@@ -80,7 +79,7 @@ class _ModifierPassFormState extends State<ModifierPassForm> {
             obscureText: true,
             textInputAction: TextInputAction.next,
             decoration: const InputDecoration(
-              labelText: "Nouveau mot de passe",
+              labelText: "Nouveau mot de passe *",
               hintText: "Entrez votre nouveau mot de passe",
               // If  you are using latest version of flutter then lable text and hint text shown like this
               // if you r using flutter less then 1.20.* then maybe this is not working properly
@@ -94,7 +93,7 @@ class _ModifierPassFormState extends State<ModifierPassForm> {
             obscureText: true,
             textInputAction: TextInputAction.done,
             decoration: const InputDecoration(
-              labelText: "Confirmation mot de passe",
+              labelText: "Confirmation mot de passe *",
               hintText: "Confirmez votre mot de passe",
               // If  you are using latest version of flutter then lable text and hint text shown like this
               // if you r using flutter less then 1.20.* then maybe this is not working properly

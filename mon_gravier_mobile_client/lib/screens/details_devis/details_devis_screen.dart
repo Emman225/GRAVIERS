@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:mon_gravier_com/globale.dart';
 import 'package:http/http.dart' as http;
@@ -13,6 +12,7 @@ import 'package:mon_gravier_com/models/detail_devis.dart';
 import 'package:mon_gravier_com/models/devis.dart';
 import 'package:mon_gravier_com/screens/cart/cart_screen.dart';
 
+import '../../components/bouton_retour.dart';
 import '../../constants.dart';
 import '../../helper/constants.dart';
 
@@ -49,7 +49,6 @@ class _DetailsDevisScreenState extends State<DetailsDevisScreen> {
           children: [
             const Text(
               "Détails devis",
-              style: TextStyle(color: Colors.black),
             ),
             Text(
               "${lignes.length} article(s)",
@@ -57,27 +56,8 @@ class _DetailsDevisScreenState extends State<DetailsDevisScreen> {
             ),
           ],
         ),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: (){
@@ -110,7 +90,7 @@ class _DetailsDevisScreenState extends State<DetailsDevisScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF5F6F9),
+                        color: kSurfaceMutedColor,
                         borderRadius: BorderRadius.circular(15),
                       ),
                       child: Image.network(lignes[index].image.toString()),
@@ -142,7 +122,7 @@ class _DetailsDevisScreenState extends State<DetailsDevisScreen> {
                                 style: Theme.of(context).textTheme.bodyLarge),
                             if(unDevis.service == LOCATION) ...[
                               TextSpan(
-                                  text: " pour ${lignes[index].nbre_jour_location} Jrs"),
+                                  text: " pour ${lignes[index].nbre_jour_location} jour(s)"),
                             ]
                           ],
                         ),

@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+    @include('layout._favicon')
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Page non trouvée - 404</title>
@@ -72,7 +73,7 @@
     .gravel-image {
       width: 100%;
       height: 400px;
-      background: url('/frontend/assets/imgs/logo/omer 1.png') center/cover no-repeat;
+      background: url('/{{ config('constantes.logo') }}') center/cover no-repeat;
       border-radius: 0.75rem;
       margin-bottom: 1.5rem;
     }

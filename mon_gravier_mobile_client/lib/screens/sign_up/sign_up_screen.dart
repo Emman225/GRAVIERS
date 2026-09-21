@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../components/bouton_retour.dart';
 import '../../components/continuer_san_compte.dart';
 import '../../constants.dart';
-import '../../helper/constants.dart';
 import 'components/sign_up_form.dart';
 
 class SignUpScreen extends StatelessWidget {
@@ -13,45 +13,43 @@ class SignUpScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: const BoutonRetour(),
         title: const Text("Inscription"),
       ),
       body: SafeArea(
-        child: Container(
-          width: double.infinity,
-          height: heightOfScreen(context),
-          decoration: const BoxDecoration(
-            image: DecorationImage(
-              image: AssetImage("assets/images/bg.jpg"),
-              fit: BoxFit.cover,
-              opacity: 0.2,
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Column(
-                children: [
-                  const SizedBox(height: 20),
-                  Image.asset('assets/images/logo.png', width: 200, height: 100),
-                  const SizedBox(height: 20),
-                  const Text("Créer votre compte", style: headingStyle),
-                  const Text(
-                    "Veuillez renseigner correctement vos informations",
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  const SignUpForm(),
-                  const SizedBox(height: 16),
-                  Text(
-                    'En continuant, vous confirmez \navoir accepté nos termes & conditions',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 20),
-                ],
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(
+              kSpaceXl, kSpaceXl, kSpaceXl, kSpaceXl),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Le logo était étiré dans un cadre de 200 x 100 sans
+              // `BoxFit` : ses proportions dépendaient de celles du fichier.
+              Center(
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  height: 64,
+                  fit: BoxFit.contain,
+                ),
               ),
-            ),
+              const SizedBox(height: kSpaceXxl),
+              const Text("Créer votre compte", style: headingStyle),
+              const SizedBox(height: kSpaceSm),
+              const Text(
+                "Quelques informations suffisent pour commander et suivre "
+                "vos livraisons.",
+                style: kCorpsSecondaireStyle,
+              ),
+              const SizedBox(height: kSpaceXl),
+              const SignUpForm(),
+              const SizedBox(height: kSpaceXl),
+              const Text(
+                "En continuant, vous confirmez avoir accepté nos termes et conditions.",
+                textAlign: TextAlign.center,
+                style: kLegendeStyle,
+              ),
+            ],
           ),
         ),
       ),

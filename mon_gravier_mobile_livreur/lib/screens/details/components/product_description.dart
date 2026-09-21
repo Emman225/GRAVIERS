@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:mon_gravier_com_livreur/helper/constants.dart';
 import 'package:http/http.dart' as http;
@@ -121,7 +120,7 @@ class _ProductDescriptionState extends State<ProductDescription> {
             textInputAction: TextInputAction.done,
             controller: widget.qteController,
             decoration: InputDecoration(
-              labelText: "Quantité en ${widget.product.unite}",
+              labelText: "Quantité en ${widget.product.unite} *",
               hintText: "Saisir la quantité",
               // If  you are using latest version of flutter then lable text and hint text shown like this
               // if you r using flutter less then 1.20.* then maybe this is not working properly

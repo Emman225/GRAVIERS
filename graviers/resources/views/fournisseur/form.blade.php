@@ -174,7 +174,7 @@ $produitSelectionne = $fournisseur->produits()->pluck('produit_id');
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label">DFE (Déclaration Fiscale d'Existence)</label>
+                    <label class="form-label">DFE (Déclaration fiscale d'Existence)</label>
                     <input class="form-control" name="dfe" type="file" accept=".jpg,.jpeg,.png,.pdf" />
                     <span class="text-danger">
                         @error('dfe')
@@ -254,7 +254,7 @@ document.addEventListener('DOMContentLoaded', function() {
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
 
-        var geocoder = L.Control.geocoder({
+        var geocoder = creerRechercheLieu({
             title: 'Barre de recherche',
             placeholder: 'Entrez votre adresse',
             collapsed: false,
@@ -287,7 +287,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
 
-            geocoder.on('startgeocode', function() {
+            // « startsuggest » s'ajoute a « startgeocode » : depuis que les suggestions
+        // apparaissent des la frappe, c'est lui qui est emis. Sans cette ligne, la
+        // liste refermee apres un premier choix ne serait plus jamais rouverte.
+        geocoder.on('startgeocode startsuggest', function() {
                 var resultsContainer = geocoder.getContainer().querySelector('.leaflet-control-geocoder-alternatives');
                 if (resultsContainer) {
                     resultsContainer.style.display = 'block'; // Rétablir l'affichage par défaut

@@ -2,13 +2,13 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:mon_gravier_com_apporteur/constants.dart';
 import 'package:mon_gravier_com_apporteur/globale.dart';
 import 'package:http/http.dart' as http;
 import 'package:mon_gravier_com_apporteur/models/retour_home.dart';
 
-import '../../helper/constants.dart';
+import '../../components/carte_operation.dart';
+import '../../components/etat_vide.dart';
 import '../../models/User.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -61,19 +61,19 @@ class _HomeScreenState extends State<HomeScreen> {
             // retHome n'est remplace QU'EN cas de succes : sur une reponse d'erreur,
             // data vaut null et le prochain rebuild plantait sur retHome.data! .
             retHome = reponseHome;
-            setState(() {
+            if (mounted) setState(() {
               paiements = retHome.data?.paiementsList ?? [];
               apporteur = retHome.apporteur ?? Apporteur();
               user.apporteur = apporteur;
             });
           } else {
-            afficherErreur(retHome.message ?? '');
+            if (mounted) afficherErreur(retHome.message ?? '');
           }
         } else {
-          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
+          if (mounted) afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e, stackTrace) {
-        afficherErreur(
+        if (mounted) afficherErreur(
             "Une erreur s'est produite veuillez réessayer plus tard");
         if (kDebugMode) {
           print('Erreur home-apporteur: $e');
@@ -84,7 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
         fermerChargement();
       }
     } else {
-      afficherInfo("Veuillez vérifier votre connexion internet");
+      if (mounted) afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -92,6 +92,16 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     // TODO: implement initState
     super.initState();
+
+    // L'ACCUEIL SE LAISSE RECHARGER DE L'EXTERIEUR.
+    //
+    // Depuis que les onglets restent vivants, y revenir ne recharge
+    // plus : ses chiffres resteraient ceux d'avant l'action faite
+    // ailleurs. Silencieux : l'accueil n'est meme pas a l'ecran.
+    rafraichirAccueil = () async {
+      if (mounted) await chargerHome(sansLoader: true);
+    };
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (user.token != null && user.token != "") {
         chargerHome();
@@ -100,267 +110,305 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
+  void dispose() {
+    // On ne laisse pas un point d'entree pointer sur un ecran detruit.
+    rafraichirAccueil = null;
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final stats = retHome.data?.statsList;
+    final Stats? premiere =
+        (stats == null || stats.isEmpty) ? null : stats.first;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Bienvenue sur l'espace apporteur IMLOD"),
-        backgroundColor: Colors.transparent,
+        title: const Text("Espace apporteur"),
         elevation: 0,
         centerTitle: true,
         automaticallyImplyLeading: false,
       ),
       body: SafeArea(
-        child: Container(
-          width: double.infinity,
-          height: heightOfScreen(context),
-          decoration: const BoxDecoration(
-            image: DecorationImage(
-              image: AssetImage("assets/images/bg.jpg"),
-              fit: BoxFit.cover,
-              opacity: 0.2,
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  Container(
-                    // width: 250.w,
-                    // height: 108.h,
-                    margin: const EdgeInsets.all(24.00 * 0.4),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 30.00, vertical: 30.00 * 0.6),
-                    decoration: BoxDecoration(
-                        color: kPrimaryColor,
-                        borderRadius: BorderRadius.circular(15)),
-                    child: Column(
-                      children: [
-                        Column(
-                          crossAxisAlignment: crossEnd,
-                          children: [
-                            Column(
-                              // Column(
-                              crossAxisAlignment: crossStart,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: mainSpaceBet,
-                                  children: [
-                                    Text(
-                                      user.nom.toString(),
-                                      style: white16BoldTextStyle,
-                                    ),
-                                  ],
-                                ),
-                                addVerticalSpace(5),
-                                Row(
-                                  mainAxisAlignment: mainSpaceBet,
-                                  children: [
-                                    Text(
-                                      (afficheSolde == true)
-                                          ? formaterMontant(user
-                                                  .apporteur?.solde
-                                                  ?.toDouble() ??
-                                              0)
-                                          : "*" *
-                                              user.apporteur!.solde
-                                                  .toString()
-                                                  .length,
-                                      style: white14BoldTextStyle,
-                                    ),
-                                    addHorizontalSpace(20),
-                                    GestureDetector(
-                                        onTap: () {
-                                          setState(() {
-                                            afficheSolde = !afficheSolde;
-                                          });
-                                        },
-                                        child: Icon(
-                                          afficheSolde == true
-                                              ? Icons.visibility
-                                              : Icons.visibility_off,
-                                          color: whiteColor,
-                                          size: 30,
-                                        ))
-                                  ],
-                                ),
-                              ],
-                            )
-                          ],
-                        )
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 7),
-                    child: Row(
-                      mainAxisAlignment: mainSpaceBet,
-                      children: [
-                        Card(
-                          color: Colors.red[200],
-                          child: SizedBox(
-                            width: (widthOfScreen(context) / 2) - 45,
-                            height: 100,
-                            child: Center(
-                              child: Column(
-                                mainAxisAlignment: mainCenter,
-                                crossAxisAlignment: crossCenter,
-                                children: [
-                                  const Text(
-                                    "Comm.ce mois",
-                                    style: black14MediumTextStyle,
-                                  ),
-                                  Text(
-                                    (retHome.data!.statsList == null || retHome.data!.statsList!.isEmpty || retHome.data!.statsList!.first.ceMois == null)
-                                        ? "0"
-                                        : formaterMontant(retHome
-                                                .data!.statsList!.first.ceMois
-                                                ?.toDouble() ??
-                                            0),
-                                    style: black18BoldTextStyle,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        addHorizontalSpace(15),
-                        Card(
-                          color: Colors.green[200],
-                          child: SizedBox(
-                            width: (widthOfScreen(context) / 2) - 45,
-                            height: 100,
-                            child: Center(
-                              child: Column(
-                                mainAxisAlignment: mainCenter,
-                                crossAxisAlignment: crossCenter,
-                                children: [
-                                  const Text(
-                                    "Comm. cette année",
-                                    style: black14MediumTextStyle,
-                                  ),
-                                  Text(
-                                    (retHome.data!.statsList == null || retHome.data!.statsList!.isEmpty || retHome.data!.statsList!.first.cetteAnnee == null)
-                                        ? "0"
-                                        : formaterMontant(retHome
-                                        .data!.statsList!.first.cetteAnnee
-                                        ?.toDouble() ??
-                                        0),
-                                    style: black18BoldTextStyle,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        )
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    "Liste des paiements effectués",
-                    style: red18MediumTextStyle,
-                    textAlign: TextAlign.center,
-                  ),
-                  addVerticalSpace(5),
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: 50.0,
-                      maxHeight: MediaQuery.of(context).size.height / 2,
-                    ),
-                    child: (paiements.isNotEmpty)
-                        ? ListView(
-                            physics: const BouncingScrollPhysics(),
-                            children: <Widget>[
-                              _transactionHistoryWidget(context)
-                            ],
-                          )
-                        : _aucuneTransaction(),
-                  )
-                ],
-              ),
-            ),
+        child: RefreshIndicator(
+          color: kPrimaryColor,
+          onRefresh: () => chargerHome(sansLoader: true),
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics()),
+            padding: const EdgeInsets.fromLTRB(
+                kSpaceLg, kSpaceLg, kSpaceLg, kSpaceXxl),
+            children: [
+              _blocSolde(),
+              const SizedBox(height: kSpaceLg),
+              _tuilesCommissions(premiere),
+              const SizedBox(height: kSpaceXl),
+              _titreSection(),
+              const SizedBox(height: kSpaceMd),
+              if (paiements.isEmpty)
+                _aucuneTransaction()
+              else
+                for (final p in paiements) _ligneReglement(p),
+            ],
           ),
         ),
       ),
     );
   }
 
-  _aucuneTransaction() {
-    return Center(
+  /// SOLDE DISPONIBLE.
+  ///
+  /// C'était un pavé bleu où le nom de l'apporteur et son solde s'affichaient
+  /// dans la MÊME taille, sur la même ligne, séparés par un simple espace — et
+  /// l'œil, qui vient chercher un montant, ne trouvait rien à quoi s'accrocher.
+  ///
+  /// Le solde devient l'élément dominant de l'écran, ce qu'il est ; le nom
+  /// passe au-dessus en surtitre, et l'œil qui masque le montant devient un
+  /// bouton lisible plutôt qu'un pictogramme de 30 px posé au bord.
+  Widget _blocSolde() {
+    final double solde = user.apporteur?.solde?.toDouble() ?? 0;
+    final String nom = user.nom?.toString().trim() ?? '';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(kSpaceXl),
+      decoration: BoxDecoration(
+        gradient: kBandeauGradient,
+        borderRadius: BorderRadius.circular(kRadiusLg),
+        boxShadow: kShadowCarte,
+      ),
       child: Column(
-        mainAxisAlignment: mainCenter,
-        crossAxisAlignment: crossCenter,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
-            Icons.search_off_sharp,
-            color: kPrimaryColor,
-            size: 40,
+          Row(
+            children: [
+              const Icon(Icons.account_circle_outlined,
+                  size: 18, color: Color(0xCCFFFFFF)),
+              const SizedBox(width: kSpaceSm),
+              Expanded(
+                child: Text(
+                  nom.isEmpty || nom == 'null' ? "Apporteur d'affaires" : nom,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xCCFFFFFF),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ),
-          addVerticalSpace(10),
-          const Text("Aucune Transaction")
+          const SizedBox(height: kSpaceLg),
+          Text(
+            "SOLDE DISPONIBLE",
+            style: kEtiquetteStyle.copyWith(color: const Color(0x99FFFFFF)),
+          ),
+          const SizedBox(height: kSpaceSm),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(
+                  afficheSolde
+                      ? formaterMontant(solde)
+                      // Masquage : autant d'étoiles que de chiffres, pour que
+                      // la ligne ne saute pas quand on l'affiche.
+                      : '•' * solde.toStringAsFixed(0).length,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    height: 1.1,
+                    letterSpacing: -0.5,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+              const SizedBox(width: kSpaceMd),
+              Material(
+                color: kChipSurAppBar,
+                shape: const CircleBorder(),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () => setState(() => afficheSolde = !afficheSolde),
+                  child: SizedBox(
+                    height: 42,
+                    width: 42,
+                    child: Icon(
+                      afficheSolde
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  _transactionHistoryWidget(BuildContext context) {
-    return ListView.builder(
-        shrinkWrap: true,
-        physics: const BouncingScrollPhysics(),
-        scrollDirection: Axis.vertical,
-        itemCount: paiements.length,
-        itemBuilder: (BuildContext context, int index) {
-          Paiements d = paiements[index];
-          return Card(
-            elevation: 4.0,
-            shape: RoundedRectangleBorder(
-              side: BorderSide(color: Colors.white70, width: 1),
-              borderRadius: BorderRadius.circular(30),
-            ),
-            child: Padding(
-              padding: EdgeInsets.all(24 * 0.3),
-              child: Column(
-                mainAxisAlignment: mainCenter,
-                crossAxisAlignment: crossStart,
-                children: [
-                  // « Compte » n'a de sens que pour une demande de retrait, où
-                  // l'apporteur indique où il veut être payé. Une commission réglée
-                  // par un gestionnaire n'en a pas : la ligne affichait « Compte: null »
-                  // puis « Compte: - ». On la masque simplement quand il n'y a rien à
-                  // montrer, et on l'intitule « Référence » lorsque la valeur vient
-                  // d'un règlement du back-office.
-                  if ((d.numeroCompte ?? '').trim().isNotEmpty &&
-                      (d.numeroCompte ?? '').trim() != '-')
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 15),
-                      child: Text(
-                        '${d.paye == 1 ? 'Référence' : 'Compte'}: ${d.numeroCompte}',
-                      ),
-                    ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 15),
-                    child: Text(
-                      'Montant: ${formaterMontant(d.montant?.toDouble() ?? 0)}',
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 15),
-                    child: Text(
-                      "Moyen paiement: ${d.modePaiement}",
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 15),
-                    child: Text(
-                      'Date: ${d.dateDemande}',
-                    ),
-                  ),
-                ],
+  /// COMMISSIONS DU MOIS ET DE L'ANNÉE.
+  ///
+  /// C'étaient deux `Card` de couleur pleine — l'une ROUGE pâle, l'autre VERTE
+  /// pâle — de 100 px de haut. Le rouge laissait croire à une anomalie, le vert
+  /// à une réussite, alors que ce sont deux chiffres de même nature : un cumul
+  /// sur un mois et un cumul sur une année.
+  ///
+  /// Deux tuiles identiques désormais, distinguées par leur seul libellé, avec
+  /// le montant en évidence.
+  Widget _tuilesCommissions(Stats? stats) {
+    return Row(
+      children: [
+        Expanded(
+          child: _tuile(
+            icone: Icons.calendar_month_outlined,
+            libelle: "CE MOIS",
+            montant: stats?.ceMois?.toDouble() ?? 0,
+          ),
+        ),
+        const SizedBox(width: kSpaceMd),
+        Expanded(
+          child: _tuile(
+            icone: Icons.stacked_line_chart_outlined,
+            libelle: "CETTE ANNÉE",
+            montant: stats?.cetteAnnee?.toDouble() ?? 0,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _tuile({
+    required IconData icone,
+    required String libelle,
+    required double montant,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(kSpaceLg),
+      decoration: BoxDecoration(
+        color: kSurfaceColor,
+        borderRadius: BorderRadius.circular(kRadiusMd),
+        border: Border.all(color: kBorderFortColor),
+        boxShadow: kShadowCarte,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Container(
+                height: 30,
+                width: 30,
+                decoration: BoxDecoration(
+                  color: kPrimarySoftColor,
+                  borderRadius: BorderRadius.circular(kSpaceSm),
+                ),
+                alignment: Alignment.center,
+                child: Icon(icone, size: 16, color: kPrimaryColor),
               ),
+              const SizedBox(width: kSpaceSm),
+              Expanded(
+                child: Text(
+                  libelle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: kEtiquetteStyle.copyWith(
+                      color: kTextMutedColor, fontSize: 10),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: kSpaceMd),
+          Text(
+            formaterMontant(montant),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: kMontantStyle.copyWith(fontSize: 18),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// TITRE DE SECTION.
+  ///
+  /// Il était centré, en ROUGE, dans un corps de 18 px : il ressemblait à une
+  /// alerte plutôt qu'à un intitulé. Il s'aligne à gauche comme tous les autres
+  /// titres de l'application, et porte le nombre de règlements.
+  Widget _titreSection() {
+    return Row(
+      children: [
+        const Expanded(
+          child: Text("Paiements effectués", style: kTitreSectionStyle),
+        ),
+        if (paiements.isNotEmpty)
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: kSpaceMd, vertical: 4),
+            decoration: BoxDecoration(
+              color: kPrimarySoftColor,
+              borderRadius: BorderRadius.circular(kRadiusPill),
             ),
-          );
-        });
+            child: Text(
+              "${paiements.length}",
+              style: kEtiquetteStyle.copyWith(color: kPrimaryColor),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// UN RÈGLEMENT.
+  ///
+  /// La carte alignait quatre lignes de la forme « Étiquette: valeur », toutes
+  /// dans le même corps et la même couleur, dans un cadre à coins arrondis de
+  /// 30 px cerclé de blanc sur du blanc. Le montant — la seule information que
+  /// l'on vient chercher — n'y était pas plus visible que la date.
+  ///
+  /// Elle reprend la carte commune à toutes les applications : montant
+  /// dominant, mention, date, et l'état du règlement en pastille.
+  Widget _ligneReglement(Paiements d) {
+    final bool regle = d.paye == 1;
+    // « Compte » n'a de sens que pour une demande de retrait, où l'apporteur
+    // indique où il veut être payé. Une commission réglée par un gestionnaire
+    // n'en a pas : la ligne affichait « Compte: null » puis « Compte: - ».
+    final String reference = (d.numeroCompte ?? '').trim();
+    final bool aUneReference = reference.isNotEmpty && reference != '-';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: kSpaceMd),
+      child: CarteOperation(
+        icone: regle
+            ? Icons.check_circle_outline
+            : Icons.hourglass_bottom_outlined,
+        numero: aUneReference
+            ? "${regle ? 'Référence' : 'Compte'} $reference"
+            : "Règlement",
+        montant: formaterMontant(d.montant?.toDouble() ?? 0),
+        mention: "${d.modePaiement}",
+        date: "${d.dateDemande}",
+        statut: regle ? "Réglé" : "En attente",
+        couleurStatut: regle ? kSuccessColor : kWarningColor,
+        fondStatut: regle ? kSuccessSoftColor : kWarningSoftColor,
+      ),
+    );
+  }
+
+  Widget _aucuneTransaction() {
+    return const EtatVide(
+      compact: true,
+      icone: Icons.receipt_long_outlined,
+      titre: "Aucun règlement",
+      message: "Vos commissions réglées apparaîtront ici, avec leur date et "
+          "leur moyen de paiement.",
+    );
   }
 }

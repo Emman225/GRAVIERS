@@ -15,9 +15,13 @@ use App\Models\Concerns\TraceLesValidations;
 
 class Paiement extends Model
 {
+    use \App\Traits\CircuitPreuveReglement;
     use HasFactory, SoftDeletes, TraceLesValidations;
     protected $table = 'paiement';
     protected $fillable = [
+        // Sans cette entree, l'attribution des points serait ecrite
+        // par un update() qui la laisserait TOMBER en silence.
+        'points_attribues',
         'client_id',
         'devis_id',
         'code',
@@ -32,11 +36,22 @@ class Paiement extends Model
         'agence_id',
         'caissier_id',
         'numero_recu',
+        // Date d'envoi du reçu au client (courriel) : un seul envoi par règlement.
+        'recu_envoye_le',
         // Double validation (cf. trait DoubleValidationPaiement)
         'user_valide_id',
         'user_valide2_id',
         'date_validation_1',
         'date_validation_2',
+        // Circuit après la 2e validation (point 20, 09/09/2026) : « À payer »,
+        // preuve jointe, « Effectuée ». Suivi seulement : l'encaissement compte
+        // dès la 2e validation.
+        'etat_reglement',
+        'preuve_paiement',
+        'date_preuve',
+        'user_preuve_id',
+        'date_effectuee',
+        'user_effectuee_id',
     ];
 
     protected $casts = [
@@ -196,6 +211,19 @@ class Paiement extends Model
     public function commande()
     {
         return $this->belongsTo(Commande::class, 'service_id', 'id');
+    }
+
+    /**
+     * LA FACTURE REGLEE PAR CE PAIEMENT.
+     *
+     * `facture_id` etait renseigne depuis longtemps, mais aucune relation ne
+     * permettait de le suivre. C'est ce chainon qui manquait pour retrouver
+     * l'affaire d'une commission quand le paiement lui-meme n'a pas de
+     * `service_id` : la facture, elle, le porte souvent.
+     */
+    public function facture()
+    {
+        return $this->belongsTo(Facture::class, 'facture_id', 'id');
     }
 
 

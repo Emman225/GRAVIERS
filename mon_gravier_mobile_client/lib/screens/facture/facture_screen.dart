@@ -3,13 +3,13 @@ import 'dart:convert';
 import 'package:contained_tab_bar_view/contained_tab_bar_view.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:http/http.dart' as http;
 import 'package:mon_gravier_com/components/empty_user_widget.dart';
-import 'package:mon_gravier_com/constants.dart';
 import 'package:mon_gravier_com/globale.dart';
 import 'package:mon_gravier_com/models/liste_paiement.dart';
 
+import '../../components/bouton_retour.dart';
+import '../../components/onglets.dart';
 import '../../helper/constants.dart';
 import 'components/facture_liste_screen.dart';
 
@@ -114,28 +114,9 @@ class FactureScreenState extends State<FactureScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Liste des factures"),
-        backgroundColor: Colors.transparent,
+        title: const Text("Paiements en attente / effectués"),
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       body: SafeArea(
         child: (user.token == null || user.token == "")
@@ -143,31 +124,13 @@ class FactureScreenState extends State<FactureScreen> {
             : Container(
                 width: double.infinity,
                 height: heightOfScreen(context),
-                decoration: const BoxDecoration(
-                  image: DecorationImage(
-                    image: AssetImage("assets/images/bg.jpg"),
-                    fit: BoxFit.cover,
-                    opacity: 0.1,
-                  ),
-                ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: ContainedTabBarView(
-                      tabBarProperties: TabBarProperties(
-                        background: Container(
-                          margin: const EdgeInsets.only(bottom: 5),
-                          decoration: const BoxDecoration(
-                            color: kSecondaryColor,
-                            borderRadius: BorderRadius.all(Radius.circular(8.0)),
-                          ),
-                        ),
-                        indicatorColor: kPrimaryColor,
-                        labelColor: Colors.white,
-                        unselectedLabelColor: Colors.black,
-                      ),
+                      tabBarProperties: ongletsSegmentes(),
                       tabs: const [
-                        Text('En Attente', style: white16BoldTextStyle),
-                        Text('Payée', style: white16BoldTextStyle),
+                        Text('En attente'),
+                        Text('Effectués'),
                       ],
                       views: pagesPaiement,
                       onChange: (index) {

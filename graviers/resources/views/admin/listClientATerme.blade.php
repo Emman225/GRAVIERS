@@ -7,6 +7,9 @@
 @section('title', 'Liste des clients')
 
 @section('contenu')
+
+    @include('client._decisionsEnAttente', ['decisions' => $decisions ?? collect()])
+
     <div class="content-header">
         <h2 class="content-title">Liste des Clients à terme - </h2>
 
@@ -65,14 +68,15 @@
                 <table class="table table-striped" id="liste">
                     <thead style="background-color: #1c57a3; color: white;">
                         <tr>
-                            <th class="text-center">Code Client</th>
-                            <th class="text-center">Raison Sociale / Nom</th>
+                            <th class="text-center">Code client</th>
+                            <th class="text-center">Raison sociale / Nom</th>
                             <th class="text-center">Type</th>
                             <th class="text-center">Contact</th>
                             <th class="text-center">Téléphone</th>
                             <th class="text-center">Email</th>
                             <th class="text-center">Adresse / Chantier</th>
-                            <th class="text-end">Plafond Crédit</th>
+                            <th class="text-end">Plafond crédit</th>
+                            <th class="text-end">Avance disponible</th>
                             <th class="text-center">Délai paiement (j)</th>
                             <th class="text-center">Notes</th>
                             <th class="text-center">Statut</th>
@@ -107,6 +111,7 @@
                             <td class="text-end">
                                 {{ $c->plafond_credit ? Help::formatNombre($c->plafond_credit, true) : '-' }}
                             </td>
+                            <td class="text-end">{{ ($soldesAvance[$c->id] ?? 0) >= 1 ? Help::formatNombre($soldesAvance[$c->id], true) : '-' }}</td>
                             <td class="text-center">{{ $c->delai_paiement ?? '-' }}</td>
                             <td>{{ $c->notes ?? '-' }}</td>
                             <td class="text-center">
@@ -115,8 +120,15 @@
                                 @else
                                     <span class="badge bg-danger">Bloqué</span>
                                 @endif
+
+                                {{-- Un client dont le statut à terme a été retiré reste
+                                     dans cette liste : sans cela, le bouton qui le lui
+                                     rend deviendrait introuvable. --}}
+                                @if ((int) $c->client_a_terme !== 1)
+                                    <br><span class="badge bg-secondary mt-1">Statut à terme retiré</span>
+                                @endif
                             </td>
-                            <td>
+                            <td class="text-nowrap">
                                 <div class="dropdown">
                                     <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm"> <i class="material-icons md-more_horiz"></i> Actions</a>
                                     <div class="dropdown-menu">
@@ -132,9 +144,18 @@
                                         {{-- Le plafond n'était inscrit qu'une fois, à l'approbation de la
                                              demande : ni relèvement, ni baisse, ni correction d'une erreur
                                              de saisie n'étaient possibles ensuite. --}}
-                                        <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#plafondModal-{{ $c->id }}">
-                                            Modifier le plafond
-                                        </button>
+                                        @if ((int) $c->client_a_terme === 1)
+                                            <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#plafondModal-{{ $c->id }}">
+                                                Modifier le plafond
+                                            </button>
+                                            <button class="dropdown-item text-danger" data-bs-toggle="modal" data-bs-target="#retraitModal-{{ $c->id }}">
+                                                Retirer le statut à terme
+                                            </button>
+                                        @else
+                                            <button class="dropdown-item text-success" data-bs-toggle="modal" data-bs-target="#reactivationModal-{{ $c->id }}">
+                                                Rendre le statut à terme
+                                            </button>
+                                        @endif
                                         <button class="dropdown-item" data-id="{{ $c->id }}" data-nom="{{ $c->nom }}" data-bs-toggle="modal" data-bs-target="#tvaModal-{{ $c->id }}">
                                             {{ $c->applique_tva == 1 ? 'Retirer la TVA' : 'Appliquer la TVA' }}
                                         </button>
@@ -299,6 +320,84 @@
         </div>
 
          <!-- Modal applique tva -->
+        {{-- RETRAIT DU STATUT À TERME.
+             Le geste attendu face à un mauvais payeur : on ferme la ligne de
+             crédit sans effacer ce qui est dû. --}}
+        <div class="modal fade" id="retraitModal-{{ $c->id }}" tabindex="-1">
+            <div class="modal-dialog">
+                <form method="POST" action="{{ route('show.decisionCredit.retrait', $c) }}" class="modal-content">
+                    @csrf
+                    <div class="modal-header bg-danger">
+                        <h5 class="modal-title text-white">Retirer le statut à terme</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>
+                            <strong>{{ trim($c->display_name) }}</strong> repasserait au comptant :
+                            il ne pourrait plus commander à crédit.
+                        </p>
+                        <p class="text-muted small">
+                            Ses créances en cours <strong>restent dues</strong> et continuent d'apparaître
+                            dans les relances. Seul le droit de commander à crédit s'arrête. Le plafond
+                            actuel ({{ Help::formatNombre($c->plafond_credit ?? 0, true) }}) est conservé
+                            et vous sera proposé si vous lui rendez le statut plus tard.
+                        </p>
+                        <div class="mb-2">
+                            <label class="form-label">Motif <span class="text-muted">(facultatif)</span></label>
+                            <input type="text" name="motif" class="form-control" maxlength="255"
+                                   placeholder="Retards de paiement répétés...">
+                        </div>
+                        <div class="alert alert-warning mb-0 small">
+                            Rien ne change tant qu'un <strong>second administrateur</strong> n'a pas validé.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Annuler</button>
+                        <button type="submit" class="btn btn-danger btn-sm">Enregistrer le retrait</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        {{-- RÉACTIVATION. Le plafond d'avant le retrait est proposé. --}}
+        <div class="modal fade" id="reactivationModal-{{ $c->id }}" tabindex="-1">
+            <div class="modal-dialog">
+                <form method="POST" action="{{ route('show.decisionCredit.reactivation', $c) }}" class="modal-content">
+                    @csrf
+                    <div class="modal-header bg-success">
+                        <h5 class="modal-title text-white">Rendre le statut à terme</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p><strong>{{ trim($c->display_name) }}</strong> pourrait de nouveau commander à crédit.</p>
+                        <div class="mb-2">
+                            <label class="form-label">Plafond de crédit</label>
+                            <input type="number" name="plafond_credit" class="form-control" min="0" step="1"
+                                   value="{{ (int) ($c->plafond_credit ?? 0) }}">
+                            <small class="text-muted">Laissez tel quel pour reprendre le plafond d'avant le retrait.</small>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Délai de paiement (jours)</label>
+                            <input type="number" name="delai_paiement" class="form-control" min="1" max="365"
+                                   value="{{ (int) ($c->delai_paiement ?? 30) }}">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Motif <span class="text-muted">(facultatif)</span></label>
+                            <input type="text" name="motif" class="form-control" maxlength="255"
+                                   placeholder="Situation régularisée...">
+                        </div>
+                        <div class="alert alert-warning mb-0 small">
+                            Rien ne change tant qu'un <strong>second administrateur</strong> n'a pas validé.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Annuler</button>
+                        <button type="submit" class="btn btn-success btn-sm">Enregistrer la réactivation</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         {{-- Révision du plafond de crédit. En POST, avec jeton : ce montant est
              opposable — il bloque les commandes au-delà — et ne doit pas pouvoir
              changer sur un simple lien visité. --}}
@@ -372,8 +471,15 @@
                         <h5 class="fw-bold text-danger" id="deleteNom"></h5>
 
                         <p class="text-muted">
-                            {{ $c->applique_tva == 1 ? 'Il le paiera plus de TVA sur ses commandes' : 'Il devra payer une TVA sur ses commandes.' }}
+                            {{ $c->applique_tva == 1 ? 'Il ne paiera plus de TVA sur ses commandes.' : 'Il devra payer une TVA sur ses commandes.' }}
                         </p>
+                        @if ($c->applique_tva == 1)
+                            <p class="text-muted small">
+                                Précisez le motif : <strong>légale</strong> (prévue par la loi, code DGI TVAD) ou
+                                <strong>conventionnelle</strong> (accordée par convention ou agrément, code DGI TVAC).
+                                Ce code sera porté par ses factures normalisées.
+                            </p>
+                        @endif
                     </div>
 
                     <div class="modal-footer">
@@ -387,8 +493,17 @@
                             </button>
 
 
-                            <a href="{{route('show.appliqueTva',$c)}}"
-                                class="btn btn-sm btn-{{ $c->applique_tva == 1 ? 'danger' : 'warning' }} rounded font-sm mt-15">{{ $c->applique_tva == 1 ? 'Retirer la TVA' : 'Appliquer la TVA' }}</a>
+                            @if ($c->applique_tva == 1)
+                                {{-- Le retrait dit à la DGI POURQUOI ce client n'a pas de TVA (lot 82, 15/09/2026) :
+                                     exonération légale (TVAD) ou conventionnelle (TVAC), code de ses lignes FNE. --}}
+                                <a href="{{ route('show.appliqueTva', $c) }}?code=TVAD"
+                                    class="btn btn-sm btn-danger rounded font-sm mt-15">Retirer : exonération légale (TVAD)</a>
+                                <a href="{{ route('show.appliqueTva', $c) }}?code=TVAC"
+                                    class="btn btn-sm btn-outline-danger rounded font-sm mt-15">Retirer : exonération conventionnelle (TVAC)</a>
+                            @else
+                                <a href="{{ route('show.appliqueTva', $c) }}"
+                                    class="btn btn-sm btn-warning rounded font-sm mt-15">Appliquer la TVA</a>
+                            @endif
                         </form>
                     </div>
 

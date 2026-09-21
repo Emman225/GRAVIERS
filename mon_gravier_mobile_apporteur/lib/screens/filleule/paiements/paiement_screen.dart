@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:mon_gravier_com_apporteur/constants.dart';
@@ -10,6 +9,8 @@ import 'package:mon_gravier_com_apporteur/globale.dart';
 import 'package:mon_gravier_com_apporteur/models/retour_liste_filleule.dart';
 import 'package:searchable_listview/searchable_listview.dart';
 
+import '../../../components/etat_vide.dart';
+import '../../../../components/bouton_retour.dart';
 import '../../../../helper/constants.dart';
 import '../../../models/retour_liste_paiement_filleule.dart';
 
@@ -57,17 +58,17 @@ class PaiementFilleuleScreenState extends State<PaiementFilleuleScreen> {
           }
           retourList = RetourListePaiementFilleule.fromJson(datas);
           if (retourList.code == 200) {
-            setState(() {
+            if (mounted) setState(() {
               paiements = retourList.data ?? [];
             });
           } else {
-            afficherErreur(retourList.message ?? '');
+            if (mounted) afficherErreur(retourList.message ?? '');
           }
         } else {
-          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
+          if (mounted) afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
-        afficherErreur(
+        if (mounted) afficherErreur(
             "Une erreur s'est produite veuillez reesayer plus tard");
         if (kDebugMode) {
           print(e.toString());
@@ -75,7 +76,7 @@ class PaiementFilleuleScreenState extends State<PaiementFilleuleScreen> {
       }
       fermerChargement();
     } else {
-      afficherInfo("Veuillez vérifier votre connexion internet");
+      if (mounted) afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -95,44 +96,21 @@ class PaiementFilleuleScreenState extends State<PaiementFilleuleScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text("Liste des paiements de ${filleule.nom} ${filleule.prenom}"),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       body: SafeArea(
         child: Container(
           width: double.infinity,
           height: heightOfScreen(context),
-          decoration: const BoxDecoration(
-            image: DecorationImage(
-              image: AssetImage("assets/images/bg.jpg"),
-              fit: BoxFit.cover,
-              opacity: 0.2,
-            ),
-          ),
           child: Padding(
             padding: const EdgeInsets.all(15.0),
             child: SearchableList<PaiementFilleule>(
               searchFieldEnabled: true,
               shrinkWrap: true,
+              // Le clavier ne s'ouvre plus tout seul : il masquait la moitie
+              // de la liste des l'arrivee.
+              autoFocusOnSearch: false,
               sortWidget: const Icon(Icons.sort),
               sortPredicate: (a, b) {
                 int mtna = a.id ?? 0;
@@ -240,6 +218,13 @@ class PaiementFilleuleScreenState extends State<PaiementFilleuleScreen> {
                 ),
               );
               },
+              emptyWidget: const EtatVide(
+              compact: true,
+              icone: Icons.payments_outlined,
+              titre: "Aucun paiement",
+              message:
+                  "Les paiements de ce filleul apparaîtront dans cette liste.",
+            ),
               initialList: paiements,
               filter: (p0) {
                 return paiements
@@ -248,17 +233,11 @@ class PaiementFilleuleScreenState extends State<PaiementFilleuleScreen> {
                     c.statut.toString().contains(p0)))
                     .toList();
               },
-              inputDecoration: InputDecoration(
-                labelText: "Recherchez...",
-                fillColor: Colors.white,
-                focusedBorder: OutlineInputBorder(
-                  borderSide: const BorderSide(
-                    color: kPrimaryColor,
-                    width: 1.0,
-                  ),
-                  borderRadius: BorderRadius.circular(10.0),
-                ),
-              ),
+              inputDecoration: const InputDecoration(
+              hintText: "Rechercher...",
+              floatingLabelBehavior: FloatingLabelBehavior.never,
+              prefixIcon: Icon(Icons.search, size: 20),
+            ),
             ),
           ),
         ),

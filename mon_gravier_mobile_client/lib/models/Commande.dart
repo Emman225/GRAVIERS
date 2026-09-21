@@ -18,6 +18,9 @@ class UneCommande {
   double? remise;
   double? montant_tva;
   double? cout_livraison_client;
+  double? tva_transport;
+  // AIRSI figé sur la commande (10/09/2026).
+  double? airsi;
   int? typeLivraisonId;
   int? est_livrable;
   String? modePaiement;
@@ -25,6 +28,9 @@ class UneCommande {
   String? adresse;
   String? numero_bl;
   String? fichier_bl;
+  /// 1 quand un règlement EN LIGNE validé porte sur la commande (API,
+  /// lot 81, 15/09/2026) : le document se titre alors « Facture de vente ».
+  int? payeEnLigne;
 
   UneCommande(
       {this.id,
@@ -76,12 +82,15 @@ class UneCommande {
     remise = double.parse(json['remise']==null ? '0' : json['remise'].toString());
     montant_tva = double.parse(json['montant_tva']==null ? '0' : json['montant_tva'].toString());
     cout_livraison_client = double.parse(json['cout_livraison_client']==null ? '0' : json['cout_livraison_client'].toString());
+    tva_transport = double.tryParse(json['tva_transport']?.toString() ?? '0') ?? 0;
+    airsi = double.tryParse(json['airsi']?.toString() ?? '0') ?? 0;
     typeLivraisonId = json['type_livraison_id'];
     est_livrable = json['est_livrable'];
     modePaiement = json['mode_paiement'];
     adresse = json['adresse'];
     fichier_bl = json['fichier_bl'];
     numero_bl = json['numero_bl'];
+    payeEnLigne = json['paye_en_ligne'] == null ? 0 : int.tryParse(json['paye_en_ligne'].toString()) ?? 0;
   }
 
   Map<String, dynamic> toJson() {
@@ -111,6 +120,7 @@ class UneCommande {
     data['adresse'] = this.adresse;
     data['numero_bl'] = this.numero_bl;
     data['fichier_bl'] = this.fichier_bl;
+    data['paye_en_ligne'] = this.payeEnLigne;
     return data;
   }
 }
@@ -283,6 +293,11 @@ class DetailsLocation {
   String? modePaiement;
   String? adresse;
 
+  /// Où en est le matériel (10/09/2026) : « Livrée le … », « Retirée le … »,
+  /// « En livraison »… La location, elle, reste EN COURS jusqu'au retour.
+  String? etatLivraisonCode;
+  String? etatLivraisonLibelle;
+
   DetailsLocation(
       {this.id,
         this.numero,
@@ -310,6 +325,8 @@ class DetailsLocation {
     dateLocation = json['date_location'];
     montantTotal = double.parse(json['montant_total'] == null ? '0' : json['montant_total'].toString());
     etatLocation = json['etat_location'];
+    etatLivraisonCode = json['etat_livraison_code']?.toString();
+    etatLivraisonLibelle = json['etat_livraison_libelle']?.toString();
     note = json['note'];
     remise = double.parse(json['remise'] == null ? '0' : json['remise'].toString());
     statut = json['statut'];

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:location_picker_flutter_map/location_picker_flutter_map.dart';
 import 'package:mon_gravier_com/globale.dart';
@@ -10,6 +9,7 @@ import 'package:mon_gravier_com/screens/afficher_carte/afficher_carte.dart';
 import 'package:mon_gravier_com/screens/edition_adresse/EditionAdresseCtrl.dart';
 import 'package:select_searchable_list/select_searchable_list.dart';
 
+import '../../components/bouton_retour.dart';
 import '../../components/custom_surfix_icon.dart';
 import '../../models/ConfigModel.dart';
 
@@ -65,29 +65,11 @@ class _EditionAdresseScreenState extends State<EditionAdresseScreen> {
       appBar: AppBar(
         title: const Text(
           "Edition adresse de livraison",
-          style: TextStyle(color: Colors.black),
         ),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
+        leading: BoutonRetour(onTap: () {
               Get.back(result: UneAdresse());
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+            }),
       ),
       body: ListView(
         physics: const BouncingScrollPhysics(),
@@ -98,7 +80,7 @@ class _EditionAdresseScreenState extends State<EditionAdresseScreen> {
             padding: const EdgeInsets.all(8.0),
             child: DropDownTextField(
               textEditingController: paysController,
-              title: 'Pays',
+              title: 'Pays *',
               hint: 'Choisir votre pays',
               options: { for (var p in pays) p.id ?? 0 : p.nom.toString() },
               multiple: false,
@@ -115,7 +97,7 @@ class _EditionAdresseScreenState extends State<EditionAdresseScreen> {
             padding: const EdgeInsets.all(8.0),
             child: DropDownTextField(
               textEditingController: villeController,
-              title: 'Ville',
+              title: 'Ville *',
               hint: 'Choisir votre ville',
               options: { for (var p in villes) p.id ?? 0 : p.nom.toString() },
               multiple: false,
@@ -135,7 +117,7 @@ class _EditionAdresseScreenState extends State<EditionAdresseScreen> {
               textInputAction: TextInputAction.next,
               maxLength: 50,
               decoration: const InputDecoration(
-                labelText: "A Afficher",
+                labelText: "A Afficher *",
                 hintText: "Saisir l'adresse à afficher",
                 // If  you are using latest version of flutter then lable text and hint text shown like this
                 // if you r using flutter less then 1.20.* then maybe this is not working properly
@@ -154,7 +136,7 @@ class _EditionAdresseScreenState extends State<EditionAdresseScreen> {
               readOnly: true,
               textInputAction: TextInputAction.done,
               decoration: const InputDecoration(
-                labelText: "Adresse",
+                labelText: "Adresse *",
                 hintText: "Cliquez pour afficher la carte",
                 // If  you are using latest version of flutter then lable text and hint text shown like this
                 // if you r using flutter less then 1.20.* then maybe this is not working properly

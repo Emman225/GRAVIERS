@@ -159,7 +159,7 @@
                                                                         align="center">
 
                                                                         <img align="center" border="0"
-                                                                            src="https://graviers.fneconnect.net/frontend/assets/imgs/logo/dalakoun-blanc.png"
+                                                                            src="{{ rtrim(config('constantes.url_site'), '/') }}/frontend/assets/imgs/logo/dalakoun-blanc.png"
                                                                             alt="Mon Gravier" title="Mon Gravier"
                                                                             style="outline: none;text-decoration: none;-ms-interpolation-mode: bicubic;clear: both;display: inline-block !important;border: none;height: auto;float: none;width: 100%;max-width: 220px;"
                                                                             width="220" />

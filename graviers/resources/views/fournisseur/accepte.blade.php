@@ -13,10 +13,13 @@
         </div>
     </div>
     <div class="row">
-        <div class="col-md-9">
+        <div class="col-md-12">
             <div class="card mb-4">
                 <!-- card-header end// -->
                 <div class="card-body">
+                    <x-export-buttons table-id="table"
+                                      filename="bons-acceptes"
+                                      title="Bons acceptés" />
                     <div class="table-responsive">
                         <table class="table table-striped" id="table">
                             <thead>
@@ -57,9 +60,9 @@
                                             </td>
                                             <td class="text-center">{{ $enlevement->produit?->nom }}</td>
                                             <td class="text-center">{{ $enlevement->qte_servi }}</td>
-                                            <td class="text-center">{{ Carbon::parse($enlevement->fournisseur_validation)->format('d-m-Y') }} à {{ Carbon::parse($enlevement->updated_at)->format('H:i') }}</td>
-                                            <td class="text-end">
-                                                <a href="{{route('sellers.bon.detail',$enlevement->code_enleve)}}" class="btn btn-sm font-sm rounded btn-brand"> <i class="material-icons md-list"></i> Détail </a>
+                                            <td class="text-center">{{ Carbon::parse($enlevement->fournisseur_validation)->format('d-m-Y') }} à {{ Carbon::parse($enlevement->updated_at)->format('H:i:s') }}</td>
+                                            <td class="text-nowrap text-end">
+                                                <a href="{{route('sellers.bon.detail',$enlevement->code_enleve)}}" class="btn btn-sm font-sm rounded btn-info" title="Détail"><i class="material-icons md-list"></i></a>
                                             </td>
                                         </tr>
                                     @endif
@@ -73,7 +76,8 @@
                                         return [
                                             'produit' => $items->first()->produit?->nom,
                                             'nbre_env' => $items->count(),
-                                            'qte_total' => $items->sum('qte')
+                                            // Bons validés : la quantité réellement servie (09/09/2026).
+                                            'qte_total' => $items->sum('qte_servi')
                                         ];
                                     });
                                 @endphp
@@ -84,53 +88,46 @@
             </div>
         </div>
 
-        <div class="col-lg-3 bloquerTopRem4 mb-5">
-            {{-- <form action="" method="post" class="text-center">
-                @csrf
-                @if (session('fail'))
-                <div class="alert alert-danger text-center">  {{session('fail')}} </div>
-                @endif
-                <div class="box shadow-sm bg-light text-center">
-                    <h6 class="mb-15">Entrez le Code du bon d'enlèvement</h6>
-                    <p>
-                        <input type="text" name="code" placeholder="Code" class="form-control text-center">
-                    </p>
-                    <button class="mt-3 btn btn-success rounded font-sm" type="submit">Vérifier le code</button>
-                </div>
-            </form> --}}
-            <!-- col// -->
+    </div>
 
-            <div class="card mt-30">
+    {{-- LE RÉCAPITULATIF PAR PRODUITS SOUS LE TABLEAU DES BONS VALIDÉS (09/09/2026),
+         sur toute la largeur. Il s'intitulait « en attente » alors qu'il
+         compte les bons VALIDÉS de cette page ; la quantité est celle
+         réellement servie. --}}
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card mb-4">
                 <div class="card-header">
-                    <h4>Recap des enlevements en attente par produits</h4>
+                    <h4>Récap des enlèvements validés par produits</h4>
                 </div>
                 <article class="card-body">
+                    <x-export-buttons table-id="recapEnlevements"
+                                      filename="recap-enlevements-valides"
+                                      title="Récap des enlèvements validés par produit" />
                     <div class="table-responsive ">
-                        <table class="table table-striped">
+                        <table class="table table-striped" id="recapEnlevements">
                             <thead>
                                 <tr>
                                     <th style="background-color: #1c57a3; color: white">Produits</th>
                                     <th style="background-color: #1c57a3; color: white" class="text-center">Nbre de bons</th>
-                                    <th style="background-color: #1c57a3; color: white" class="text-center">Qte total</th>
+                                    <th style="background-color: #1c57a3; color: white" class="text-center">Qté servie totale</th>
                                 </tr>
                             </thead>
                             <tbody>
-                            @foreach($statProduits as $stat)
-
+                            @forelse($statProduits as $stat)
                                 <tr>
                                     <td> {{ $stat['produit'] }} </td>
-                                    <td> {{$stat['nbre_env']}} </td>
-                                    <td> {{$stat['qte_total']}} </td>
+                                    <td class="text-center"> {{$stat['nbre_env']}} </td>
+                                    <td class="text-center"> {{$stat['qte_total']}} </td>
                                 </tr>
-
-                            @endforeach
-
+                            @empty
+                                <tr><td colspan="3" class="text-center text-muted">Aucun enlèvement validé.</td></tr>
+                            @endforelse
                             </tbody>
                         </table>
                     </div>
                 </article>
             </div>
-            <!-- *********** -->
         </div>
 
         <!-- <div class="col-md-3 bloquerTopRem4">

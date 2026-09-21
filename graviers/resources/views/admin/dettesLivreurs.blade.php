@@ -44,7 +44,7 @@
                                 <td class="text-end text-danger">
                                     <strong>{{ Help::formatNombre($livreur->solde, true) }}</strong>
                                 </td>
-                                <td class="text-center">
+                                <td class="text-nowrap text-center">
                                     @php $livraisonsLivrees = $livreur->livraisons->where('etat_livraison', 'LIVREE'); @endphp
                                     <button type="button" class="btn btn-sm btn-outline-secondary btn-historique-livreur"
                                             data-livreur-id="{{ $livreur->id }}">
@@ -63,7 +63,7 @@
                                             <tbody>
                                                 @foreach ($livraisonsLivrees as $l)
                                                     <tr>
-                                                        <td>{{ \Carbon\Carbon::parse($l->created_at)->format('d/m/Y') }}</td>
+                                                        <td>{{ \Help::dateHeure($l->created_at) }}</td>
                                                         <td>{{ $l->numero ?? '-' }}</td>
                                                         <td class="text-end">{{ Help::formatNombre($l->cout_livraison ?? 0, true) }}</td>
                                                     </tr>
@@ -72,7 +72,7 @@
                                         </table>
                                     </div>
                                 </td>
-                                <td class="text-center">
+                                <td class="text-nowrap text-center">
                                     {{-- Le règlement se fait au guichet, qui porte la double
                                          validation, les reçus et l'imputation sur les pièces.
                                          Le popup local écrivait par un autre chemin. --}}

@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
@@ -31,6 +30,22 @@ class _EditProfileFormState extends State<EditProfileForm> {
   TextEditingController paysController = TextEditingController();
   TextEditingController villeController = TextEditingController();
   TextEditingController adresseController = TextEditingController();
+  // Entreprise (lot 100, 16/09/2026) : RCCM, NCC et régime d'imposition.
+  TextEditingController rccmController = TextEditingController();
+  TextEditingController nccController = TextEditingController();
+  String? regimeImposition;
+  String natureFne = 'B2B';
+  static const Map<String, String> naturesFne = {
+    'B2B': 'Entreprise privée',
+    'B2G': 'Administration ou institution publique',
+    'B2F': "Client établi à l'étranger",
+  };
+  static const Map<String, String> regimesImposition = {
+    'RNI': "Réel normal d'imposition",
+    'RSI': "Réel simplifié d'imposition",
+    'RME': 'Régime des micro-entreprises',
+    'RE': "Taxe d'État de l'Entreprenant (TEE)",
+  };
   int pays_id = 1, ville_id = 1;
   List<Pays> pays = [];
   List<Ville> villesTot = [];
@@ -172,6 +187,12 @@ class _EditProfileFormState extends State<EditProfileForm> {
               nomController.text = leUser.data?.nomPrenoms.toString() ?? '';
               telephoneController.text = leUser.data?.contact.toString() ?? '';
               adresseController.text = leUser.data?.adresse ?? '';
+              rccmController.text = leUser.data?.rccm ?? '';
+              nccController.text = leUser.data?.ncc ?? '';
+              final regime = (leUser.data?.regimeImposition ?? '').toUpperCase();
+              regimeImposition = regimesImposition.containsKey(regime) ? regime : null;
+              final nature = (leUser.data?.natureFne ?? '').toUpperCase();
+              natureFne = naturesFne.containsKey(nature) ? nature : 'B2B';
               urlPhoto = leUser.data?.photo.toString() ?? '';
               pays_id = leUser.data?.paysId ?? 0;
               if (pays_id > 0) {
@@ -220,6 +241,8 @@ class _EditProfileFormState extends State<EditProfileForm> {
     paysController.dispose();
     villeController.dispose();
     adresseController.dispose();
+    rccmController.dispose();
+    nccController.dispose();
     super.dispose();
   }
 
@@ -237,7 +260,7 @@ class _EditProfileFormState extends State<EditProfileForm> {
             controller: nomController,
             textCapitalization: TextCapitalization.characters,
             decoration: const InputDecoration(
-              labelText: "Nom & Prénoms",
+              labelText: "Nom & Prénoms *",
               hintText: "Entrez votre nom & prénoms",
               // If  you are using latest version of flutter then lable text and hint text shown like this
               // if you r using flutter less then 1.20.* then maybe this is not working properly
@@ -251,7 +274,7 @@ class _EditProfileFormState extends State<EditProfileForm> {
             textInputAction: TextInputAction.next,
             controller: telephoneController,
             decoration: const InputDecoration(
-              labelText: "Téléphone",
+              labelText: "Téléphone *",
               hintText: "Entrez votre téléphone",
               // If  you are using latest version of flutter then lable text and hint text shown like this
               // if you r using flutter less then 1.20.* then maybe this is not working properly
@@ -260,11 +283,73 @@ class _EditProfileFormState extends State<EditProfileForm> {
             ),
           ),
           const SizedBox(height: 20),
+          if (leUser.data?.estEntreprise ?? false) ...[
+            // Le client entreprise complet pour la facture normalisée (lot 100).
+            TextFormField(
+              textInputAction: TextInputAction.next,
+              controller: rccmController,
+              decoration: const InputDecoration(
+                labelText: "Registre de commerce (RCCM) *",
+                hintText: "Entrez votre RCCM",
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+                suffixIcon: CustomSurffixIcon(svgIcon: "assets/icons/Cart Icon.svg"),
+              ),
+            ),
+            const SizedBox(height: 20),
+            TextFormField(
+              textInputAction: TextInputAction.next,
+              controller: nccController,
+              decoration: const InputDecoration(
+                labelText: "N° de compte contribuable (NCC) *",
+                hintText: "Entrez votre NCC",
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+                suffixIcon: CustomSurffixIcon(svgIcon: "assets/icons/Cart Icon.svg"),
+              ),
+            ),
+            const SizedBox(height: 20),
+            DropdownButtonFormField<String>(
+              initialValue: regimeImposition,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: "Régime d'imposition *",
+                hintText: "Choisir le régime",
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+              ),
+              items: regimesImposition.entries
+                  .map((r) => DropdownMenuItem(
+                        value: r.key,
+                        child: Text(r.value, overflow: TextOverflow.ellipsis),
+                      ))
+                  .toList(),
+              onChanged: (String? valeur) {
+                setState(() => regimeImposition = valeur);
+              },
+            ),
+            const SizedBox(height: 20),
+            DropdownButtonFormField<String>(
+              initialValue: natureFne,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: "Nature de l'organisation *",
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+              ),
+              items: naturesFne.entries
+                  .map((n) => DropdownMenuItem(
+                        value: n.key,
+                        child: Text(n.value, overflow: TextOverflow.ellipsis),
+                      ))
+                  .toList(),
+              onChanged: (String? valeur) {
+                setState(() => natureFne = valeur ?? 'B2B');
+              },
+            ),
+            const SizedBox(height: 20),
+          ],
           Padding(
             padding: const EdgeInsets.all(5.0),
             child: DropDownTextField(
               textEditingController: paysController,
-              title: 'Pays',
+              title: 'Pays *',
               hint: 'Choisir votre pays',
               options: {for (var p in pays) p.id ?? 0: p.nom.toString()},
               multiple: false,
@@ -282,7 +367,7 @@ class _EditProfileFormState extends State<EditProfileForm> {
             padding: const EdgeInsets.all(5.0),
             child: DropDownTextField(
               textEditingController: villeController,
-              title: 'Ville',
+              title: 'Ville *',
               hint: 'Choisir votre ville',
               options: {for (var p in villes) p.id ?? 0: p.nom.toString()},
               multiple: false,
@@ -300,7 +385,7 @@ class _EditProfileFormState extends State<EditProfileForm> {
             textInputAction: TextInputAction.done,
             controller: adresseController,
             decoration: const InputDecoration(
-              labelText: "Adresse",
+              labelText: "Adresse *",
               hintText: "Entrez votre adresse",
               // If  you are using latest version of flutter then lable text and hint text shown like this
               // if you r using flutter less then 1.20.* then maybe this is not working properly
@@ -354,7 +439,11 @@ class _EditProfileFormState extends State<EditProfileForm> {
   }
 
   editProfileCtrl() async {
-    if (_validationSaisie()) {
+    if ((leUser.data?.estEntreprise ?? false) &&
+        (nccController.text.trim().isEmpty || rccmController.text.trim().isEmpty || regimeImposition == null)) {
+      afficherErreur(
+          "Pour une entreprise, le RCCM, le NCC et le régime d'imposition sont obligatoires : ils figurent sur vos factures.");
+    } else if (_validationSaisie()) {
       if (await verifierConnexion()) {
         try {
           afficherChargement();
@@ -373,6 +462,13 @@ class _EditProfileFormState extends State<EditProfileForm> {
             'ville_id': ville_id,
             'adresse': adresseController.text.trim(),
             'photo': photoIdentiteByte == null ? null : base64Encode(photoIdentiteByte),
+            // Entreprise : RCCM, NCC, régime (lot 100) ; ignorés par l'API pour un particulier.
+            if (leUser.data?.estEntreprise ?? false) ...{
+              'rccm': rccmController.text.trim(),
+              'ncc': nccController.text.trim(),
+              'regime_imposition': regimeImposition ?? '',
+              'nature_fne': natureFne,
+            },
           };
 
           if (kDebugMode) {
@@ -399,11 +495,58 @@ class _EditProfileFormState extends State<EditProfileForm> {
               // été quitté ferait perdre la modification du profil que le
               // serveur vient pourtant d'accepter. Seul l'affichage est
               // conditionné à la présence de l'écran.
+              // L'ANCIENNE PHOTO DOIT SORTIR DU CACHE.
+              //
+              // Flutter garde les images téléchargées dans un cache indexé PAR
+              // ADRESSE. Le serveur renvoyant la même adresse pour la photo
+              // remplacée, l'écran « Mon espace » ressortait l'ANCIENNE image
+              // du cache — la modification était pourtant bien enregistrée, et
+              // bien renvoyée. On retire donc l'ancienne entrée avant
+              // d'inscrire la nouvelle adresse.
+              final ancienneAdresse = user.photo?.toString().trim() ?? '';
+              if (ancienneAdresse.isNotEmpty && ancienneAdresse != 'null') {
+                await NetworkImage(ancienneAdresse).evict();
+              }
+
               user.nom = leUser.data?.nomPrenoms.toString() ?? '';
               user.photo = leUser.data?.photo.toString() ?? '';
               urlPhoto = user.photo ?? '';
               lireOuEcrireDonnee("nom", user.nom ?? '', 1);
               lireOuEcrireDonnee("photo", user.photo ?? '', 1);
+
+              // La nouvelle adresse peut être identique à l'ancienne : on la
+              // retire aussi, sans quoi le premier affichage relirait encore
+              // le cache.
+              final nouvelleAdresse = user.photo?.toString().trim() ?? '';
+              if (nouvelleAdresse.isNotEmpty && nouvelleAdresse != 'null') {
+                await NetworkImage(nouvelleAdresse).evict();
+              }
+
+              // ET SURTOUT : on change l'ADRESSE d'affichage.
+              //
+              // Vider le cache de Flutter ne suffisait pas — c'est ce qui a
+              // fait échouer les deux corrections précédentes. Le serveur
+              // enregistre la photo au même chemin quoi qu'il arrive
+              // (`imageUser/{id}.png`), si bien que rien, dans l'adresse, ne
+              // distingue la nouvelle image de l'ancienne : ni le cache
+              // d'images, ni un éventuel cache HTTP intermédiaire ne peuvent
+              // savoir qu'il faut retélécharger.
+              //
+              // Le compteur ajoute `?v=N` à l'adresse : elle devient
+              // différente, et l'image est réellement redemandée.
+              versionPhotoProfil++;
+
+              // ET SURTOUT, LE CHEMIN QUI NE PEUT PAS ÉCHOUER : on retient les
+              // OCTETS de l'image choisie. C'est ce que la vignette affichera
+              // — pas un téléchargement, pas une adresse, pas un cache.
+              if (photoIdentiteByte != null) {
+                photoProfilLocale = photoIdentiteByte;
+              }
+
+              // La vignette est abonnée à ce signal : elle se redessine seule,
+              // sans dépendre de la reconstruction de « Mon espace ».
+              profilModifie.value++;
+
               if (mounted) setState(() {});
               afficherSucces(leUser.message.toString());
             } else {

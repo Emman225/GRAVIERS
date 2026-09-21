@@ -37,7 +37,7 @@
             <header class="card-header bg-warning-subtle">
                 <p class="d-flex justify-content-between align-items-center mb-0">
                     <span class="h5 mb-0">
-                        <i class="material-icons md-outbox"></i>
+                        <i class="material-icons md-send"></i>
                         Demandes de paiement initiées par les apporteurs
                     </span>
                     <a href="{{ route('show.listeDeDemandeApporteur') }}" class="btn btn-sm btn-warning">
@@ -75,7 +75,7 @@
                             @foreach ($demandesApporteurs as $d)
                                 <tr>
                                     <td class="text-center">
-                                        {{ $d->date ? Carbon::parse($d->date)->format('d/m/Y H:i') : '-' }}
+                                        {{ $d->date ? Carbon::parse($d->date)->format('d/m/Y H:i:s') : '-' }}
                                     </td>
                                     <td class="text-center">{{ $d->code_apporteur }}</td>
                                     <td>{{ $d->apporteur_nom }}</td>
@@ -113,9 +113,7 @@
                                         @elseif ($d->attend_1re)
                                             <a href="{{ $lienValidation('accepter') }}"
                                                class="btn btn-sm btn-success"
-                                               onclick="return confirm('Donner la 1re validation à cette demande ?');">
-                                                <i class="material-icons md-check"></i> 1re validation
-                                            </a>
+                                               onclick="return confirm('Donner la 1re validation à cette demande ?');" title="1re validation"><i class="material-icons md-check"></i></a>
                                         @elseif ($d->attend_2e && $d->est_initiateur)
                                             <span class="text-muted small">
                                                 <em>En attente d'un autre administrateur</em>
@@ -123,14 +121,10 @@
                                         @elseif ($d->attend_2e)
                                             <a href="{{ $lienValidation('accepter') }}"
                                                class="btn btn-sm btn-success"
-                                               onclick="return confirm('Accepter et payer cette demande ?');">
-                                                <i class="material-icons md-check"></i> 2e validation
-                                            </a>
+                                               onclick="return confirm('Accepter et payer cette demande ?');" title="2e validation"><i class="material-icons md-check"></i></a>
                                             <a href="{{ $lienValidation('refuser') }}"
                                                class="btn btn-sm btn-danger"
-                                               onclick="return confirm('Refuser cette demande ? Le montant sera restitué au solde de l\'apporteur.');">
-                                                <i class="material-icons md-denied"></i> Rejeter
-                                            </a>
+                                               onclick="return confirm('Refuser cette demande ? Le montant sera restitué au solde de l\'apporteur.');" title="Rejeter"><i class="material-icons md-block"></i></a>
                                         @endif
                                     </td>
                                 </tr>
@@ -162,24 +156,26 @@
                 <table class="table table-striped" id="liste">
                     <thead style="background-color: #1c57a3; color: white;">
                         <tr>
-                            <th class="text-center">Date Paiement</th>
+                            <th class="text-center">Date paiement</th>
                             <th class="text-center">N° Commission</th>
                             <th class="text-center">N° Commande</th>
-                            <th class="text-center">Code Apporteur</th>
-                            <th class="text-center">Nom Apporteur</th>
-                            <th class="text-end">Montant Payé</th>
+                            <th class="text-center">Code apporteur</th>
+                            <th class="text-center">Nom apporteur</th>
+                            <th class="text-end">Montant payé</th>
                             <th class="text-center">Mode de paiement</th>
                             <th class="text-center">Référence</th>
                             <th>Notes</th>
                             <th class="text-center">Initié par</th>
                             <th class="text-center">Validé par</th>
-                            <th class="text-center">Reçu</th>
+                            <th class="text-center">3e validateur</th>
+                            <th class="text-center">État</th>
+                            <th class="text-center">Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse ($lignes as $l)
                             <tr @if($l->en_attente ?? false) style="background-color: #fff8e1;" @endif>
-                                <td class="text-center">{{ $l->date_paiement ? Carbon::parse($l->date_paiement)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date_paiement ? \Help::dateHeure($l->date_paiement) : '-' }}</td>
                                 <td class="text-center">{{ $l->numero_com }}</td>
                                 <td class="text-center">{{ $l->numero_commande }}</td>
                                 <td class="text-center">{{ $l->code_apporteur }}</td>
@@ -200,7 +196,9 @@
                                 <td>{{ $l->notes ?? '-' }}</td>
                                 <td class="text-center small">{{ $l->initie_par ?? '-' }}</td>
                                 <td class="text-center small">{{ $l->valide_par ?? '-' }}</td>
-                                <td class="text-center">
+                                <td class="text-center small">{{ $l->troisieme_par ?? '-' }}</td>
+                                <td class="text-center">@include('admin.shared._circuit_preuve_reglement', ['partie' => 'etat'])</td>
+                                <td class="text-nowrap text-center">
                                     @if ($l->peut_valider ?? false)
                                         <form action="{{ route('show.apporteurs.paiements.valider', $l->paiement_id) }}"
                                               method="POST"
@@ -210,17 +208,21 @@
                                               data-confirm-text="Confirmez-vous la validation de ce paiement apporteur ? Le reçu deviendra définitif."
                                               data-confirm-button="Oui, valider">
                                             @csrf
-                                            <button type="submit" class="btn btn-sm btn-success" title="Valider">
-                                                <i class="material-icons md-check_circle"></i> Valider
-                                            </button>
+                                            <button type="submit" class="btn btn-sm btn-success" title="Valider"><i class="material-icons md-check_circle"></i></button>
                                         </form>
                                     @elseif (!($l->en_attente ?? false))
+                                        {{-- Le reçu n'est visible qu'une fois le règlement FINALISÉ (effectué)
+                                             (09/09/2026) ; un règlement d'avant le circuit, sans preuve, le garde. --}}
+                                        @if ((($l->etat_reglement ?? null) === \App\Models\DemandePaiement::EFFECTUEE) || empty($l->etat_reglement ?? null))
                                         <a href="{{ route('show.apporteurs.recu', $l->paiement_id) }}" target="_blank" class="btn btn-sm btn-info" title="Voir reçu">
                                             <i class="material-icons md-receipt"></i>
                                         </a>
                                         <a href="{{ route('show.apporteurs.recuPdf', $l->paiement_id) }}" class="btn btn-sm btn-secondary" title="PDF">
                                             <i class="material-icons md-picture_as_pdf"></i>
                                         </a>
+                                        @endif
+                                        @include('admin.shared._circuit_preuve_reglement', ['partie' => 'actions', 'prefixe' => 'apporteurs',
+                                            'libellePreuve' => $l->nom_apporteur . ' — ' . Help::formatNombre($l->montant, true)])
                                     @else
                                         <span class="text-muted small"><em>En attente d'un autre admin</em></span>
                                     @endif
@@ -228,7 +230,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="12" class="text-center text-muted">
+                                <td colspan="14" class="text-center text-muted">
                                     Aucun paiement enregistré.
                                 </td>
                             </tr>
@@ -270,6 +272,8 @@
                                     return (object) [
                                         'apporteur_id'  => $coms->first()->apporteur_id,
                                         'apporteur_nom' => $coms->first()->apporteur_nom,
+                                        'code'          => $coms->first()->code_apporteur ?? '',
+                                        'email'         => $coms->first()->apporteur_email ?? '',
                                         'nb'            => $coms->count(),
                                         'total_reste'   => $coms->sum('reste'),
                                     ];
@@ -277,11 +281,13 @@
                             @endphp
                             <div class="col-md-12">
                                 <label for="filtreApporteur" class="form-label fw-bold">Apporteur <span class="text-danger">*</span></label>
-                                <select class="form-control" id="filtreApporteur">
-                                    <option value="">— Sélectionner un apporteur —</option>
+                                {{-- Liste avec recherche (08/09/2026) : code apporteur, nom ou courriel. --}}
+                                <select class="form-control" id="filtreApporteur"
+                                        data-placeholder="— Sélectionner un apporteur : tapez un code, un nom ou un courriel —">
+                                    <option value=""></option>
                                     @foreach ($apporteursDues as $app)
                                         <option value="{{ $app->apporteur_id }}">
-                                            {{ $app->apporteur_nom }} — {{ $app->nb }} commission(s) due(s) — Total : {{ number_format($app->total_reste, fmod($app->total_reste, 1) == 0 ? 0 : 2, ',', ' ') }} FCFA
+                                            {{ $app->code ? $app->code . ' — ' : '' }}{{ $app->apporteur_nom }}{{ $app->email ? ' — ' . $app->email : '' }} — {{ $app->nb }} commission(s) due(s) — Total : {{ number_format($app->total_reste, fmod($app->total_reste, 1) == 0 ? 0 : 2, ',', ' ') }} FCFA
                                         </option>
                                     @endforeach
                                 </select>
@@ -299,22 +305,38 @@
                                     <input class="form-check-input" type="checkbox" id="toutCocher">
                                     <label class="form-check-label fw-bold" for="toutCocher">Tout cocher (payer toutes les commissions de cet apporteur)</label>
                                 </div>
-                                <div id="listeCommissions" class="border rounded p-2" style="max-height:220px; overflow-y:auto;">
-                                    @foreach ($commissionsDues as $com)
-                                        <div class="form-check com-item" data-apporteur-id="{{ $com->apporteur_id }}" style="display:none;">
-                                            <input class="form-check-input com-check" type="checkbox"
-                                                   name="commission_ids[]" value="{{ $com->id }}"
-                                                   id="com{{ $com->id }}"
-                                                   data-apporteur-id="{{ $com->apporteur_id }}"
-                                                   data-apporteur="{{ $com->apporteur_nom }}"
-                                                   data-calc="{{ $com->commission_calc }}"
-                                                   data-reste="{{ $com->reste }}">
-                                            <label class="form-check-label" for="com{{ $com->id }}">
-                                                {{ $com->code_com }} — Cmd {{ $com->numero_cmd }}
-                                                — Reste : <strong>{{ number_format($com->reste, fmod($com->reste, 1) == 0 ? 0 : 2, ',', ' ') }} FCFA</strong>
-                                            </label>
-                                        </div>
-                                    @endforeach
+                                {{-- UN TABLEAU (08/09/2026), comme pour les fournisseurs : les
+                                     lignes gardent .com-item / .com-check, le script ne change
+                                     pas ; les cases sont centrées dans leur colonne. --}}
+                                <div id="listeCommissions" class="border rounded" style="max-height:260px; overflow-y:auto;">
+                                    <table class="table table-sm table-hover mb-0" id="tableCommissions">
+                                        <thead style="background:#1c57a3; color:#fff; position:sticky; top:0;">
+                                            <tr>
+                                                <th style="width:44px"></th>
+                                                <th>Commission</th>
+                                                <th>Commande</th>
+                                                <th class="text-end">Reste</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach ($commissionsDues as $com)
+                                                <tr class="com-item" data-apporteur-id="{{ $com->apporteur_id }}" style="display:none;">
+                                                    <td class="text-center">
+                                                        <input class="form-check-input com-check" type="checkbox"
+                                                               name="commission_ids[]" value="{{ $com->id }}"
+                                                               id="com{{ $com->id }}"
+                                                               data-apporteur-id="{{ $com->apporteur_id }}"
+                                                               data-apporteur="{{ $com->apporteur_nom }}"
+                                                               data-calc="{{ $com->commission_calc }}"
+                                                               data-reste="{{ $com->reste }}">
+                                                    </td>
+                                                    <td><label class="form-check-label mb-0 fw-bold" for="com{{ $com->id }}">{{ $com->code_com }}</label></td>
+                                                    <td>{{ $com->numero_cmd }}</td>
+                                                    <td class="text-end"><strong>{{ number_format($com->reste, fmod($com->reste, 1) == 0 ? 0 : 2, ',', ' ') }} FCFA</strong></td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                             <div class="col-md-12" id="recapCom" style="display:none;">
@@ -376,14 +398,19 @@
             </div>
         </div>
     </div>
+    @include('admin.shared._circuit_preuve_reglement', ['partie' => 'modal'])
 @endsection
 
 @section('cssParts')
     <link rel="stylesheet" href="{{ asset('backend/plugins/DataTables/datatables.min.css') }}">
+    <link rel="stylesheet" href="{{ asset('backend/assets/css/vendors/select2.min.css') }}">
 @endsection
 
 @section('jsParts')
     <script src="{{ asset('backend/plugins/DataTables/datatables.min.js') }}"></script>
+    {{-- Plusieurs jQuery se succèdent dans le pied de page : select2 doit
+         s'attacher à celui que la page utilise (même règle que les guichets). --}}
+    <script src="{{ asset('backend/assets/js/vendors/select2.min.js') }}"></script>
     <script type="text/javascript">
         $(function () {
             // Les demandes des apporteurs : recherche, pagination, 5 lignes.
@@ -424,6 +451,17 @@
             };
 
             // Étape 1 : sélection de l'apporteur -> n'afficher QUE ses commissions
+            // Liste avec recherche : code, nom, courriel.
+            if ($.fn.select2) {
+                $('#filtreApporteur').select2({
+                    placeholder: $('#filtreApporteur').data('placeholder'),
+                    allowClear: true,
+                    width: '100%',
+                    dropdownParent: $('#modalPaiementApp'),
+                    language: { noResults: function () { return 'Aucun apporteur ne correspond'; } }
+                });
+            }
+
             $('#filtreApporteur').on('change', function () {
                 var appId = $(this).val();
                 $('.com-check').prop('checked', false);
@@ -484,7 +522,7 @@
                                     '<td class="text-center">'+(h.date||'-')+'</td>' +
                                     '<td class="text-end text-success"><strong>'+fmt(h.montant)+'</strong></td>' +
                                     '<td class="text-center">'+h.mode+'</td>' +
-                                    '<td class="text-center"><a href="'+h.recu_url+'" target="_blank" class="btn btn-xs btn-info"><i class="material-icons md-visibility"></i></a> <a href="'+h.recu_pdf_url+'" class="btn btn-xs btn-secondary"><i class="material-icons md-picture_as_pdf"></i></a></td>' +
+                                    '<td class="text-nowrap text-center"><a href="'+h.recu_url+'" target="_blank" class="btn btn-xs btn-info" title="Voir le reçu"><i class="material-icons md-visibility"></i></a> <a href="'+h.recu_pdf_url+'" class="btn btn-xs btn-secondary" title="Télécharger le reçu en PDF"><i class="material-icons md-picture_as_pdf"></i></a></td>' +
                                     '</tr>');
                             });
                         }
@@ -507,10 +545,10 @@
 
             $('#formPaiementApp').on('submit', function (e) {
                 var n = $('.com-check:checked').length;
-                if (n === 0) { e.preventDefault(); alert('Cochez au moins une commission.'); return false; }
+                if (n === 0) { e.preventDefault(); alerte('Cochez au moins une commission.'); return false; }
                 var m = parseFloat($('#montant').val() || 0), max = parseFloat($('#montant').attr('max') || 0);
-                if (m <= 0) { e.preventDefault(); alert('Montant > 0'); return false; }
-                if (max > 0 && m > max + 0.01) { e.preventDefault(); alert('Dépasse le reste à payer ('+fmt(max)+')'); return false; }
+                if (m <= 0) { e.preventDefault(); alerte('Montant > 0'); return false; }
+                if (max > 0 && m > max + 0.01) { e.preventDefault(); alerte('Dépasse le reste à payer ('+fmt(max)+')'); return false; }
             });
 
             // Arrivée depuis l'écran des dettes : le tiers est passé en

@@ -1,11 +1,10 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
-import 'package:mon_gravier_com_livreur/constants.dart';
 import 'package:mon_gravier_com_livreur/models/retour_livraison.dart';
+import '../../../../components/bouton_retour.dart';
 import '../../../globale.dart';
 import '../../../helper/constants.dart';
 
@@ -53,40 +52,13 @@ class _LivraisonEffectueeScreenState extends State<LivraisonEffectueeScreen> {
       appBar: AppBar(
         title: const Text(
           "Livraison effectuée",
-          style: TextStyle(color: Colors.black),
         ),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       body: Container(
         width: double.infinity,
         height: heightOfScreen(context),
-        decoration: const BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage("assets/images/bg.jpg"),
-            fit: BoxFit.cover,
-            opacity: 0.1,
-          ),
-        ),
         child: ListView(
           physics: const BouncingScrollPhysics(),
           children: [
@@ -98,7 +70,7 @@ class _LivraisonEffectueeScreenState extends State<LivraisonEffectueeScreen> {
                 controller: numLivraisonController,
                 textInputAction: TextInputAction.done,
                 decoration: const InputDecoration(
-                  labelText: "Numéro de livraison du client",
+                  labelText: "Numéro de livraison du client *",
                   hintText: "Saisissez le numéro de livraison ici...",
                 ),
               ),
@@ -162,13 +134,37 @@ class _LivraisonEffectueeScreenState extends State<LivraisonEffectueeScreen> {
         var datas = jsonDecode(retourHttp.body);
         if (retourHttp.statusCode == 200) {
           if (datas['code'] == 200) {
-            setState(() {
-              numLivraisonController.text = '';
-              noteController.text = '';
-              livraison = UneLivraison.fromJson(datas['data']);
-            });
+            // Écran quitté pendant l'appel : la réponse revient sur un écran
+            // détruit et le rafraîchissement échoue.
+            if (mounted) {
+              setState(() {
+                numLivraisonController.text = '';
+                noteController.text = '';
+                livraison = UneLivraison.fromJson(datas['data']);
+              });
+            }
+
             afficherSucces(datas['message']);
-            Get.back();
+
+            // RETOUR À LA LISTE, ET NON À L'ÉCRAN DE DÉTAIL.
+            //
+            // `Get.back()` ne dépilait qu'un écran : le livreur retombait sur le
+            // détail d'une livraison qu'il venait de clore, avec un bouton
+            // « Livraison effectuée » désormais sans objet. Il devait revenir
+            // une seconde fois pour retrouver sa liste.
+            //
+            // On dépile jusqu'à l'écran racine, PUIS on désigne l'onglet.
+            // Sans cette seconde ligne, on voyait simplement l'onglet du bas
+            // qui se trouvait là — l'accueil, si le livreur y était passé
+            // pendant l'attente. Le `await` de la liste reprend alors la main
+            // et rappelle `onRetour` : la livraison close quitte
+            // « En traitement » pour « Effectuée » sans geste de plus.
+            Get.until((route) => route.isFirst);
+            ouvrirLivraisons(ONGLET_LIVRAISON_EFFECTUEE);
+            // Les compteurs de l'accueil viennent de changer : une course
+            // quitte « en attente » pour « effectuees ». Il ne se recharge
+            // plus en y revenant, on le previent donc.
+            rafraichirAccueil?.call();
           } else {
             afficherErreur(datas['message']);
           }

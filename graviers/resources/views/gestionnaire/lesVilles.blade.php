@@ -52,56 +52,22 @@
     </div>
 
     <div class="row g-3">
-        {{-- ===== FORMULAIRE ===== --}}
-        <div class="col-lg-5">
-            <div class="card dash-card">
-                <div class="card-header dash-card-header">
-                    <h5 class="dash-card-title">
-                        <i class="material-icons md-add_location text-primary"></i>
-                        {{ $ville->id ? 'Modifier la ville' : 'Nouvelle ville' }}
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <form action="" method="post">
-                        @csrf
-                        <div class="mb-3">
-                            <label class="form-label">Nom de la ville <span class="text-danger">*</span></label>
-                            <input class="form-control" value="{{ $ville->nom }}" name="nom" type="text" />
-                            @error('nom')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Région <span class="text-danger">*</span></label>
-                            <select class="form-control" name="region_id">
-                                <option value="">— Sélectionnez une région —</option>
-                                @foreach ($lesRegions as $region)
-                                    <option @selected($ville->region_id == $region->id) value="{{ $region->id }}">{{ $region->nom }}</option>
-                                @endforeach
-                            </select>
-                            @error('region_id')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
-                        </div>
-
-                        <div>
-                            <button type="submit" class="btn btn-primary">
-                                <i class="material-icons md-save"></i>
-                                {{ $ville->id ? 'Modifier' : 'Enregistrer' }}
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
 
         {{-- ===== TABLEAU ===== --}}
-        <div class="col-lg-7">
+        <div class="col-12">
             <div class="card dash-card">
-                <div class="card-header dash-card-header">
-                    <h5 class="dash-card-title">
+                <div class="card-header dash-card-header d-flex justify-content-between align-items-center">
+                    <h5 class="dash-card-title mb-0">
                         <i class="material-icons md-list text-primary"></i>
                         Villes enregistrées
                     </h5>
+                    {{-- La saisie se fait sur SA page : cet ecran ne sert plus qu a consulter. --}}
+                    <a href="{{ route('dest.nouvelleVille') }}" class="btn btn-sm btn-primary"><i class="material-icons md-add align-middle"></i> Nouvelle ville</a>
                 </div>
                 <div class="card-body">
+                    <x-export-buttons table-id="listeVilles"
+                                      filename="liste-des-villes"
+                                      title="Liste des villes" />
                     <div class="table-responsive">
                         <table class="table dash-table align-middle mb-0" id="listeVilles">
                             <thead>
@@ -123,22 +89,16 @@
                                             </div>
                                         </td>
                                         <td>{{ $v->region?->nom ?? '-' }}</td>
-                                        <td class="text-end">
-                                            <div class="dropdown">
-                                                <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm">
-                                                    <i class="material-icons md-more_horiz"></i> Actions
-                                                </a>
-                                                <div class="dropdown-menu">
-                                                    <a href="{{ route('dest.modifierVille', $v) }}" class="dropdown-item">
-                                                        <i class="material-icons md-edit"></i> Modifier
-                                                    </a>
-                                                    <a href="{{ route('dest.supprimerVille', $v) }}"
-                                                       class="dropdown-item text-danger"
-                                                       data-confirm-msg="Voulez-vous vraiment supprimer la ville {{ $v->nom }} ?">
-                                                        <i class="material-icons md-delete"></i> Supprimer
-                                                    </a>
-                                                </div>
-                                            </div>
+                                        <td class="text-nowrap text-end">
+                                            <a href="{{ route('dest.modifierVille', $v) }}"
+                                               class="btn btn-sm btn-primary rounded" title="Modifier la ville">
+                                                <i class="material-icons md-edit"></i>
+                                            </a>
+                                            <a href="{{ route('dest.supprimerVille', $v) }}"
+                                               class="btn btn-sm btn-danger rounded" title="Supprimer la ville"
+                                               data-confirm-msg="Voulez-vous vraiment supprimer la ville {{ $v->nom }} ?">
+                                                <i class="material-icons md-delete"></i>
+                                            </a>
                                         </td>
                                     </tr>
                                 @empty

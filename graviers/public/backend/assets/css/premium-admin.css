@@ -638,3 +638,62 @@ a:hover { text-decoration: none; }
     .navbar-aside, .main-header, .content-header > div, footer { display: none !important; }
     .card { box-shadow: none !important; border: 1px solid #ddd !important; }
 }
+
+/* ------------------------------------------------------------------
+   FENÊTRES (modales) — 08/09/2026 : le titre est toujours en BLANC, sur un
+   en-tête coloré. Les en-têtes déjà colorés (bg-primary, bg-danger, bg-info,
+   bg-success) gardent leur couleur ; ceux qui n'en avaient pas prennent le
+   bleu de la maison.
+   ------------------------------------------------------------------ */
+.modal-header { background-color: #1c57a3; color: #fff; }
+.modal-header .modal-title,
+.modal-header h1, .modal-header h2, .modal-header h3, .modal-header h4, .modal-header h5, .modal-header h6,
+.modal-header .modal-title i, .modal-header .modal-title span { color: #fff !important; }
+.modal-header .btn-close { filter: invert(1) grayscale(100%) brightness(200%); opacity: .9; }
+
+/* Cases à cocher des guichets (08/09/2026) : centrées dans leur colonne,
+   alignées sur la ligne. Bootstrap les flotte à gauche avec une marge
+   négative, ce qui les décalait vers le bas et le bord de la cellule. */
+#tableCommandes th, #tableCommandes td, #tableFactures th, #tableFactures td,
+#tableBons th, #tableBons td, #tableCourses th, #tableCourses td, #tableCommissions th, #tableCommissions td,
+#tableLocations th, #tableLocations td, #tableDemandes th, #tableDemandes td { vertical-align: middle !important; }
+#tableCommandes th:first-child, #tableCommandes td:first-child,
+#tableFactures th:first-child, #tableFactures td:first-child,
+#tableBons th:first-child, #tableBons td:first-child,
+#tableCourses th:first-child, #tableCourses td:first-child,
+#tableCommissions th:first-child, #tableCommissions td:first-child,
+#tableLocations th:first-child, #tableLocations td:first-child,
+#tableDemandes th:first-child, #tableDemandes td:first-child {
+    width: 44px !important; min-width: 44px; padding-left: 0 !important; padding-right: 0 !important; text-align: center !important;
+}
+#tableCommandes .form-check-input, #tableFactures .form-check-input, #tableBons .form-check-input,
+#tableCourses .form-check-input, #tableCommissions .form-check-input,
+#tableLocations .form-check-input, #tableDemandes .form-check-input {
+    /* Le thème pose les cases en position ABSOLUE (prévu pour un bloc
+       .form-check) : hors de ce bloc, elles dérivent. Retour dans le flux. */
+    position: static !important; float: none !important; display: inline-block !important;
+    margin: 0 !important; vertical-align: middle; width: 18px; height: 18px; cursor: pointer;
+}
+
+/* ==============================================================
+   COLONNES LISIBLES (10/09/2026)
+   Une valeur ne se coupe plus sur plusieurs lignes parce que le titre
+   de sa colonne est court : les cellules gardent leur contenu sur une
+   ligne, le tableau prend la largeur de son contenu et défile dans
+   .table-responsive s'il déborde. Les cellules de texte long (notes,
+   observations, adresses) sont repérées par delete-confirm.js et
+   reçoivent .td-texte-long : elles reprennent le retour à la ligne
+   dans une colonne large.
+   ============================================================== */
+.table tbody td,
+.table tfoot td {
+    white-space: nowrap;
+}
+.table tbody td.td-texte-long,
+.table tfoot td.td-texte-long {
+    white-space: normal;
+    min-width: 280px;
+}
+table.dataTable {
+    width: 100% !important;
+}

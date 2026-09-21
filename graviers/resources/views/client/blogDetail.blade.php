@@ -173,7 +173,7 @@ $moyenne = $blog->noteMoyenne();
                                                                                 <div class="d-flex align-items-center">
                                                                                     <span class="font-xs text-muted">
                                                                                         {{ $commentaire->created_at?->isoFormat('LL') }}
-                                                                                        {{ $commentaire->created_at ? Carbon::parse($commentaire->created_at)->format('à H:i') : '' }}
+                                                                                        {{ $commentaire->created_at ? Carbon::parse($commentaire->created_at)->format('à H:i:s') : '' }}
                                                                                     </span>
                                                                                 </div>
                                                                                 @if ($commentaire->note)

@@ -26,6 +26,9 @@
         </header>
 
         <div class="card-body">
+            <x-export-buttons table-id="liste"
+                              filename="liste-des-vehicules"
+                              title="Liste des véhicules" />
             <div class="table-responsive">
                 <table class="table table-striped" id="liste">
 
@@ -61,16 +64,16 @@
                                 <td class="text-center"> {{$vehicule->capacite}}t </td>
                                 {{-- <td class="text-center"> {{$livraison->destination->affichage}} </td>
                                 <td class="text-center"> {{$livraison->detailLivraison->poids_vehicule_souhaite}}t </td> --}}
-                                <td class="text-center fw_bold"> {{Carbon::parse($vehicule->created_at)->format('d-m-Y à H:i')}} </td>
-                                <td class="text-center">
-                                    <a href="{{route('livreur.modificationVehicule',$vehicule)}}" class="btn btn-primary"> Modifier</a>
-                                    <a href="{{route('livreur.supressionVehicule',$vehicule)}}" class="btn btn-primary"> supprimer</a>
+                                <td class="text-center fw_bold"> {{Carbon::parse($vehicule->created_at)->format('d/m/Y à H:i:s')}} </td>
+                                <td class="text-nowrap text-center">
+                                    <a href="{{route('livreur.modificationVehicule',$vehicule)}}" class="btn btn-primary" title="Modifier"><i class="material-icons md-edit"></i></a>
+                                    <a href="{{route('livreur.supressionVehicule',$vehicule)}}" class="btn btn-danger" title="supprimer"><i class="material-icons md-delete"></i></a>
                                 </td>
-                                <td class="text-center">
+                                <td class="text-nowrap text-center">
                                     @if ($vehicule->disponible == 1)
-                                        <a href="{{route('livreur.vehiculeDispo',$vehicule)}}" class="btn btn-success">Disponible</a>
+                                        <a href="{{route('livreur.vehiculeDispo',$vehicule)}}" class="btn btn-success" title="Disponible"><i class="material-icons md-check"></i></a>
                                     @else
-                                        <a href="{{route('livreur.vehiculeDispo',$vehicule)}}" class="btn btn-danger">Indisponible</a>
+                                        <a href="{{route('livreur.vehiculeDispo',$vehicule)}}" class="btn btn-danger" title="Indisponible"><i class="material-icons md-block"></i></a>
                                     @endif
                                 </td>
                             </tr>

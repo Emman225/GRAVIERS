@@ -5,6 +5,7 @@
     'title' => null,
     'pdfUrl' => null,
     'wordUrl' => null,
+    'excelUrl' => null,
 ])
 {{--
     Boutons d'export Excel, Word et PDF d'un tableau HTML.
@@ -24,6 +25,17 @@
                  la génération dans le navigateur — un document mis en page par
                  le serveur vaut toujours mieux qu'un tableau reconstitué.
     - wordUrl  : idem pour le Word.
+    - excelUrl : idem pour le classeur. Utile quand l'export doit porter sur
+                 TOUTE la donnée et non sur les seules lignes affichées, ou
+                 quand il doit en écarter une partie (une corbeille, par
+                 exemple) que l'écran, lui, montre.
+
+    EXPORT PAR PÉRIODE (lot 81, 15/09/2026) : deux dates « du / au » précèdent les
+    boutons. Renseignées, l'export ne retient que les lignes dont la colonne de
+    date tombe dans la période (colonne repérée par son en-tête — date, jour,
+    créé… — sinon la première colonne où la plupart des cellules portent une
+    date) ; vides — bouton « Tout » —, l'export emporte toutes les lignes.
+    Un tableau sans colonne de date est exporté entier, et le dit.
 
     Charge SheetJS (XLSX) + jsPDF (+ autotable) en CDN à la première utilisation.
     Le Word, lui, ne demande aucune bibliothèque : Word ouvre nativement un
@@ -39,11 +51,145 @@
                 // Une colonne qui ne porte que des boutons d'action n'a rien à
                 // faire dans un export : on la vide plutôt que d'y recopier
                 // « Voir Télécharger Supprimer ».
+                // Un <a> SANS href n'est pas un bouton : le thème enveloppe le
+                // nom du produit dans <a class="itemside"> — la colonne
+                // « Produit » sortait vide de l'export (08/09/2026).
                 var queDesBoutons = cellule.children.length > 0 &&
                     Array.prototype.every.call(cellule.children, function (c) {
-                        return c.tagName === 'A' || c.tagName === 'BUTTON' || c.tagName === 'FORM';
+                        return (c.tagName === 'A' && c.hasAttribute('href')) || c.tagName === 'BUTTON' || c.tagName === 'FORM';
                     }) && cellule.textContent.trim().replace(/\s+/g, ' ').length < 30;
                 return queDesBoutons ? '' : cellule.textContent.trim().replace(/\s+/g, ' ');
+            }
+
+            /**
+             * TOUTES LES LIGNES, PAS SEULEMENT LA PAGE AFFICHEE.
+             *
+             * DataTables RETIRE DU DOM les lignes des autres pages. Lire
+             * « tbody tr » ne rendait donc que la page courante : sur une liste
+             * de 31 commandes paginee par 10, l'export en emportait 10 et se
+             * taisait sur les 21 autres. Un fichier tronque sans le dire est
+             * pire que pas de fichier du tout.
+             *
+             * On demande donc ses lignes a DataTables quand il pilote le
+             * tableau. « search: 'applied' » respecte la recherche en cours :
+             * on exporte ce que l'utilisateur a sous les yeux, toutes pages
+             * confondues — et non le tableau entier s'il a filtre.
+             */
+            function lignesDe($table) {
+                if (window.jQuery && jQuery.fn.dataTable
+                    && jQuery.fn.dataTable.isDataTable($table)) {
+                    return jQuery($table).DataTable()
+                        .rows({ search: 'applied' }).nodes().toArray();
+                }
+                return Array.prototype.slice.call($table.querySelectorAll('tbody tr'));
+            }
+
+            /** Une date lue dans une cellule : jj/mm/aaaa (avec ou sans heure), aaaa-mm-jj, jj-mm-aaaa. */
+            function dateDe(texte) {
+                var m = /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/.exec(texte || '');
+                if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+                m = /(\d{4})-(\d{2})-(\d{2})/.exec(texte || '');
+                if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+                return null;
+            }
+
+            /**
+             * La colonne qui date chaque ligne : d'abord un en-tête qui parle de
+             * date, sinon la première colonne où la plupart des cellules
+             * renseignées portent une date. -1 quand le tableau n'en a pas.
+             */
+            function colonneDate(headers, rows) {
+                var candidats = [];
+                headers.forEach(function (h, i) {
+                    if (/date|jour|p[ée]riode|cr[ée]{1,2}|\ble\b|\bdu\b/i.test(h)) candidats.push(i);
+                });
+                headers.forEach(function (h, i) { if (candidats.indexOf(i) < 0) candidats.push(i); });
+                for (var k = 0; k < candidats.length; k++) {
+                    var i = candidats[k], avec = 0, total = 0;
+                    rows.forEach(function (r) {
+                        if (r[i] && r[i].trim()) { total++; if (dateDe(r[i])) avec++; }
+                    });
+                    if (total > 0 && avec >= Math.max(1, Math.ceil(total * 0.6))) return i;
+                }
+                return -1;
+            }
+
+            /** Ne garde que les lignes de la période ; marque le bloc sans colonne de date. */
+            function filtrerParPeriode(bloc, periode) {
+                if (!periode) return bloc;
+                var i = colonneDate(bloc.headers, bloc.rows);
+                if (i < 0) { bloc.sansDate = true; return bloc; }
+                var du = periode.du ? dateDe(periode.du) : null;
+                var au = periode.au ? dateDe(periode.au) : null;
+                bloc.rows = bloc.rows.filter(function (r) {
+                    var d = dateDe(r[i]);
+                    if (!d) return false;
+                    return (!du || d >= du) && (!au || d <= au);
+                });
+                return bloc;
+            }
+
+            /** La période saisie à côté du bouton cliqué ; null = tout exporter. */
+            function periodeDe(bouton) {
+                var zone = bouton && bouton.closest ? bouton.closest('.export-periode') : null;
+                if (!zone) return null;
+                var du = (zone.querySelector('.export-du') || {}).value || '';
+                var au = (zone.querySelector('.export-au') || {}).value || '';
+                if (!du && !au) return null;
+                if (du && au && du > au) {
+                    prevenir('Période incohérente', 'La date de début est postérieure à la date de fin.');
+                    return { invalide: true };
+                }
+                return { du: du, au: au };
+            }
+
+            function jjmmaaaa(iso) {
+                var m = /(\d{4})-(\d{2})-(\d{2})/.exec(iso || '');
+                return m ? m[3] + '/' + m[2] + '/' + m[1] : iso;
+            }
+
+            function libellePeriode(periode) {
+                if (!periode) return '';
+                if (periode.du && periode.au) return 'du ' + jjmmaaaa(periode.du) + ' au ' + jjmmaaaa(periode.au);
+                if (periode.du) return 'depuis le ' + jjmmaaaa(periode.du);
+                return "jusqu'au " + jjmmaaaa(periode.au);
+            }
+
+            function suffixePeriode(periode) {
+                return periode ? '-du-' + (periode.du || 'debut') + '-au-' + (periode.au || 'fin') : '';
+            }
+
+            /** SweetAlert2 quand il est là (règle du 10/09/2026 : jamais d'alerte native). */
+            function prevenir(titre, texte) {
+                if (window.Swal) { window.Swal.fire({ icon: 'info', title: titre, text: texte }); }
+                else { console.warn('[export] ' + titre + ' : ' + texte); }
+            }
+
+            /**
+             * Les blocs à exporter, filtrés sur la période du bouton cliqué, avec
+             * le nom de fichier et le titre qui la disent. null = rien à exporter.
+             */
+            function preparer(cible, filename, title, bouton) {
+                var periode = periodeDe(bouton);
+                if (periode && periode.invalide) return null;
+                var blocs = lireBlocs(cible);
+                if (!blocs) return null;
+                if (periode) {
+                    var sansDate = false;
+                    blocs = blocs.map(function (b) { b = filtrerParPeriode(b, periode); if (b.sansDate) sansDate = true; return b; });
+                    if (sansDate) {
+                        prevenir('Pas de colonne de date', 'Ce tableau ne porte pas de date : toutes ses lignes sont exportées.');
+                        periode = null;
+                    } else if (!blocs.some(function (b) { return b.rows.length; })) {
+                        prevenir('Aucune ligne', 'Aucune ligne ' + libellePeriode(periode) + '.');
+                        return null;
+                    }
+                }
+                return {
+                    blocs: blocs,
+                    filename: (filename || 'export') + suffixePeriode(periode),
+                    title: title ? (periode ? title + ' — ' + libellePeriode(periode) : title) : title
+                };
             }
 
             function lireTableau($table) {
@@ -55,7 +201,7 @@
                     });
                 }
                 var rows = [];
-                $table.querySelectorAll('tbody tr').forEach(function (tr) {
+                lignesDe($table).forEach(function (tr) {
                     var row = [];
                     tr.querySelectorAll('td').forEach(function (td) {
                         row.push(texteDe(td));
@@ -129,9 +275,18 @@
             }
 
             return {
-                toExcel: function (cible, filename) {
-                    var blocs = lireBlocs(cible);
-                    if (!blocs) return;
+                /** Bouton « Tout » : efface la période, l'export suivant emporte toutes les lignes. */
+                tout: function (bouton) {
+                    var zone = bouton && bouton.closest ? bouton.closest('.export-periode') : null;
+                    if (!zone) return;
+                    zone.querySelectorAll('.export-du, .export-au').forEach(function (i) { i.value = ''; });
+                },
+
+                toExcel: function (cible, filename, title, bouton) {
+                    var prep = preparer(cible, filename, title, bouton);
+                    if (!prep) return;
+                    var blocs = prep.blocs;
+                    filename = prep.filename;
 
                     var aoa = [];
                     blocs.forEach(function (bloc, i) {
@@ -147,9 +302,12 @@
                     XLSX.writeFile(wb, (filename || 'export') + '.xlsx');
                 },
 
-                toWord: function (cible, filename, title) {
-                    var blocs = lireBlocs(cible);
-                    if (!blocs) return;
+                toWord: function (cible, filename, title, bouton) {
+                    var prep = preparer(cible, filename, title, bouton);
+                    if (!prep) return;
+                    var blocs = prep.blocs;
+                    filename = prep.filename;
+                    title = prep.title;
 
                     // ATTENTION — AUCUNE BALISE N'EST ÉCRITE EN TOUTES LETTRES ICI.
                     //
@@ -221,13 +379,24 @@
                     telecharger('\uFEFF' + html, 'application/msword', (filename || 'export') + '.doc');
                 },
 
-                toPdf: function (cible, filename, title) {
-                    var blocs = lireBlocs(cible);
-                    if (!blocs) return;
+                toPdf: function (cible, filename, title, bouton) {
+                    var prep = preparer(cible, filename, title, bouton);
+                    if (!prep) return;
+                    var blocs = prep.blocs;
+                    filename = prep.filename;
+                    title = prep.title;
 
                     var colonnes = Math.max.apply(null, blocs.map(function (b) { return b.headers.length; }));
                     var jsPDF = window.jspdf.jsPDF;
-                    var doc = new jsPDF({ orientation: colonnes > 6 ? 'landscape' : 'portrait' });
+                    // UN TABLEAU LARGE RESTE LISIBLE (15/09/2026) : au-delà de douze
+                    // colonnes (planning du fournisseur, un produit par colonne), la
+                    // page passe en A3 paysage et la police se réduit ; sur A4 les
+                    // en-têtes se coupaient lettre par lettre.
+                    var doc = new jsPDF({
+                        orientation: colonnes > 6 ? 'landscape' : 'portrait',
+                        format: colonnes > 12 ? 'a3' : 'a4'
+                    });
+                    var taille = colonnes > 16 ? 6.5 : (colonnes > 8 ? 7.5 : 8);
                     var y = 14;
 
                     if (title) {
@@ -246,8 +415,10 @@
                             head: [bloc.headers],
                             body: bloc.rows,
                             startY: y,
-                            styles: { fontSize: 8, cellPadding: 2 },
-                            headStyles: { fillColor: [28, 87, 163] },
+                            styles: { fontSize: taille, cellPadding: 1.5, overflow: 'linebreak' },
+                            headStyles: { fillColor: [28, 87, 163], valign: 'middle' },
+                            // La première colonne (date, nom…) garde sa largeur : elle ne se coupe pas.
+                            columnStyles: { 0: { cellWidth: 'wrap' } },
                         });
                         y = doc.lastAutoTable.finalY + 8;
                     });
@@ -266,11 +437,28 @@
     $intitule = $title ?? $filename;
 @endphp
 
-<div class="d-inline-block mb-2">
-    <button type="button" class="btn btn-sm btn-success"
-        onclick="GravierExport.toExcel({{ $cible }}, @js($filename))">
-        <i class="material-icons md-cloud_download align-middle"></i> Excel
-    </button>
+@php
+    // Les dates « du / au » n'ont de sens que pour un export fait dans le
+    // navigateur : un export produit par le serveur (URL) les ignore.
+    $avecPeriode = !($excelUrl && $wordUrl && $pdfUrl);
+@endphp
+<div class="d-inline-flex align-items-center flex-wrap mb-2 export-periode" style="gap:4px;">
+    @if ($avecPeriode)
+        <span class="small text-muted">Période :</span>
+        <input type="date" class="form-control form-control-sm export-du" style="width:auto; display:inline-block;" title="Date de début (vide : depuis le début)" aria-label="Date de début de la période à exporter">
+        <span class="small text-muted">au</span>
+        <input type="date" class="form-control form-control-sm export-au" style="width:auto; display:inline-block;" title="Date de fin (vide : jusqu'à la fin)" aria-label="Date de fin de la période à exporter">
+    @endif
+    @if ($excelUrl)
+        <a href="{{ $excelUrl }}" class="btn btn-sm btn-success">
+            <i class="material-icons md-cloud_download align-middle"></i> Excel
+        </a>
+    @else
+        <button type="button" class="btn btn-sm btn-success"
+            onclick="GravierExport.toExcel({{ $cible }}, @js($filename), @js($intitule), this)">
+            <i class="material-icons md-cloud_download align-middle"></i> Excel
+        </button>
+    @endif
 
     @if ($wordUrl)
         <a href="{{ $wordUrl }}" class="btn btn-sm btn-primary">
@@ -278,7 +466,7 @@
         </a>
     @else
         <button type="button" class="btn btn-sm btn-primary"
-            onclick="GravierExport.toWord({{ $cible }}, @js($filename), @js($intitule))">
+            onclick="GravierExport.toWord({{ $cible }}, @js($filename), @js($intitule), this)">
             <i class="material-icons md-description align-middle"></i> Word
         </button>
     @endif
@@ -289,8 +477,12 @@
         </a>
     @else
         <button type="button" class="btn btn-sm btn-danger"
-            onclick="GravierExport.toPdf({{ $cible }}, @js($filename), @js($intitule))">
+            onclick="GravierExport.toPdf({{ $cible }}, @js($filename), @js($intitule), this)">
             <i class="material-icons md-picture_as_pdf align-middle"></i> PDF
         </button>
+    @endif
+    @if ($avecPeriode)
+        <button type="button" class="btn btn-sm btn-outline-secondary" title="Effacer la période : les boutons exportent alors toutes les lignes"
+            onclick="GravierExport.tout(this)">Tout</button>
     @endif
 </div>

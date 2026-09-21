@@ -3,7 +3,6 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:mon_gravier_com/screens/choix_adresse/choix_adresse_screen.dart';
 import 'package:http/http.dart' as http;
@@ -44,9 +43,16 @@ class _CheckoutCardState extends State<CheckoutCard> {
       });
     }else{
       total = getTotalAmount();
+      // Redessinait la barre CHAQUE seconde, que le total ait bougé ou non.
       timer = Timer.periodic(const Duration(seconds: 1), (Timer t) {
+        if (!mounted) {
+          t.cancel();
+          return;
+        }
+        final nouveau = getTotalAmount();
+        if (nouveau == total) return;
         setState(() {
-          total = getTotalAmount();
+          total = nouveau;
         });
       });
     }
@@ -295,7 +301,7 @@ class _CheckoutCardState extends State<CheckoutCard> {
                     textInputAction: TextInputAction.done,
                     maxLines: 6,
                     decoration: const InputDecoration(
-                      labelText: "Motif",
+                      labelText: "Motif *",
                       hintText: "Saisir le motif ici...",
                     ),
                   ),

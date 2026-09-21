@@ -17,7 +17,7 @@
 @endif
 
 @if($fne_adresse)
-    @section('adresse_livraison', ucwords($fne_adresse))
+    @section('adresse_livraison', \Help::phrase($fne_adresse))
 @endif
 
 @section('articles')
@@ -57,20 +57,26 @@
     @php
         $montantTva = session('montantTva') ?? 0;
         $montantTotal = session('montant_total') ?? 0;
-        $totalAPayer = $montantTotal + $montantTva;
+        // AIRSI (10/09/2026) : sur le transport TTC.
+        $airsi = \Help::airsiPour(Auth::user()?->client, (float) $montantTotal + (float) $montantTva);
+        $totalAPayer = $montantTotal + $montantTva + $airsi;
     @endphp
     <table class="fne-totaux-outer"><tr><td class="fne-totaux-spacer"></td><td class="fne-totaux-content"><table class="fne-totaux">
         <tr><td class="label">Prise en charge</td><td class="valeur">{{ session('affichagePec') }}</td></tr>
         <tr><td class="label">Destination</td><td class="valeur">{{ session('affichageDest') }}</td></tr>
         <tr><td class="label">Distance</td><td class="valeur">{{ session('km') }} km</td></tr>
         <tr><td class="label">Type de livraison</td><td class="valeur">{{ session('type_livraison') }}</td></tr>
-        {{-- Le transport n'est pas soumis à la TVA (arbitrage du 13/08/2026).
-             La ligne ne s'affiche donc que si un montant existe réellement —
-             afficher « TVA : 0 » sur chaque récapitulatif entretiendrait le
-             doute sur ce qui est facturé. --}}
+        {{-- La TVA sur le transport est une option, désactivée par défaut.
+             Les deux lignes ne s'affichent donc que si une taxe s'applique
+             vraiment : sans TVA, le coût du transport EST le total, et écrire
+             « TVA : 0 » sur chaque récapitulatif entretiendrait le doute sur ce
+             qui est facturé. Avec TVA, le client doit voir d'où vient l'écart
+             entre le tarif de la grille et ce qu'il paie. --}}
         @if ($montantTva > 0)
+            <tr><td class="label">Coût du transport</td><td class="valeur">{{ number_format($montantTotal, 0, '', ' ') }}</td></tr>
             <tr><td class="label">TVA</td><td class="valeur">{{ number_format($montantTva, 0, '', ' ') }}</td></tr>
         @endif
+@include('document.partials._ligne_airsi', ['airsi' => $airsi ?? 0])
         <tr><td class="label" style="font-size:10pt;">TOTAL A PAYER</td><td class="valeur" style="font-size:10pt; font-weight:bold;">{{ number_format($totalAPayer, 0, '', ' ') }}</td></tr>
     </table>
 

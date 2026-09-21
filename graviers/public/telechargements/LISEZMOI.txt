@@ -1,0 +1,11 @@
+Déposer ici les trois applications Android (lot 110, 17/09/2026), sous ces noms exacts :
+
+  mon-gravier-client.apk
+  mon-gravier-livreur.apk
+  mon-gravier-apporteur.apk
+
+Le site les propose au téléchargement (page d'accueil, section « applications mobiles », et
+diapositive du carrousel) par les adresses /telecharger-application/client, /livreur,
+/apporteur. Tant qu'un fichier manque, le bouton correspondant renvoie à la section avec le
+message « bientôt disponible ». Après chaque nouvelle version, remplacer le fichier : la
+taille et la date affichées se mettent à jour d'elles-mêmes.

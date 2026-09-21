@@ -49,7 +49,15 @@ class LocationController extends Controller
             $user = User::lire($idUsr);
             if ($user->id > 0) {
                 $client = Client::lireSurUser($user->id);
-                $retour->data = Location::liste($client->id);
+                $locations = Location::liste($client->id);
+                // Où en est le matériel (10/09/2026) : « Livrée le … », « Retirée le … »,
+                // « En livraison » — la location, elle, reste EN COURS jusqu'au retour.
+                foreach ($locations as $l) {
+                    $etat = Location::etatLivraison($l);
+                    $l->etat_livraison_code    = $etat['code'] ?? null;
+                    $l->etat_livraison_libelle = $etat['libelle'] ?? null;
+                }
+                $retour->data = $locations;
                 $retour->code = 200;
                 $retour->message = 'ok';
             } else {
@@ -193,16 +201,52 @@ class LocationController extends Controller
                 // FCFA passait sur un plafond de 5 000, puis restait invisible dans
                 // l'encours — le client pouvait ensuite commander comme si rien
                 // n'était dû.
-                if ($refus = $this->refusPlafondCredit($client, $totalServeur)) {
+                //
+                // Une avance disponible couvre d'abord la location : seul le
+                // reliquat engage le crédit — même règle que la commande. Seul le
+                // « Paiement en agence » (mode 3) consomme l'avance.
+                $montantACredit = (int) $request->mode_paiement === 3
+                    ? max(0, $totalServeur - \App\Services\Avances::soldeDisponible($client))
+                    : $totalServeur;
+                if ($refus = $this->refusPlafondCredit($client, $montantACredit)) {
                     DB::rollBack();
                     $retour->code = 403;
                     $retour->message = $refus;
                     return response()->json($retour);
                 }
 
+                // LE PLAFOND DU PAIEMENT EN LIGNE — AVANT TOUTE ÉCRITURE.
+                //
+                // Le seuil vivait plus bas, recopié à la main, et il ne
+                // refusait rien : la passerelle était sautée et la location
+                // s'enregistrait comme si elle devait être réglée au comptoir,
+                // sans qu'un franc soit encaissé ni que l'application puisse
+                // le dire au client. Même correction que sur le site.
+                if ($request->mode_paiement == 1
+                    && \App\Support\PlafondPaiementEnLigne::depasse($totalServeur)) {
+                    DB::rollBack();
+                    $retour->code = 400;
+                    $retour->message = \App\Support\PlafondPaiementEnLigne::refus();
+                    return response()->json($retour);
+                }
+
+                // LE BON DE COMMANDE D'UNE ENTREPRISE EST OBLIGATOIRE, POUR UNE LOCATION
+                // AUSSI (09/09/2026) — même règle que la vente (CommandeController).
+                // L'application l'exige déjà à l'écran ; ce contrôle-ci fait foi.
+                if ($client->type_client == Help::$ENTREPRISE
+                    && trim((string) $request->numero_bc) === '') {
+                    DB::rollBack();
+                    $retour->code = 400;
+                    $retour->message = "Le numéro de bon de commande interne est obligatoire pour une entreprise : "
+                        . "il sera reporté sur votre bon de location.";
+                    return response()->json($retour);
+                }
+
                 $location = new Location();
                 $location->numero = Help::genererNumeroUnique('location');
                 $location->client_id = $client->id;
+                // Numéro figé sur la location, reporté devant chaque désignation.
+                $location->numero_bon_commande = trim((string) $request->numero_bc) ?: null;
                 $location->adresse_livraison_id = $request->adresse;
                 // NULL si aucun moyen en ligne choisi (ex. paiement en agence : le mobile
                 // envoie 0) : la FK vers mode_paiement refuse 0 -> 500 à la création.
@@ -215,6 +259,10 @@ class LocationController extends Controller
                 $location->statut = Help::$STATUT_ACTIF;
                 $location->note = $request->note;
                 $location->cout_livraison_client = $montantLivraison;
+                // TVA sur le transport (point 5), figée avec la location.
+                $location->tva_transport = (float) ($calcul['tva_transport'] ?? 0);
+                // AIRSI figé sur la location (10/09/2026).
+                $location->airsi = (float) ($calcul['airsi'] ?? 0);
                 // Choix de livraison du client (l'app l'envoie déjà, il n'était simplement
                 // pas enregistré) : sans lui, une location « Retrait sur place » était
                 // INVALIDABLE côté gestionnaire, qui exige un livreur. Même normalisation
@@ -241,6 +289,20 @@ class LocationController extends Controller
                 }
 
                 if ($location->save()) {
+                    // La pièce jointe du bon rejoint bl_client, rattachée à la LOCATION
+                    // (09/09/2026) — même rangement que pour une vente.
+                    if (trim((string) $request->numero_bc) !== '' && $request->bc_file != '' && $request->bc_file != 'null') {
+                        $bc = new \App\Models\BlClient();
+                        $bc->numero = trim((string) $request->numero_bc);
+                        $bc->client_id = $client->id;
+                        $bc->location_id = $location->id;
+                        $bc->montant = $location->montant_total;
+                        $storedFilePath = "lesBons/location-$location->id.png";
+                        Storage::disk("principal")->put($storedFilePath, base64_decode($request->bc_file));
+                        $bc->fichier = $storedFilePath;
+                        $bc->statut = Help::$STATUT_ACTIF;
+                        $bc->save();
+                    }
 
                     // Ligne de TVA créée systématiquement (0 si non assujetti), pour que
                     // toutes les locations aient la même structure que celles du site.
@@ -264,7 +326,23 @@ class LocationController extends Controller
                         $ligne->produit_id = $l['produit_id'];
                         $ligne->location_id = $location->id;
                         $ligne->qte = $l['qte'];
-                        $ligne->prix = $l['prix'];
+                        // LE TOTAL DE LA LIGNE, PAS LE PRIX D'UNE JOURNÉE.
+                        //
+                        // CalculMontant garde dans $l['prix'] le prix UNITAIRE
+                        // journalier et calcule le HT à part (prix x qte x jours).
+                        // On recopiait ce prix unitaire tel quel dans
+                        // detail_location.prix, colonne qui porte le TOTAL de la
+                        // ligne — c'est la convention du site, et celle dont
+                        // vivent la facture et le montant réclamé au client.
+                        //
+                        // Une bétonnière à 22 000/jour louée 2 jours s'écrivait
+                        // donc 22 000 : la facture U260000000002 annonçait
+                        // 22 000 de HT là où le client devait 44 000, tandis que
+                        // la TVA, calculée sur le vrai HT, valait bien 7 920.
+                        // L'écart se voyait à l'oeil nu sur le document.
+                        $ligne->prix = (float) $l['prix']
+                            * (float) $l['qte']
+                            * max(1, (float) ($l['nbreJours'] ?? 1));
                         $ligne->debut = $l['debut'];
                         $ligne->fin = $l['fin'];
                         $ligne->nombre_jour = $l['nbreJours'];
@@ -277,13 +355,26 @@ class LocationController extends Controller
                     $retour->code = 200;
                     $retour->message = 'Commande effectuée avec succès nous vous contacterons dans quelque instant';
 
+                    // AVANCE DU CLIENT (10/09/2026) : une location réglée « en
+                    // agence » (mode 3) s'impute d'elle-même sur les avances
+                    // disponibles, comme une commande. Un mode en ligne n'y
+                    // touche pas.
+                    if ((int) $request->mode_paiement === 3) {
+                        $imputationAvance = \App\Services\Avances::imputerSurLocation($location, $client);
+                        $retour->avance_imputee = $imputationAvance['impute'];
+                        $retour->reste_a_regler = $imputationAvance['reste'];
+                        $retour->message .= \App\Services\Avances::messageImputation($imputationAvance, Help::$LOCATION);
+                    }
+
                     $ret = array();
                     // Même correction que pour les commandes : le paiement en ligne
                     // repose sur le MODE CHOISI, plus sur le statut du client. Les deux
                     // passent par le MÊME écran de l'application ; le client à terme qui
                     // choisissait « En ligne » pour une location voyait celle-ci
                     // enregistrée sans qu'aucune passerelle ne s'ouvre.
-                    if ($location->montant_total <= 2000000 && $request->mode_paiement == 1) {
+                    // Le plafond a été opposé au client plus haut, avant toute
+                    // écriture : ici il ne reste que le mode choisi.
+                    if ($request->mode_paiement == 1) {
                         //Paiement en ligne
                         $codePaiement = Help::getCommandeNo();
                         $nomPrenoms = $client->nom;
@@ -405,10 +496,35 @@ class LocationController extends Controller
                     return response()->json($retour);
                 }
 
+                // LES CODES DE LA LOCATION (10/09/2026), comme pour une commande :
+                // le client remet le code de livraison au livreur, ou le bon
+                // d'enlèvement au fournisseur quand il retire lui-même. Une course
+                // de location est une ligne de `livraison` de provenance LOCATION
+                // dont `detail_commande_id` porte l'id d'une LIGNE de la location
+                // (detail_location) — c'est ainsi que le site la crée.
+                $retraitSurPlace = (int) $location->est_livrable !== 1 && !$location->adresse_livraison_id;
+                $lignesLocation = DB::table('detail_location')->where('location_id', $location->id)->pluck('id');
+                $codes = DB::table('livraison')
+                    ->leftJoin('enlevement', 'enlevement.livraison_id', '=', 'livraison.id')
+                    ->where('livraison.provenance', Help::$LOCATION)
+                    ->whereIn('livraison.detail_commande_id', $lignesLocation)
+                    ->where('livraison.accepte', 1)
+                    ->whereNull('livraison.deleted_at')
+                    ->orderBy('livraison.id')
+                    ->get([
+                        'livraison.numero as code_livraison',
+                        'enlevement.code_enleve as code_enlevement',
+                    ]);
+
                 $retour->data = [
                     'client_a_terme' => $client->client_a_terme == true ? true : false,
                     'location' => $location,
-                    'lignes' => DetailLocation::liste(null, $id, $client->id),
+                    // Ecran de LECTURE : les lignes d'une location annulee restent visibles.
+                    'lignes' => DetailLocation::liste(null, $id, $client->id, true),
+                    'retrait_sur_place' => $retraitSurPlace,
+                    'codes' => $codes,
+                    // Où en est le matériel (10/09/2026).
+                    'etat_livraison' => Location::etatLivraison($location),
                 ];
                 $retour->code = 200;
                 $retour->message = 'ok';

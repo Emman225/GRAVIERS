@@ -18,6 +18,9 @@
 
                 <!-- card-header end// -->
                 <div class="card-body">
+                    <x-export-buttons table-id="table"
+                                      filename="bons-d-enlevement"
+                                      title="Bons d enlèvement" />
                     <div class="table-responsive">
                         <table class="table table-striped" id="table">
                             <thead>
@@ -27,8 +30,7 @@
                                     <th style="background-color: #1c57a3; color: white" class="text-center">Produit</th>
                                     <th style="background-color: #1c57a3; color: white" class="text-center">Quantité</th>
                                     <th style="background-color: #1c57a3; color: white" class="text-center">Date</th>
-                                    {{-- <th class="text-end">Action</th> --}}
-                                    {{-- <th class="text-end">Action</th> --}}
+                                    <th style="background-color: #1c57a3; color: white" class="text-center">Date de livraison</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -63,6 +65,11 @@
                                             <td class="text-center">{{ $enlevement->produit?->nom }}  </td>
                                             <td class="text-center">{{ $enlevement->qte }}</td>
                                             <td class="text-center">{{ $enlevement->created_at }}</td>
+                                            {{-- La date à laquelle le livreur doit livrer : c'est
+                                                 elle qui dit au fournisseur QUAND préparer le bon. --}}
+                                            <td class="text-center" data-order="{{ $enlevement->livraison?->date_livraison }}">
+                                                {{ $enlevement->livraison?->date_livraison ? \Help::dateHeure($enlevement->livraison->date_livraison) : '-' }}
+                                            </td>
                                         </tr>
                                         @php
                                             $i++
@@ -106,38 +113,46 @@
                 </div>
             </form>
             <!-- col// -->
-             <!-- ************ -->
+        </div>
+    </div>
 
-             <div class="card mt-30">
+    {{-- LE RÉCAPITULATIF PAR PRODUITS SOUS LE TABLEAU DES BONS (09/09/2026), sur
+         toute la largeur : il vivait dans la colonne de droite, sous le
+         formulaire de vérification du code, et se lisait mal. --}}
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card mb-4">
                 <div class="card-header">
-                    <h4>Recap des enlevements en attente par produits</h4>
+                    <h4>Récap des enlèvements en attente par produits</h4>
                 </div>
                 <article class="card-body">
+                    <x-export-buttons table-id="recapEnlevements"
+                                      filename="recap-enlevements-en-attente"
+                                      title="Récap des enlèvements en attente par produit" />
                     <div class="table-responsive">
-                        <table class="table">
+                        <table class="table table-striped" id="recapEnlevements">
                             <thead>
                                 <tr>
                                     <th style="background-color: #1c57a3; color: white">Produits</th>
-                                    <th style="background-color: #1c57a3; color: white">Nbre de bons</th>
-                                    <th style="background-color: #1c57a3; color: white">Qte total</th>
+                                    <th style="background-color: #1c57a3; color: white" class="text-center">Nbre de bons</th>
+                                    <th style="background-color: #1c57a3; color: white" class="text-center">Qté totale</th>
                                 </tr>
                             </thead>
                             <tbody>
-                            @foreach($statProduits as $stat)
-
+                            @forelse($statProduits as $stat)
                                 <tr>
                                     <td> {{ $stat['produit'] }} </td>
-                                    <td> {{$stat['nbre_env']}} </td>
-                                    <td> {{$stat['qte_total']}} </td>
+                                    <td class="text-center"> {{$stat['nbre_env']}} </td>
+                                    <td class="text-center"> {{$stat['qte_total']}} </td>
                                 </tr>
-
-                            @endforeach
+                            @empty
+                                <tr><td colspan="3" class="text-center text-muted">Aucun enlèvement en attente.</td></tr>
+                            @endforelse
                             </tbody>
                         </table>
                     </div>
                 </article>
             </div>
-            <!-- *********** -->
         </div>
     </div>
 

@@ -234,8 +234,8 @@
             font-size: 8.5pt;
         }
 
-        .fne-articles .col-ref { width: 10%; }
-        .fne-articles .col-designation { width: 30%; }
+        .fne-articles .col-ref { width: 13%; white-space: nowrap; }
+        .fne-articles .col-designation { width: 27%; }
         .fne-articles .col-pu { width: 10%; text-align: right; }
         .fne-articles .col-qte { width: 6%; text-align: center; }
         .fne-articles .col-unite { width: 8%; text-align: center; }
@@ -353,7 +353,7 @@
         <tr>
             <td>
                 <div class="encadre-emetteur">
-                    <strong>DALAKOUN</strong><br>
+                    <strong>{{ $fne_emetteur ?? 'DALAKOUN' }}</strong><br>
                     NCC : {{ $fne_config['ncc'] ?? '' }}<br>
                     Régime d'imposition : {{ $fne_config['regime_imposition'] ?? '' }}<br>
                     Centre des impôts : {{ $fne_config['centre_impots'] ?? '' }}
@@ -395,6 +395,13 @@
                 @hasSection('mode_paiement')
                     <p>Mode de paiement : @yield('mode_paiement')</p>
                 @endif
+                {{-- Plus de « N° bon de commande client » (15/09/2026) : le bon
+                     figure déjà dans la colonne Réf de chaque ligne. À sa place,
+                     pour un client dispensé de TVA, la TVA qui aurait été
+                     calculée — la mention « Autres mentions » de la FNE. --}}
+                @hasSection('tva_non_facturee')
+                    <p>TVA NON FACTUREE : <strong>@yield('tva_non_facturee')</strong></p>
+                @endif
                 @hasSection('adresse_livraison')
                     <p>ADRESSE : @yield('adresse_livraison')</p>
                 @endif
@@ -424,7 +431,7 @@
 
     {{-- ===== PIED DE PAGE LÉGAL ===== --}}
     <div class="fne-footer">
-        DALAKOUN,
+        {{ $fne_emetteur ?? 'DALAKOUN' }},
         SARL au Capital de {{ $fne_config['capital_social'] ?? '' }}-RCCM
         N° {{ $fne_config['rccm'] ?? '' }},
         CC N°{{ $fne_config['ncc'] ?? '' }},

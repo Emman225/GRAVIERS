@@ -43,15 +43,23 @@ return [
             'visibility' => 'public',
         ],
 
+        // LES FICHIERS ENVOYÉS PAR LES APPLICATIONS (photo de profil, pièces,
+        // bons de commande, preuves de virement, DFE / registre) doivent vivre
+        // dans le STOCKAGE DU SITE : c'est lui que servent les adresses
+        // https://mongravier.com/storage/… (Help::urlFichier) et que lit le
+        // back-office. Ils tombaient dans le dossier de l'API, invisible du site
+        // (photo de profil « qui ne marche pas », 17/09/2026). CHEMIN_STOCKAGE_SITE
+        // (.env) = public_html/graviers/storage/app/public ; à vide, le dossier de
+        // l'API (poste de développement).
         'principal' => [
             'driver' => 'local',
-            'root' => storage_path('app/public'),
+            'root' => env('CHEMIN_STOCKAGE_SITE') ?: storage_path('app/public'),
             'visibility' => 'public',
         ],
 
         'public' => [
             'driver' => 'local',
-            'root' => storage_path('app/public'),
+            'root' => env('CHEMIN_STOCKAGE_SITE') ?: storage_path('app/public'),
             'url' => env('APP_URL') . '/storage',
             'visibility' => 'public',
             'throw' => false,

@@ -140,6 +140,22 @@ class UneLivraison {
     latitude_fournisseur = json['latitude_fournisseur'] == null ? 0 : double.parse(json['latitude_fournisseur'].toString());
   }
 
+  /// Le lieu tel qu'il doit être LU par le livreur.
+  ///
+  /// `adresse` vient de `adresse_livraison.affichage` et peut être nulle :
+  /// une course créée sans adresse de livraison affichait alors « Lieu : null »
+  /// — un mot qui ne dit rien au livreur, et qu'il ne peut pas rapporter.
+  /// À défaut d'adresse, on essaie le complément, puis on le dit clairement.
+  String get lieuAffiche {
+    final String a = (adresse ?? '').trim();
+    if (a.isNotEmpty && a.toLowerCase() != 'null') return a;
+
+    final String c = (complementAdresse ?? '').trim();
+    if (c.isNotEmpty && c.toLowerCase() != 'null') return c;
+
+    return 'Adresse non renseignée — appelez le client';
+  }
+
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = new Map<String, dynamic>();
     data['id'] = this.id;

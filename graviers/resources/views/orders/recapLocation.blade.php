@@ -10,21 +10,31 @@
 @extends('document.layouts.fne_base')
 
 @section('titre', 'Récapitulatif location')
-@section('type_document', isset($location) ? 'Facture de location' : 'Proforma location')
+{{-- « Proforma location » tant que rien n'est payé en ligne, « Facture de location »
+     ensuite (lot 85, 15/09/2026 ; DocumentDAffaire::titreLocation). --}}
+@section('type_document', $typeDocument ?? (isset($location) ? 'Facture de location' : 'Proforma location'))
+{{-- Le vendeur : le point de vente de l'entreprise (lot 87, 15/09/2026). --}}
+@section('vendeur', \Help::nomDuVendeur(null))
 
 @if(isset($mode) && $mode)
     @section('mode_paiement', is_string($mode) ? $mode : ($mode->libelle ?? ''))
 @endif
 
 @if($fne_adresse)
-    @section('adresse_livraison', ucwords($fne_adresse))
+    @section('adresse_livraison', \Help::phrase($fne_adresse))
 @endif
 
 @section('articles')
     @if(isset($location))
-        <div style="background:#d4edda; padding:8px; text-align:center; margin-bottom:10px; font-weight:bold; color:#155724;">Location Validée</div>
+        @if (empty($pourPdf))
+            <div style="background:#d4edda; padding:8px; text-align:center; margin-bottom:10px; font-weight:bold; color:#155724;">Location validée</div>
+        @endif
+        @if (!empty($messageAvance))
+            {{-- Avance du client imputée sur la location (10/09/2026). --}}
+            <div class="js-avance-imputee" style="background:#fff3cd; padding:8px; text-align:center; margin-bottom:10px; font-weight:bold; color:#856404;">{{ $messageAvance }}</div>
+        @endif
         <div style="margin-bottom:10px;">
-            <p style="font-size:9pt;"><strong>Date de location :</strong> {{ ucfirst($location->created_at->dayName) . ' ' . $location->created_at->isoFormat('LL') }} à {{ Carbon::parse($location->created_at)->format('H:i') }}</p>
+            <p style="font-size:9pt;"><strong>Date de location :</strong> {{ ucfirst($location->created_at->dayName) . ' ' . $location->created_at->isoFormat('LL') }} à {{ Carbon::parse($location->created_at)->format('H:i:s') }}</p>
             <p style="font-size:9pt;"><strong>Numéro :</strong> {{ $location->numero }}</p>
         </div>
     @endif
@@ -41,6 +51,9 @@
             </tr>
         </thead>
         <tbody>
+            {{-- Le numéro de bon de commande interne devant chaque désignation (09/09/2026) :
+                 défini AVANT les lignes qui l'utilisent. --}}
+            @php $refBon = \Help::referenceBonDeCommande(isset($location) ? ($location->numero_bon_commande ?? null) : session('numero_bon_commande')); @endphp
             @php $totalHT = 0; $index = 0; $i = 0; $livraison = 0; $remise = 0; $Promo = 0; $point = 0; @endphp
 
             @if(isset($location))
@@ -69,8 +82,8 @@
                         $totalHT += $montant; $index++;
                     @endphp
                     <tr>
-                        <td class="col-ref">{{ str_pad($index, 2, '0', STR_PAD_LEFT) }}</td>
-                        <td class="col-designation">{{ ucwords($detail->produit?->nom) }} (location {{ $jours }} j)</td>
+                        <td class="col-ref">{{ \Help::referenceLigne($index, $refBon) }}</td>
+                        <td class="col-designation">{{ \Help::phrase($detail->produit?->nom) }} (location {{ $jours }} j)</td>
                         <td class="col-qte">{{ $detail->qte }}</td>
                         <td class="col-pu">{{ number_format($prixUnitaire, 0, '', ' ') }}</td>
                         <td class="col-unite">Du {{ $detail->debut }} au {{ $detail->fin }}</td>
@@ -84,8 +97,8 @@
                         $totalHT += $montant; $index++;
                     @endphp
                     <tr>
-                        <td class="col-ref">{{ str_pad($index, 2, '0', STR_PAD_LEFT) }}</td>
-                        <td class="col-designation">{{ ucwords($produit->model->nom) }}</td>
+                        <td class="col-ref">{{ \Help::referenceLigne($index, $refBon) }}</td>
+                        <td class="col-designation">{{ \Help::phrase($produit->model->nom) }}</td>
                         <td class="col-qte">{{ $produit->qty }}</td>
                         <td class="col-pu">{{ number_format($produit->price, 0, '', ' ') }}</td>
                         <td class="col-unite">Du {{ Carbon::parse(session('debuts')[$i])->format('d-m-Y') }} au {{ Carbon::parse(session('fins')[$i])->format('d-m-Y') }}</td>
@@ -93,6 +106,24 @@
                     </tr>
                     @php $i++; @endphp
                 @endforeach
+            @endif
+
+            {{-- LE TRANSPORT EST UNE LIGNE DU TABLEAU (09/09/2026), avec la mention
+                 de TVA quand le paramétrage l'a taxé ; sa TVA entrait dans le
+                 total sans ligne pour l'expliquer. --}}
+            @php
+                $livraison    = isset($location) ? (float) ($location->cout_livraison_client ?? 0) : (float) (session('0')['cout_livraison'] ?? 0);
+                $tvaTransport = isset($location) ? (float) ($location->tva_transport ?? 0) : (float) (session('0')['tva_transport'] ?? 0);
+            @endphp
+            @if($livraison > 0 && $tvaTransport > 0)
+                <tr>
+                    <td class="col-ref"></td>
+                    <td class="col-designation">Coût de livraison — TVA ({{ $config->tva ?? 0 }}%)</td>
+                    <td class="col-qte">1</td>
+                    <td class="col-pu">{{ number_format($livraison, 0, '', ' ') }}</td>
+                    <td class="col-unite">Forfait</td>
+                    <td class="col-montant">{{ number_format($livraison, 0, '', ' ') }}</td>
+                </tr>
             @endif
         </tbody>
     </table>
@@ -103,12 +134,11 @@
         $totalTVA = session('0') && isset(session('0')['tva']) ? session('0')['tva'] : 0;
         if(isset($location)) {
             $totalTVA = $location->tvaLocation->montant ?? $totalTVA;
-            $livraison = $location->cout_livraison_client ?? 0;
             // Remise déduite (cohérent avec le montant réellement payé) : HT - remise + TVA + livraison.
             $remise = $location->remise ?? 0;
-            $totalAPayer = max(0, $location->montant_total - $remise) + $totalTVA + $livraison;
+            $airsi = (float) ($location->airsi ?? 0);
+            $totalAPayer = max(0, $location->montant_total - $remise) + $totalTVA + $livraison + $tvaTransport + $airsi;
         } else {
-            if(session('0') && isset(session('0')['cout_livraison'])) $livraison = session('0')['cout_livraison'];
             // session('remise') porte DÉJÀ la remise totale (code promo + valeur des points).
             // On ne recompte donc PAS $Promo/$point séparément, sinon la remise serait
             // déduite deux fois (bug : proforma affichait 150 au lieu de 165).
@@ -116,7 +146,9 @@
             $Promo = 0; $point = 0;
             // Source de vérité = session('0')['montantTTC'] (identique au mode-paiement).
             $totalTVA = session('0')['tva'] ?? $totalTVA;
-            $totalAPayer = session('0')['montantTTC'] ?? ($totalHT - $remise + $totalTVA + $livraison);
+            // AIRSI (10/09/2026) : sur le HT net de remise + TVA.
+            $airsi = \Help::airsiPour(Auth::user()?->client, max(0, $totalHT - $remise) + $totalTVA);
+            $totalAPayer = (session('0')['montantTTC'] ?? ($totalHT - $remise + $totalTVA + $livraison)) + $airsi;
         }
     @endphp
 
@@ -132,15 +164,18 @@
          retirées : $Promo et $point valent toujours zéro — session('remise')
          porte DÉJÀ le total des deux — donc elles ne s'affichaient jamais. --}}
     <table class="fne-totaux-outer"><tr><td class="fne-totaux-spacer"></td><td class="fne-totaux-content"><table class="fne-totaux">
-        <tr><td class="label">TOTAL HT</td><td class="valeur">{{ number_format($totalHT, 0, '', ' ') }}</td></tr>
+        @php $htAffiche = $totalHT + ($tvaTransport > 0 ? $livraison : 0); @endphp
+        <tr><td class="label">TOTAL HT</td><td class="valeur">{{ number_format($htAffiche, 0, '', ' ') }}</td></tr>
         @if($remise > 0)
         <tr><td class="label">Remise</td><td class="valeur">-{{ number_format($remise, 0, '', ' ') }}</td></tr>
-        <tr><td class="label">TOTAL HT NET</td><td class="valeur">{{ number_format(max(0, $totalHT - $remise), 0, '', ' ') }}</td></tr>
+        <tr><td class="label">TOTAL HT NET</td><td class="valeur">{{ number_format(max(0, $htAffiche - $remise), 0, '', ' ') }}</td></tr>
         @endif
-        <tr><td class="label">TVA ({{ $config->tva ?? 0 }}%)</td><td class="valeur">{{ number_format($totalTVA, 0, '', ' ') }}</td></tr>
-        @if($livraison > 0)
+        <tr><td class="label">TVA ({{ $config->tva ?? 0 }}%)</td><td class="valeur">{{ number_format($totalTVA + $tvaTransport, 0, '', ' ') }}</td></tr>
+        {{-- Transport NON taxé : présentation d'avant, sous les totaux. --}}
+        @if($livraison > 0 && $tvaTransport <= 0)
         <tr><td class="label">Coût livraison</td><td class="valeur">{{ number_format($livraison, 0, '', ' ') }}</td></tr>
         @endif
+        @include('document.partials._ligne_airsi', ['airsi' => $airsi ?? 0])
         <tr><td class="label" style="font-size:10pt;">TOTAL A PAYER</td><td class="valeur" style="font-size:10pt; font-weight:bold;">{{ number_format($totalAPayer, 0, '', ' ') }}</td></tr>
     </table></td></tr></table>
 @endsection
@@ -158,9 +193,9 @@
                  remise. --}}
             <tr>
                 <td>TVA {{ $config->tva ?? 0 }}% sur HT{{ ($remise ?? 0) > 0 ? ' net de remise' : '' }}</td>
-                <td class="text-right">{{ number_format(max(0, $totalHT - ($remise ?? 0)), 0, '', ' ') }}</td>
+                <td class="text-right">{{ number_format(max(0, $totalHT - ($remise ?? 0)) + ($tvaTransport > 0 ? $livraison : 0), 0, '', ' ') }}</td>
                 <td class="text-center">{{ $config->tva ?? 0 }}%</td>
-                <td class="text-right">{{ number_format($totalTVA, 0, '', ' ') }}</td>
+                <td class="text-right">{{ number_format($totalTVA + $tvaTransport, 0, '', ' ') }}</td>
             </tr>
         </tbody>
     </table>
@@ -177,7 +212,10 @@
     @endif
 
     <div style="text-align:center; margin-top:20px;">
-        @if(isset($location))
+        @if(!empty($pourPdf))
+            {{-- Le PDF de Mon compte : sans bouton. --}}
+        @elseif(isset($location))
+            <a href="{{ route('client.documentLocationPdf', $location) }}" style="display:inline-block; padding:12px 30px; background-color:#6c757d; color:#fff; text-decoration:none; border-radius:5px; font-size:14px; font-weight:bold; margin-right:8px;">Télécharger ({{ \App\Services\DocumentDAffaire::titreLocation($location) }})</a>
             <a href="{{ route('client.index') }}" style="display:inline-block; padding:12px 40px; background-color:#1c57a3; color:#fff; text-decoration:none; border-radius:5px; font-size:14px; font-weight:bold;">Continuer vos achats</a>
         @else
             <a href="{{ route('client.enregistrementLocation') }}" style="display:inline-block; padding:12px 40px; background-color:#1c57a3; color:#fff; text-decoration:none; border-radius:5px; font-size:14px; font-weight:bold;">Valider la location</a>

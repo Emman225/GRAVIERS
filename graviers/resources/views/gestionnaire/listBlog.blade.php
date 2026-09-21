@@ -76,6 +76,9 @@
     {{-- ===== TABLEAU ===== --}}
     <div class="card dash-card mb-4">
         <div class="card-body">
+            <x-export-buttons table-id="listeBlogs"
+                              filename="liste-des-articles"
+                              title="Liste des articles du blog" />
             <div class="table-responsive">
                 <table class="table dash-table align-middle mb-0" id="listeBlogs">
                     <thead>
@@ -173,11 +176,13 @@
 
                                         {{-- Suppression définitive : en DELETE avec confirmation.
                                              Elle emporte aussi les images et les commentaires. --}}
-                                        <form action="{{ route('show.suppressionDefinitiveBlog', $blog->id) }}" method="POST" class="d-inline"
-                                              onsubmit="return confirm('Supprimer définitivement ce blog, ses images et ses commentaires ? Cette action est irréversible.');">
+                                        <form action="{{ route('show.suppressionDefinitiveBlog', $blog->id) }}" method="POST" class="d-inline js-delete-form"
+                                              data-confirm-title="Suppression définitive"
+                                              data-confirm-text="Supprimer définitivement ce blog, ses images et ses commentaires ? Cette action est irréversible."
+                                              data-confirm-button="Oui, supprimer">
                                             @csrf
                                             @method('DELETE')
-                                            <button type="submit" class="btn btn-sm btn-dark" title="Supprimer définitivement">
+                                            <button type="submit" class="btn btn-sm btn-danger" title="Supprimer définitivement">
                                                 <i class="material-icons md-delete_forever"></i>
                                             </button>
                                         </form>

@@ -125,7 +125,22 @@ class DetailCommande extends Model
                 $query->where('commande.client_id', $client_id);
             })
             ->where('detail_commande.statut', Help::$STATUT_ACTIF)
-            ->where('produit.type_affaire', Help::$VENTE)
+            // LA LIGNE D'UNE COMMANDE APPARTIENT À CETTE COMMANDE, QUEL QUE
+            // SOIT LE TYPE DE SON PRODUIT.
+            //
+            // Il y avait ici un filtre `produit.type_affaire = 'VENTE'`. Quand une
+            // ligne portait un produit de LOCATION, elle était SILENCIEUSEMENT
+            // écartée : l'écran de détail s'ouvrait blanc, le bon s'imprimait vide,
+            // et rien ne disait qu'une ligne avait été retirée de la vue.
+            //
+            // Constaté sur la commande 286453 : 5 « Mini-pelle de chantier » à
+            // 99 000 F, soit exactement les 495 000 F affichés — un matériel de
+            // location entré dans une commande de vente (voir la garde posée dans
+            // ClientController). Le défaut d'origine est en amont ; ce filtre ne
+            // faisait que le rendre invisible.
+            //
+            // `detail_commande` ne contient que des lignes de commande : ce filtre
+            // n'écartait donc jamais rien de légitime.
             ->get();
     }
 

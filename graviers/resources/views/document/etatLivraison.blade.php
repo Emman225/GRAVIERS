@@ -2,7 +2,9 @@
     use Illuminate\Support\Carbon;
     $config = App\Models\Configuration::first();
     $fne_numero = 'ETAT-LIV-' . date('YmdHis');
-    $fne_client = ['nom' => 'Rapport', 'adresse' => '', 'ncc' => '', 'regime_imposition' => ''];
+    // Le bloc client est celui du titulaire du compte (08/09/2026) : l'état
+    // sortait « Nom : Rapport » et des champs vides.
+    $fne_client = \App\Services\FneService::blocClient($client ?? null);
     $fne_qr_code = '';
     $fne_date = now()->format('d/m/Y H:i:s');
 @endphp

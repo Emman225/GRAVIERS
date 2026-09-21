@@ -22,6 +22,9 @@
         </header>
 
         <div class="card-body">
+            <x-export-buttons table-id="liste"
+                              filename="demandes-de-livraison-traitees"
+                              title="Demandes de livraison traitées" />
             <div class="table-responsive">
                 <table class="table table-hover table-bordered" id="liste">
 
@@ -65,12 +68,50 @@
                                     @endforeach
 
                                 </td>
-                                <td class="text-center"> {{$livraison->description}} </td>
+                                {{-- LA DESCRIPTION EST SAISIE LIGNE PAR LIGNE (detail_livraison),
+                                     comme le montre la liste des demandes en attente ; la colonne
+                                     lisait celle de la demande, presque toujours vide (10/09/2026). --}}
+                                <td class="text-center">
+                                    @foreach ($livraison->detailLivraison as $detail)
+                                        {{ $detail->description ?: '—' }} <br>
+                                    @endforeach
+                                    @if ($livraison->description)
+                                        <small class="text-muted">{{ $livraison->description }}</small>
+                                    @endif
+                                </td>
                                 <td class="text-center"> {{$livraison->priseEnCharge?->affichage ?: '—'}} </td>
                                 <td class="text-center"> {{$livraison->destination?->affichage ?: '—'}} </td>
                                 {{-- <td class="text-center"> {{$livraison->detailLivraison->poids_vehicule_souhaite}}t </td> --}}
-                                <td class="text-center fw_bold"> {{Carbon::parse($livraison->created_at)->format('d-m-Y à H:i')}} </td>
-                                <td class="text-center"> <a href="{{route('show.detailDemandeLivraison',$livraison)}}" class="btn btn-primary"> Détails</a> </td>
+                                <td class="text-center fw_bold"> {{Carbon::parse($livraison->created_at)->format('d/m/Y à H:i:s')}} </td>
+                                <td class="text-nowrap text-center">
+                                    <a href="{{route('show.detailDemandeLivraison',$livraison)}}" class="btn btn-primary btn-sm" title="Détails"><i class="material-icons md-more_horiz"></i></a>
+
+                                    {{-- FACTURE DU TRANSPORT.
+                                         Sans piece en face, le reglement du client restait
+                                         indefiniment affiche comme « regle d avance » sur son
+                                         compte : de l argent qu il croyait avoir a son credit
+                                         alors qu il avait paye un service rendu. --}}
+                                    @php
+                                        $factureTransport = \App\Models\Facture::where('service', \Help::$LIVRAISON)
+                                            ->where('service_id', $livraison->id)->first();
+                                    @endphp
+
+                                    @if ($factureTransport)
+                                        <a href="{{ route('orders.factureLivraison', ['facture' => $factureTransport->id, 'action' => 'voir']) }}"
+                                           target="_blank" class="btn btn-info btn-sm" title="Voir facture"><i class="material-icons md-visibility"></i></a>
+                                        <a href="{{ route('orders.factureLivraison', ['facture' => $factureTransport->id, 'action' => 'telecharger']) }}"
+                                           class="btn btn-outline-secondary btn-sm" title="Télécharger"><i class="material-icons md-more_horiz"></i></a>
+                                    @else
+                                        <form action="{{ route('orders.genererFactureLivraison', $livraison) }}" method="post" class="d-inline">
+                                            @csrf
+                                            {{-- Aucune apostrophe : delete-confirm.js construit le texte
+                                                 du SweetAlert par une expression reguliere qui s arrete
+                                                 a la premiere, meme echappee. --}}
+                                            <button type="submit" class="btn btn-secondary btn-sm"
+                                                onclick="return confirm('Generer la facture de ce transport ? Elle rattachera le reglement du client a une piece.')" title="Générer facture"><i class="material-icons md-receipt_long"></i></button>
+                                        </form>
+                                    @endif
+                                </td>
                             </tr>
 
                         @endforeach

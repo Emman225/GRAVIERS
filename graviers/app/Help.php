@@ -3,6 +3,7 @@
 // namespace App\Help;
 
 use App\Models\Logs;
+use App\Models\Configuration;
 use App\Models\Client;
 use App\Models\Facture;
 use App\Models\Location;
@@ -23,6 +24,23 @@ use Illuminate\Pagination\LengthAwarePaginator;
 
 class Help
 {
+    /**
+     * Adresse de contact affichée sur le site et dans les courriels (12/09/2026) :
+     * EMAIL_CONTACT du .env, sinon l'expéditeur des courriels. Plus jamais
+     * d'adresse écrite en dur : le domaine change sans toucher au code.
+     */
+    public static function emailContact(): string
+    {
+        foreach ([config('constantes.email_contact'), config('mail.from.address')] as $candidat) {
+            $candidat = trim((string) $candidat);
+            if ($candidat !== '' && filter_var($candidat, FILTER_VALIDATE_EMAIL)) {
+                return $candidat;
+            }
+        }
+
+        return 'contact@' . (parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'mongravier.com');
+    }
+
     public static $STATUT_ACTIF = 1;
     public static $STATUT_INACTIF = 2;
 
@@ -58,6 +76,16 @@ class Help
     // volontairement HORS de la file de traitement du gestionnaire (listeStatutCommande)
     // pour ne pas traiter une commande non payée. Passe à EN ATTENTE une fois payée.
     public static $COMMANDE_EN_ATTENTE_PAIEMENT = "EN ATTENTE DE PAIEMENT";
+
+    /**
+     * L'état d'une affaire annulée — vente, location ou demande de livraison.
+     *
+     * La chaîne « ANNULEE » vivait en toutes lettres dans le SQL de cette
+     * classe et dans les contrôleurs. Elle est nommée ici parce que trois
+     * modèles doivent désormais s'y référer pour refuser d'encaisser une
+     * affaire morte.
+     */
+    public static $AFFAIRE_ANNULEE = "ANNULEE";
 
     public static $CLIENT_COMPTANT = "CLIENT COMPTANT";
     public static $CLIENT_BE = "CLIENT BE";
@@ -427,6 +455,316 @@ class Help
 
     }
 
+    /**
+     * LA TVA SUR LE TRANSPORT, POUR TOUTES LES AFFAIRES.
+     *
+     * La case « TVA sur le transport » (Paramètres → Livraison & TVA) ne
+     * valait que pour les demandes de livraison ; les ventes et les locations
+     * facturaient le transport hors taxe quoi qu'elle dise (point 5,
+     * 07/09/2026). Elle vaut désormais pour les trois, par cette seule
+     * fonction : cochée, la taxe s'applique au coût de transport au taux du
+     * client (celui de ses marchandises, 0 s'il n'y est pas assujetti) ;
+     * décochée, rien ne change.
+     *
+     * Le montant est FIGÉ sur l'affaire (commande.tva_transport,
+     * location.tva_transport, devis.tva_transport) : décocher la case plus
+     * tard ne réécrit pas les affaires déjà chiffrées.
+     *
+     * @param float $coutTransport      montant HT du transport
+     * @param float $tauxFractionnaire  0,18 pour 18 % (cf. Client::tva)
+     */
+    public static function tvaSurTransport(float $coutTransport, float $tauxFractionnaire): float
+    {
+        if ($coutTransport <= 0 || $tauxFractionnaire <= 0) {
+            return 0.0;
+        }
+
+        $conf = \App\Models\Configuration::first();
+        if ((int) ($conf->tva_transport ?? 0) !== 1) {
+            return 0.0;
+        }
+
+        return (float) round($coutTransport * $tauxFractionnaire);
+    }
+
+    /**
+     * TVA sur le transport POUR UN CLIENT (10/09/2026) : le taux vient de
+     * Client::tvaTransport() — configuration ET dispense propre au client —,
+     * indépendamment de la TVA marchandise.
+     */
+    public static function tvaTransportPour(?\App\Models\Client $client, float $coutTransport): float
+    {
+        if ($coutTransport <= 0) {
+            return 0.0;
+        }
+
+        return (float) round($coutTransport * \App\Models\Client::tvaTransport($client));
+    }
+
+    /** Jours de battement admis autour de la date de livraison souhaitée (15/09/2026). */
+    public const JOURS_TOLERANCE_LIVRAISON = 2;
+
+    /**
+     * LE DÉLAI DE LIVRAISON TOLÉRÉ (lot 81, 15/09/2026) : le client doit savoir,
+     * au moment de choisir sa date, que la livraison peut intervenir deux jours
+     * avant ou deux jours après. Une seule écriture pour le site, les documents
+     * et les courriels ; l'application porte la même phrase (globale.dart).
+     */
+    public static function mentionDelaiLivraison(): string
+    {
+        $j = self::JOURS_TOLERANCE_LIVRAISON;
+
+        return "Délai toléré : la livraison peut intervenir jusqu'à {$j} jours avant ou {$j} jours après la date de livraison souhaitée.";
+    }
+
+    /**
+     * LE NOM DU VENDEUR D'UN DOCUMENT (lot 87, 15/09/2026) : l'agent qui a établi
+     * la pièce quand il y en a un (facture émise au back-office) ; sinon — proforma
+     * née d'une commande en ligne, document sans facture — le nom du point de vente,
+     * à défaut la raison sociale. La ligne « Nom du vendeur : N/A » ne se voit plus.
+     */
+    public static function nomDuVendeur($user = null): string
+    {
+        $nom = trim((string) ($user?->nom_prenoms ?? ''));
+        if ($nom !== '') {
+            return $nom;
+        }
+        $conf = \App\Models\Configuration::first();
+
+        return trim((string) ($conf?->nom_pdv ?: ($conf?->raison_sociale ?: 'DALAKOUN')));
+    }
+
+    /**
+     * LE MODE DE PAIEMENT D'UNE AFFAIRE, TEL QU'ELLE A ÉTÉ RÉGLÉE (lot 86, 15/09/2026).
+     *
+     * La facture imprimait le mode choisi à la commande (ou « N/A ») alors que
+     * le règlement, lui, est connu : en agence l'agent choisit le mode, en ligne
+     * c'est la passerelle, et une avance imputée porte le mode de son dépôt. On
+     * lit donc les règlements VALIDÉS de l'affaire et leurs lignes ; plusieurs
+     * modes se listent séparés par des virgules ; à défaut, le repli (mode de
+     * la commande / du devis), sinon « N/A ».
+     */
+    public static function modePaiementDeLAffaire(string $service, int $id, ?string $repli = null): string
+    {
+        $libelles = [];
+        if ($id > 0) {
+            $paiements = \App\Models\Paiement::with('lignePaiements')
+                ->where('service', $service)->where('service_id', $id)->where('statut', 1)
+                ->orderBy('created_at')->get();
+            foreach ($paiements as $p) {
+                foreach ($p->lignePaiements as $ligne) {
+                    $mode = $ligne->mode_paiement_id ? \App\Models\ModePaiement::find($ligne->mode_paiement_id) : null;
+                    $libelle = trim((string) ($mode?->libelle ?: ($ligne->moyen_paiement ?? '')));
+                    if ($libelle === '') {
+                        continue;
+                    }
+                    // Une avance imputée : le mode du dépôt, et l'origine.
+                    if ($mode && stripos((string) $ligne->moyen_paiement, 'avance') !== false) {
+                        $libelle .= ' (avance ' . trim((string) $ligne->reference) . ')';
+                    }
+                    if (!in_array($libelle, $libelles, true)) {
+                        $libelles[] = $libelle;
+                    }
+                }
+            }
+        }
+        if ($libelles) {
+            return implode(', ', $libelles);
+        }
+        $repli = trim((string) $repli);
+
+        return $repli !== '' ? $repli : 'N/A';
+    }
+
+    /**
+     * LE TAUX DE TVA D'UNE AFFAIRE, EN POUR CENT (15/09/2026).
+     *
+     * Les factures imprimaient le taux du paramétrage pour tout le monde, alors
+     * qu'un client peut être dispensé de TVA (applique_tva à 0) : sa facture
+     * annonçait « TVA (18%) » sur des lignes jamais taxées, et ses totaux ne
+     * retombaient pas sur ce qu'il devait. Le taux du document est celui de
+     * l'affaire telle qu'elle a été FIGÉE : une TVA enregistrée à zéro sur une
+     * base positive dit une affaire sans TVA ; sans enregistrement de TVA (les
+     * anciennes affaires), le taux du paramétrage.
+     */
+    public static function tauxTvaAffaire($affaire): float
+    {
+        $tauxConfig = (float) (\App\Models\Configuration::first()?->tva ?? 0);
+        if (!$affaire) {
+            return $tauxConfig;
+        }
+
+        $ligneTva = null;
+        $base     = 0.0;
+        if ($affaire instanceof \App\Models\Commande) {
+            $ligneTva = $affaire->TvaCommande;
+            $base     = (float) $affaire->montantHT();
+        } elseif ($affaire instanceof \App\Models\Location) {
+            $ligneTva = $affaire->tvaLocation;
+            $base     = (float) $affaire->detailLocation->sum('prix');
+        } else {
+            return $tauxConfig;
+        }
+
+        if ($ligneTva && $base > 0 && (float) ($ligneTva->montant ?? 0) <= 0) {
+            return 0.0;
+        }
+
+        return $tauxConfig;
+    }
+
+    /**
+     * LA TVA NON FACTURÉE D'UN CLIENT DISPENSÉ (15/09/2026) : le montant que la
+     * TVA aurait atteint au taux du paramétrage — sur la marchandise nette de
+     * remise, et sur le transport quand le paramétrage le taxe mais que l'affaire
+     * ne l'a pas été. Zéro pour une affaire taxée : la mention ne s'imprime pas.
+     */
+    public static function tvaNonFacturee(float $baseMarchandise, float $tauxAffaire, float $transport = 0, float $tvaTransport = 0): float
+    {
+        $conf       = \App\Models\Configuration::first();
+        $tauxConfig = (float) ($conf?->tva ?? 0);
+        if ($tauxConfig <= 0 || $tauxAffaire > 0) {
+            return 0.0;
+        }
+
+        $montant = max(0.0, $baseMarchandise) * $tauxConfig / 100;
+        if ($transport > 0 && $tvaTransport <= 0 && (int) ($conf?->tva_transport ?? 0) === 1) {
+            $montant += $transport * $tauxConfig / 100;
+        }
+
+        return self::arrondiFranc($montant);
+    }
+
+    /** « 118 000 FCFA » : le montant de la mention, vide quand il n'y a rien à dire. */
+    public static function montantTvaNonFacturee(float $montant): string
+    {
+        return $montant > 0 ? number_format($montant, 0, '', ' ') . ' FCFA' : '';
+    }
+
+    /**
+     * « TVA NON FACTUREE : 118 000 FCFA » — la mention portée dans la rubrique
+     * « Autres mentions » de la facture normalisée (message commercial DGI).
+     */
+    public static function mentionTvaNonFacturee(float $montant): string
+    {
+        $texte = self::montantTvaNonFacturee($montant);
+
+        return $texte === '' ? '' : 'TVA NON FACTUREE : ' . $texte;
+    }
+
+    /**
+     * LE BON DE COMMANDE EN COLONNE RÉF (10/09/2026). Le numéro figurait devant
+     * chaque désignation (« BC n° X — ») ; le client le veut dans la colonne
+     * Réf des devis, proformas et factures. Vide sans bon de commande : la
+     * colonne reprend alors le numéro de ligne.
+     */
+    public static function referenceBonDeCommande(?string $numero): string
+    {
+        return trim((string) $numero);
+    }
+
+    /**
+     * LA RÉFÉRENCE D'UNE LIGNE (13/09/2026) : le numéro de ligne, puis le bon de
+     * commande interne quand il y en a un — « 01 - NFJ154 » ; « 01 » sinon. Une
+     * seule écriture pour les proformas, devis, factures et la facture normalisée.
+     */
+    public static function referenceLigne(int $index, ?string $numeroBon): string
+    {
+        $rang = str_pad((string) $index, 2, '0', STR_PAD_LEFT);
+        $bon  = self::referenceBonDeCommande($numeroBon);
+
+        return $bon === '' ? $rang : $rang . ' - ' . $bon;
+    }
+
+    /**
+     * L'ADRESSE DE LA PHOTO DE PROFIL D'UN UTILISATEUR (lot 105, 17/09/2026), ou
+     * null : même règle que l'en-tête du back-office — la valeur en base porte
+     * un dossier, sinon « imageUser/ » (convention des envois, mobile compris) ;
+     * le fichier doit exister dans le stockage public du site.
+     */
+    public static function photoDeProfil($user): ?string
+    {
+        $valeur = trim((string) ($user->photo ?? ''));
+        if ($valeur === '' || $valeur === 'null') {
+            return null;
+        }
+        if (str_starts_with($valeur, 'http')) {
+            return $valeur;
+        }
+        $chemin = str_contains($valeur, '/') ? $valeur : 'imageUser/' . $valeur;
+        // LOT 106 (17/09/2026) : le fichier peut se trouver ailleurs que dans le dossier
+        // servi (public/storage, racine du disque « public ») — dans storage/app/public
+        // (racine que le point 30 indiquait à l'API) ou dans le stockage de l'API voisine.
+        // On le cherche partout et on le RAPATRIE dans le dossier servi, une fois.
+        $trouve = \App\Models\Client::resolveStoragePath($chemin);
+        if ($trouve === null) {
+            return null;
+        }
+        $servi = \Illuminate\Support\Facades\Storage::disk('public');
+        if (!$servi->exists($chemin)) {
+            try {
+                $servi->put($chemin, file_get_contents($trouve));
+            } catch (\Throwable $e) {
+                return null;
+            }
+        }
+
+        return asset('storage/' . $chemin) . '?v=' . filemtime($servi->path($chemin));
+    }
+
+    /** Taux de l'AIRSI en pourcentage (5 par défaut), lu dans la configuration. */
+    /** Taux de l'AIRSI en pourcentage (5 par défaut), lu dans la configuration. */
+    public static function tauxAirsi(): float
+    {
+        $taux = \App\Models\Configuration::first()?->taux_airsi;
+
+        return ($taux === null || $taux === '') ? 5.0 : (float) $taux;
+    }
+
+    /**
+     * L'AIRSI DÛ PAR UN CLIENT SUR UNE AFFAIRE (10/09/2026).
+     *
+     * Acompte prélevé à la source sur ce que le client décaisse : la base est
+     * le montant toutes taxes comprises de la marchandise — HT net de remise,
+     * plus la TVA — et le taux celui de la configuration (5 %). Le net à payer
+     * devient HT + TVA + AIRSI. Nul pour un client au réel (RNI / RSI).
+     */
+    public static function airsiPour(?\App\Models\Client $client, float $baseTtc, ?float $htNet = null, ?float $tauxTva = null,
+        float $transport = 0, float $tauxTvaTransport = 0): float
+    {
+        if ($baseTtc <= 0 || !\App\Models\Client::soumisAirsi($client)) {
+            return 0.0;
+        }
+        $taux = self::tauxAirsi();
+
+        // LE TRANSPORT ENTRE DANS L'ASSIETTE (lot 97, 16/09/2026) : la DGI applique
+        // l'AIRSI à toutes les lignes déclarées, frais de livraison compris
+        // (facture 1339220N26000000025 : 548 = 5 % de 10 950, livraison comprise).
+        // $baseTtc reste la marchandise TTC (HT net + TVA arrondie) ; le transport
+        // et le taux de TVA qui le frappe (fraction, 0 s'il n'est pas taxé) sont
+        // passés à part, et l'AIRSI figé porte l'écart d'arrondi de l'ensemble.
+        if ($htNet !== null && $tauxTva !== null && $htNet > 0 && $transport > 0) {
+            $netDgi = round(($htNet * (1 + $tauxTva) + $transport * (1 + $tauxTvaTransport)) * (1 + $taux / 100));
+            $base = round($baseTtc) + round($transport) + round($transport * $tauxTvaTransport);
+
+            return (float) max(0, $netDgi - $base);
+        }
+
+        // L'ARRONDI DE LA DGI (lot 94, 16/09/2026). La plateforme FNE calcule le
+        // net sans arrondir les lignes : net = arrondi(HT × (1 + TVA) × (1 + AIRSI)),
+        // 11 480 → 14 224 ; en arrondissant la TVA (2 066) puis l'AIRSI (677), le
+        // site trouvait 14 223. Quand le HT net et le taux de TVA (fraction, 0,18)
+        // sont donnés, l'AIRSI figé porte l'écart : net DGI − (HT net + TVA arrondie).
+        // Il reste entier, et le net à payer est celui que la DGI certifie.
+        if ($htNet !== null && $tauxTva !== null && $htNet > 0) {
+            $netDgi = round($htNet * (1 + $tauxTva) * (1 + $taux / 100));
+
+            return (float) max(0, $netDgi - round($baseTtc));
+        }
+
+        return (float) round($baseTtc * $taux / 100);
+    }
+
     public static function ecrireLog($fn, $titre, $details, $user_id)
     {
         $log = new Logs();
@@ -478,7 +816,26 @@ class Help
         $facture = (float) (DB::selectOne("SELECT COALESCE(SUM(fac.montant), 0) AS montant FROM facture fac
                                 WHERE fac.client_id = ? AND fac.deleted_at IS NULL", [$client->id])->montant);
 
-        return $admin ? $facture - $paiement : $paiement - $facture;
+        $solde = $admin ? $facture - $paiement : $paiement - $facture;
+
+        // SOUS LE FRANC, IL N'Y A NI DETTE NI CRÉDIT.
+        //
+        // Les totaux portent des décimales — un taux appliqué à un prix
+        // catalogue tombe rarement rond — alors que le franc CFA n'a pas de
+        // subdivision. Un client qui règle 28 813 pour 28 812,5 dus se
+        // retrouvait avec 0,5 d'excédent, affiché « Réglé d'avance : 1 FCFA »
+        // puisque l'écran arrondit. Il croyait avoir un crédit ; il n'avait
+        // rien, et l'entreprise ne lui devait rien.
+        //
+        // Le côté DETTE applique cette tolérance depuis toujours
+        // (Commande::montantRestantDu : un reliquat sous le franc vaut zéro).
+        // Le côté CRÉDIT doit dire la même chose, sans quoi une commande
+        // parfaitement soldée laisse un avoir fantôme.
+        //
+        // On ne peut pas ARRONDIR ici : 0,5 donnerait 1, c'est-à-dire
+        // exactement le montant fantôme qu'on cherche à faire disparaître.
+        // C'est bien une tolérance, pas un arrondi.
+        return abs($solde) < 1 ? 0.0 : $solde;
     }
 
     /**
@@ -531,6 +888,10 @@ class Help
                                       WHERE tc.commande_id = c.id
                                         AND tc.deleted_at IS NULL), 0)
                          + COALESCE(c.cout_livraison_client, 0)
+                         /* TVA du transport et AIRSI : dans montantAPayer() depuis
+                            les points 5 et 41, ils manquaient ici (10/09/2026). */
+                         + COALESCE(c.tva_transport, 0)
+                         + COALESCE(c.airsi, 0)
                          - COALESCE(c.remise, 0)                             AS du,
                            COALESCE((SELECT SUM(li.montant)
                                        FROM ligne_paiement li
@@ -571,7 +932,9 @@ class Help
                                       WHERE tc.commande_id = l.id
                                         AND tc.type_affaire = ?
                                         AND tc.deleted_at IS NULL), 0)
-                         + COALESCE(l.cout_livraison_client, 0)             AS du,
+                         + COALESCE(l.cout_livraison_client, 0)
+                         + COALESCE(l.tva_transport, 0)
+                         + COALESCE(l.airsi, 0)                             AS du,
                            COALESCE((SELECT SUM(li.montant)
                                        FROM ligne_paiement li
                                        JOIN paiement p ON p.id = li.paiement_id
@@ -586,13 +949,113 @@ class Help
                      WHERE l.client_id = ?
                        AND l.deleted_at IS NULL
                        AND l.etat_location <> 'ANNULEE'
+
+                    UNION ALL
+
+                    /* Les DEMANDES DE LIVRAISON manquaient à leur tour.
+                       Le solde du client compte TOUS ses règlements, tous
+                       services confondus ; ce calcul ne regardait que les
+                       commandes et les locations. Un transport réglé mais pas
+                       encore facturé ressortait donc en « versé en trop, à
+                       votre crédit ».
+
+                       Constaté sur un client dont les 8 000 FCFA annoncés
+                       comme trop-perçus étaient le règlement de sa demande de
+                       livraison n° 7 — un service rendu, payé, et simplement
+                       pas encore facturé.
+
+                       Une demande de livraison ne facture QUE du transport :
+                       son montantTotal est le montant dû, remise déduite, TVA
+                       ajoutée. Le filtre type_affaire est indispensable — une
+                       demande, une commande et une location peuvent porter le
+                       même identifiant dans tva_commande. */
+                    SELECT COALESCE(dl.montantTotal, 0)
+                         - COALESCE(dl.remise, 0)
+                         + COALESCE((SELECT SUM(tc.montant)
+                                       FROM tva_commande tc
+                                      WHERE tc.commande_id = dl.id
+                                        AND tc.type_affaire = ?
+                                        AND tc.deleted_at IS NULL), 0)
+                         + COALESCE(dl.airsi, 0)                            AS du,
+                           COALESCE((SELECT SUM(li.montant)
+                                       FROM ligne_paiement li
+                                       JOIN paiement p ON p.id = li.paiement_id
+                                      WHERE p.service = ? AND p.service_id = dl.id
+                                        AND p.statut = ? AND li.statut = ?
+                                        AND p.deleted_at IS NULL AND li.deleted_at IS NULL), 0) AS regle,
+                           COALESCE((SELECT SUM(f.montant)
+                                       FROM facture f
+                                      WHERE f.service = ? AND f.service_id = dl.id
+                                        AND f.deleted_at IS NULL), 0) AS facture
+                      FROM demande_livraison dl
+                     WHERE dl.client_id = ?
+                       AND dl.deleted_at IS NULL
                ) t",
             [self::$COMMANDE, self::$STATUT_ACTIF, self::$STATUT_ACTIF, self::$COMMANDE, $client->id,
              self::$LOCATION, self::$LOCATION, self::$STATUT_ACTIF, self::$STATUT_ACTIF,
-             self::$LOCATION, $client->id]
+             self::$LOCATION, $client->id,
+             self::$LIVRAISON, self::$LIVRAISON, self::$STATUT_ACTIF, self::$STATUT_ACTIF,
+             self::$LIVRAISON, $client->id]
         );
 
         return (float) ($ligne->montant ?? 0);
+    }
+
+    /**
+     * CE QUE LE CLIENT DOIT SUR SES AFFAIRES VIVANTES (10/09/2026).
+     *
+     * Somme des nets à payer (Commande/Location/DemandeLivraison::montantAPayer,
+     * qui portent TVA, transport et sa TVA, AIRSI, remise) des affaires qui
+     * existent encore — ni annulées, ni abandonnées sur la passerelle.
+     */
+    public static function totalDuSurAffaires($client): float
+    {
+        $du = 0.0;
+        foreach (\App\Models\Commande::where('client_id', $client->id)->get() as $c) {
+            if ($c->affaireVivante()) {
+                $du += max(0, (float) $c->montantAPayer());
+            }
+        }
+        foreach (\App\Models\Location::where('client_id', $client->id)->get() as $l) {
+            if ($l->affaireVivante()) {
+                $du += max(0, (float) $l->montantAPayer());
+            }
+        }
+        foreach (\App\Models\DemandeLivraison::where('client_id', $client->id)->get() as $d) {
+            if ($d->affaireVivante()) {
+                $du += max(0, (float) $d->montantAPayer());
+            }
+        }
+
+        return $du;
+    }
+
+    /**
+     * LE SOLDE QUE LE CLIENT LIT SUR SON TABLEAU DE BORD : réglé − dû.
+     *
+     * Le bloc comparait ses règlements à ses FACTURES (soldeClientBrut).
+     * Signalé le 10/09/2026 : « Versé en trop 720 FCFA » pour un client qui
+     * avait tout réglé et tout enlevé — sa facture, émise par l'ancienne
+     * règle « facture au règlement », était courte de la TVA du transport
+     * (18 % de 4 000 F). Une facture est un document interne à l'entreprise ;
+     * ce que le client comprend, c'est « ai-je payé ce que je dois ? ».
+     *
+     *   > 0  versé en trop, à son crédit ;  < 0  reste à payer ;  0  à jour.
+     * Même tolérance que soldeClientBrut : sous le franc, rien.
+     */
+    public static function soldeClientSurAffaires($client): float
+    {
+        $paiement = (float) (DB::selectOne("SELECT COALESCE(SUM(li.montant), 0) AS montant
+                                        FROM ligne_paiement li
+                                           JOIN paiement p ON p.id = li.paiement_id
+                                           WHERE p.statut = ? AND li.statut = ? AND p.client_id = ?
+                                             AND p.deleted_at IS NULL
+                                             AND li.deleted_at IS NULL ",
+                                        [self::$STATUT_ACTIF, self::$STATUT_ACTIF, $client->id])->montant);
+
+        $solde = $paiement - self::totalDuSurAffaires($client);
+
+        return abs($solde) < 1 ? 0.0 : $solde;
     }
 
     public static function soldeClient($client, $admin = true){
@@ -772,6 +1235,63 @@ class Help
     public static function getCodeParain($tel)
     {
         return "PAR-" . $tel . Help::ChaineAleatoireNombre(3);
+    }
+
+    /**
+     * LE MONTANT QU'UNE CAISSE PEUT RÉELLEMENT ENCAISSER.
+     *
+     * Le franc CFA n'a pas de subdivision : personne ne peut remettre 28 812,50
+     * au guichet. Or les totaux en portent — un taux appliqué à un prix
+     * catalogue tombe rarement rond — et le plafond de saisie était comparé à
+     * cette valeur brute.
+     *
+     * L'écran, lui, affiche le montant ARRONDI, parce que formatNombre() le
+     * met en forme sans décimale. Le caissier lisait donc « Reste à payer :
+     * 28 813 FCFA », saisissait 28 813, et se voyait répondre que la valeur
+     * devait être inférieure ou égale à 28 812,5. Un montant affiché mais
+     * refusé : la commande ne pouvait tout simplement pas être soldée.
+     *
+     * On arrondit ICI EXACTEMENT COMME formatNombre() — number_format à zéro
+     * décimale, donc au plus proche, la demie s'éloignant de zéro. Les deux
+     * partagent désormais la même règle : ce qui est montré est encaissable.
+     *
+     * Le centime perdu ou gagné ne dérègle rien : Commande::montantRestantDu()
+     * et ses équivalents traitent depuis toujours un reliquat inférieur au
+     * franc comme un solde nul.
+     */
+    /**
+     * LES POINTS DE FIDÉLITÉ GAGNÉS POUR UN MONTANT ENCAISSÉ.
+     *
+     * UNE SEULE RÈGLE, POUR TOUS LES CANAUX : X francs réellement encaissés
+     * donnent 1 point. Trois règles s'appliquaient auparavant selon la façon de
+     * payer — 200 points forfaitaires au guichet, 1 à 15 selon une grille par
+     * le mobile, rien depuis le site — si bien que le CANAL décidait de la
+     * récompense, ce qu'aucun client n'aurait compris.
+     *
+     * Sur ce qui est ENCAISSÉ, jamais sur le montant commandé : un acompte
+     * rapporte au prorata, et une commande impayée ne rapporte rien.
+     *
+     * Le résultat est tronqué, non arrondi : 1 999 F ne peuvent pas valoir
+     * 2 points quand la règle en annonce 1 pour 1 000. Mieux vaut promettre
+     * moins et tenir.
+     */
+    public static function pointsPour($montant): int
+    {
+        $parPoint = (float) (Configuration::first()->montant_pour_un_point ?? 0);
+
+        // Paramètre absent ou nul : on n'attribue rien plutôt que de diviser
+        // par zéro. Un écran de paramétrage mal rempli ne doit pas casser un
+        // encaissement.
+        if ($parPoint <= 0) {
+            return 0;
+        }
+
+        return (int) floor(max(0, (float) $montant) / $parPoint);
+    }
+
+    public static function arrondiFranc($montant): float
+    {
+        return (float) round((float) $montant);
     }
 
     public static function formatNombre($valeur, $monetaire = false, $devise = "fcfa")
@@ -1062,7 +1582,17 @@ class Help
 
         foreach ($commande->detailCommande as $detail) {
             foreach ($detail->livraisons as $livraison) {
-                $enleve += (float) $detail->prix * (float) ($livraison->enlevement?->qte_servi ?? 0);
+                $bon = $livraison->enlevement;
+                if (!$bon) {
+                    continue;
+                }
+                // `qte_servi` à NULL sur un bon validé vaut la quantité demandée :
+                // ce sont les bons émis avant que la saisie n'existe (même
+                // convention qu'Enlevement::libelleValidationFournisseur).
+                $servi = $bon->qte_servi !== null
+                    ? (float) $bon->qte_servi
+                    : (!empty($bon->fournisseur_validation) ? (float) $bon->qte : 0.0);
+                $enleve += (float) $detail->prix * $servi;
             }
         }
 
@@ -1071,7 +1601,14 @@ class Help
 
     public static function totalEnleveSurCommande($commande){
 
-        $montantEnleveProduit = ($commande->TvaCommande?->montant ?? 0) + $commande->cout_livraison_client - $commande->remise;
+        // Miroir de Commande::montantAPayer() : tout ce qui n'est pas de la
+        // marchandise (TVA, transport et sa TVA, AIRSI, remise) est compté ici
+        // pour que « montantAPayer − totalEnleve » ne laisse que la marchandise
+        // non retirée. TVA du transport et AIRSI manquaient depuis leur ajout :
+        // 720 F « à enlever » sur une commande entièrement retirée (10/09/2026).
+        // Pour le reste à enlever lui-même, préférer Commande::resteAEnlever().
+        $montantEnleveProduit = ($commande->TvaCommande?->montant ?? 0) + $commande->cout_livraison_client
+            + (float) ($commande->tva_transport ?? 0) + (float) ($commande->airsi ?? 0) - $commande->remise;
 
         foreach($commande->detailCommande as $detail){
 
@@ -1217,6 +1754,51 @@ class Help
         return ceil($nbJoursTimestamp / 86400); // 86 400 = 60*60*24
     }
 
+    /**
+     * DATE D'UNE COLONNE DE TABLEAU (10/09/2026) : jour, heure, minute, seconde.
+     *
+     * Demande du client : « pour les colonnes où les dates sont affichées, il
+     * faut afficher date heure minute seconde ». Une valeur qui ne porte pas
+     * d'heure — colonne DATE (échéance, date de livraison prévue…), ou minuit
+     * pile — reste au jour seul : afficher « 00:00:00 » ferait croire à une
+     * heure enregistrée. Vide : un tiret.
+     */
+    public static function dateHeure($valeur, string $vide = '-'): string
+    {
+        if ($valeur === null || $valeur === '') {
+            return $vide;
+        }
+        try {
+            $date = $valeur instanceof \DateTimeInterface
+                ? \Carbon\Carbon::instance($valeur)
+                : \Carbon\Carbon::parse((string) $valeur);
+        } catch (\Throwable $e) {
+            return (string) $valeur;
+        }
+
+        return $date->format($date->format('H:i:s') === '00:00:00' ? 'd/m/Y' : 'd/m/Y H:i:s');
+    }
+
+    /**
+     * UN COMPTE PRÊT À AFFICHER : « NOM PRÉNOMS (identifiant) », ou un tiret.
+     *
+     * C'est le libellé des validateurs sur tous les guichets (1re et 2e
+     * validation via TraceLesValidations, 3e validateur des circuits de
+     * preuve depuis le 10/09/2026). Une seule écriture, pour que le troisième
+     * ne se présente pas autrement que les deux premiers.
+     */
+    public static function compteAvecIdentifiant(?\App\Models\User $user): string
+    {
+        if (!$user) {
+            return '-';
+        }
+
+        $nom = trim((string) $user->nom_prenoms) ?: 'Compte n° ' . $user->id;
+        $identifiant = trim((string) $user->login);
+
+        return $identifiant !== '' ? $nom . ' (' . $identifiant . ')' : $nom;
+    }
+
     public static function sommePropriete(array $array, string $propriete)
     {
         $ret =  array_reduce($array, function ($carry, $item) use ($propriete) {
@@ -1251,6 +1833,114 @@ class Help
         } catch (\Exception $e) {
             \Log::error('Erreur envoi document PDF: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * PLANCHER DE PAIEMENT : combien de points le client peut réellement poser
+     * sur cette commande.
+     *
+     * Les points pouvaient couvrir la totalité d'une commande, et le total à
+     * payer tombait à ZÉRO. C'était une impasse quel que soit le mode choisi :
+     * la passerelle était appelée avec 0, l'encaissement au guichet refusait le
+     * montant nul (`min:1`), et le virement supposait un justificatif de 0 —
+     * alors que les points, eux, étaient déjà débités.
+     *
+     * Les points ne réduisent donc le total que jusqu'à `montant_minimum_a_payer`.
+     * Le reliquat RESTE au compte du client : rien n'est perdu, la remise est
+     * seulement étalée sur la commande suivante.
+     *
+     * Le calcul, en partant du total réellement dû :
+     *
+     *     total = (ht − remise) × (1 + tva) + livraison   ⩾   plancher
+     *  ⟺  ht − remise                                     ⩾   (plancher − livraison) / (1 + tva)
+     *  ⟺  remise                                          ⩽   ht − htMinimum
+     *
+     * La livraison n'est jamais effacée par une remise : dès qu'elle atteint le
+     * plancher à elle seule, les points peuvent couvrir toute la marchandise —
+     * le client paiera son transport, et le total ne sera pas nul.
+     *
+     * @param float $ht          Marchandise hors taxe, avant toute remise.
+     * @param float $remisePromo Remise du code promo, déjà calculée.
+     * @param float $tauxTva     Taux de TVA en POURCENTAGE (18 pour 18 %).
+     * @param float $livraison   Coût de livraison, hors remise.
+     * @param float $valeurPoint Ce que vaut un point, en francs.
+     * @param float $demandes    Points que le client souhaite utiliser.
+     * @param float $solde       Points réellement détenus par le client.
+     *
+     * @return float Points utilisables, jamais supérieurs au solde ni à la demande.
+     */
+    public static function pointsUtilisables(
+        float $ht,
+        float $remisePromo,
+        float $tauxTva,
+        float $livraison,
+        float $valeurPoint,
+        float $demandes,
+        float $solde
+    ): float {
+        $possible = min(max(0.0, $demandes), max(0.0, $solde));
+
+        // Un point sans valeur ne réduit rien : inutile d'en consommer, et
+        // surtout pas de diviser par zéro.
+        if ($possible <= 0 || $valeurPoint <= 0) {
+            return 0.0;
+        }
+
+        $plancher = (float) (Configuration::first()->montant_minimum_a_payer ?? 0);
+
+        // Plancher non paramétré : on ne bride rien, l'ancien comportement
+        // s'applique. Mieux vaut cela qu'un plancher inventé.
+        if ($plancher <= 0) {
+            return $possible;
+        }
+
+        $coefficient = 1 + (max(0.0, $tauxTva) / 100);
+        $htMinimum = max(0.0, ($plancher - max(0.0, $livraison)) / $coefficient);
+
+        // Ce que la remise TOTALE ne doit pas dépasser, puis ce qu'il reste
+        // pour les points une fois le code promo honoré : la remise promo est
+        // un engagement commercial déjà pris, ce sont les points qui cèdent.
+        $remiseMax = max(0.0, $ht - $htMinimum);
+        $pourLesPoints = max(0.0, $remiseMax - max(0.0, $remisePromo));
+
+        // Arrondi À L'INFÉRIEUR : un point entamé serait un point facturé au
+        // client sans qu'il en voie l'effet entier.
+        $utilisables = floor($pourLesPoints / $valeurPoint);
+
+        return min($possible, max(0.0, $utilisables));
+    }
+    /**
+     * LE NUMÉRO DE BON DE COMMANDE INTERNE DEVANT LA DÉSIGNATION (09/09/2026).
+     *
+     * Sur la proforma, le devis et la facture, chaque ligne d'article commence
+     * par le numéro de bon de commande interne de l'entreprise, quand il y en a
+     * un : « BC n° 1234 — Barre de fer 10 mm ». Une seule écriture pour tous les
+     * documents, du site comme de l'application.
+     */
+    /**
+     * UNE PHRASE, PAS UN TITRE (09/09/2026).
+     *
+     * ucwords() mettait une majuscule à chaque mot : « Ciment-Colle Carrelage
+     * 25 Kg », « Paiement En Agence » — l'allure d'un texte généré. Une
+     * désignation, un libellé ou une adresse prennent une majuscule au premier
+     * caractère et gardent le reste tel qu'il a été saisi. ucwords() reste
+     * réservé aux noms de personnes.
+     */
+    public static function phrase($texte): string
+    {
+        $texte = trim((string) $texte);
+        if ($texte === '') {
+            return '';
+        }
+
+        return mb_strtoupper(mb_substr($texte, 0, 1)) . mb_substr($texte, 1);
+    }
+
+    public static function prefixeBonDeCommande($numero): string
+    {
+        $numero = trim((string) $numero);
+
+        return $numero === '' ? '' : 'BC n° ' . $numero . ' — ';
     }
 }
 

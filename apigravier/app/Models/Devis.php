@@ -21,6 +21,7 @@ class Devis extends Model
         "montant",
         "statut",
         "libelle",
+        "numero_bon_commande",
     ];
 
     public static function lire($id)

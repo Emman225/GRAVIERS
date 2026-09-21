@@ -29,13 +29,24 @@ class Client extends Model
         'rccm_clt',
         'ncc_clt',
         'type_client',
+        'nature_fne',
         'statut',
         'parrain_id',
         'point',
         'client_a_terme',
         'applique_tva',
+        // TVA sur le transport, retirable par client (10/09/2026) ; appliquée par défaut.
+        'applique_tva_transport',
+        // Code d'exonération FNE choisi au retrait de la TVA (lot 82, 15/09/2026).
+        'code_exoneration_fne',
         'rccm_clt',
         'ncc_clt',
+        // SANS CETTE LIGNE, LA VALEUR EST SILENCIEUSEMENT IGNOREE.
+        // Le regime d'imposition du client figure sur la facture et la DGI
+        // l'attend sur une facture entre entreprises. La colonne existait et
+        // FneService la lisait, mais elle n'etait ni saisissable ni
+        // enregistrable : la ligne sortait vide sur chaque facture.
+        'regime_imposition',
         'dfe',
         'registre_commerce',
         'plafond_credit',
@@ -162,20 +173,102 @@ class Client extends Model
     }
 
     /**
-     * Taux de TVA applicable, retourné en décimal (ex. 0.18 pour 18%).
-     *
-     * Règle métier : la TVA s'applique à TOUTES les factures, sans exception.
-     * Le champ historique `applique_tva` du client est désormais ignoré (il n'est
-     * plus la source de vérité). Le taux vient exclusivement de la configuration
-     * (Configuration.tva) avec un fallback à 18%.
+     * Taux de TVA de la configuration, en décimal (0.18 pour 18 %), 18 % à défaut.
      */
-    public static function tva(?Client $client){
-        $conf = Configuration::first();
-        $taux = $conf?->tva;
+    public static function tauxConfig(): float
+    {
+        $taux = Configuration::first()?->tva;
         if ($taux === null || $taux === '') {
             $taux = 18;
         }
+
         return ((float) $taux) / 100;
+    }
+
+    /**
+     * Taux de TVA applicable à la MARCHANDISE de ce client, en décimal.
+     *
+     * Règle du 10/09/2026 : la TVA est appliquée à tous les clients par défaut,
+     * mais un client donné peut en être dispensé au back-office (applique_tva
+     * à 0 : bouton « Retirer la TVA » de la liste des clients). Sans client
+     * (visiteur, panier anonyme) : le taux de la configuration.
+     */
+    /** Les deux exonérations que la DGI distingue (codes de taxe à 0 %). */
+    public const EXONERATIONS_FNE = [
+        'TVAD' => 'Exonération légale',
+        'TVAC' => 'Exonération conventionnelle',
+    ];
+
+    /**
+     * LE CODE DE TAXE DGI D'UN CLIENT DISPENSÉ DE TVA (lot 82, 15/09/2026) :
+     * celui choisi par l'administrateur au retrait de la TVA ; à défaut (client
+     * dispensé avant cette évolution), le réglage FNE_EXEMPT_TAX.
+     */
+    public function codeExonerationFne(): string
+    {
+        $code = strtoupper(trim((string) ($this->code_exoneration_fne ?? '')));
+        if (isset(self::EXONERATIONS_FNE[$code])) {
+            return $code;
+        }
+
+        return (string) config('fne.defaults.exempt_tax', 'TVAD');
+    }
+
+    /** « Exonération légale (TVAD) », pour les écrans. */
+    public function libelleExonerationFne(): string
+    {
+        $code = $this->codeExonerationFne();
+
+        return (self::EXONERATIONS_FNE[$code] ?? 'Exonération') . ' (' . $code . ')';
+    }
+
+    public static function tva(?Client $client){
+        if ($client && $client->applique_tva !== null && (int) $client->applique_tva === 0) {
+            return 0.0;
+        }
+
+        return self::tauxConfig();
+    }
+
+    /**
+     * Taux de TVA applicable au TRANSPORT de ce client, en décimal : nul si la
+     * configuration ne taxe pas le transport, ou si ce client en est dispensé
+     * (applique_tva_transport à 0) ; sinon le taux de la configuration —
+     * indépendamment de la TVA marchandise (10/09/2026).
+     */
+    public static function tvaTransport(?Client $client): float
+    {
+        if ((int) (Configuration::first()?->tva_transport ?? 0) !== 1) {
+            return 0.0;
+        }
+        if ($client && $client->applique_tva_transport !== null && (int) $client->applique_tva_transport === 0) {
+            return 0.0;
+        }
+
+        return self::tauxConfig();
+    }
+
+    /**
+     * L'AIRSI (acompte d'impôt sur le revenu du secteur informel) s'applique
+     * au client qui n'a pas déclaré un régime réel d'imposition — réel normal
+     * (RNI) ou réel simplifié (RSI) : particuliers, micro-entreprises,
+     * entreprenants, et tout client sans régime renseigné (10/09/2026).
+     */
+    /** Les gabarits de la DGI pour une organisation (lot 100, 16/09/2026). */
+    public const NATURES_FNE = [
+        'B2B' => 'Entreprise privée',
+        'B2G' => 'Administration ou institution publique',
+        'B2F' => 'Client établi à l\'étranger',
+    ];
+
+    public static function soumisAirsi(?Client $client): bool
+    {
+        if (!$client) {
+            return false;
+        }
+        $code = \App\Support\RegimeImposition::code($client->regime_imposition);
+
+        return !in_array($code, ['RNI', 'RSI'], true);
     }
 
 

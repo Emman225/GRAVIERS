@@ -122,7 +122,7 @@
                                                 <td class="cart_total_label"><h6 class="text-muted">Coût livraison</h6></td>
                                                 <td></td>
                                                 <td class="cart_total_amount">
-                                                    <h6 class="text-brand text-end"> <span id="montant_total">({{ session('0')['km'] }} km) {{ number_format(session('0')['cout_livraison'], 0, '', ' ') }}</span> fcfa</h6>
+                                                    <h6 class="text-brand text-end"> <span id="montant_total">({{ session('0')['km'] }} km) {{ number_format(session('0')['cout_livraison'], 0, '', ' ') }}</span> fcfa @if ((session('0')['tva_transport'] ?? 0) > 0)<br><small class="text-muted">+ TVA sur le transport : {{ number_format(session('0')['tva_transport'], 0, '', ' ') }} fcfa</small>@endif</h6>
                                                 </td>
                                             </tr>
                                         @endif
@@ -132,7 +132,7 @@
                                             <th class="cart_total_label"><h6 class="text-muted text-start">Montant TTC</h6></th>
                                             <th></th>
                                             <th class="cart_total_amount">
-                                                <h6 class="text-brand text-end choix-date-total-final"> <span id="montant_total">{{ number_format($total + $total * $tva + session('0')['cout_livraison'], 0, '', ' ') }}</span> fcfa</h6>
+                                                <h6 class="text-brand text-end choix-date-total-final"> <span id="montant_total">{{ number_format($total + $total * $tva + session('0')['cout_livraison'] + (session('0')['tva_transport'] ?? 0), 0, '', ' ') }}</span> fcfa</h6>
                                             </th>
                                         </tr>
                                         <tr id="mpRemise">
@@ -143,10 +143,10 @@
                                             </th>
                                         </tr>
                                         <tr id="mpMontantTotal">
-                                            <th class="cart_total_label"><h6 class="">Montant Total</h6></th>
+                                            <th class="cart_total_label"><h6 class="">Montant total</h6></th>
                                             <th></th>
                                             <th class="cart_total_amount">
-                                                <h6 class="text-brand text-end"> <span id="leMontantTotal">{{ number_format($total + $total * $tva + session('0')['cout_livraison'], 0, '', ' ') }}</span> fcfa</h6>
+                                                <h6 class="text-brand text-end"> <span id="leMontantTotal">{{ number_format($total + $total * $tva + session('0')['cout_livraison'] + (session('0')['tva_transport'] ?? 0), 0, '', ' ') }}</span> fcfa</h6>
                                             </th>
                                         </tr>
                                     </tfoot>

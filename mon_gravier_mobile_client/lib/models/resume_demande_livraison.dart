@@ -24,7 +24,12 @@ class ResumeDemandeLivraison {
 
 class DetailResume {
   int? distance;
+  // `montant` est ce que le client PAIE : taxe comprise le cas echeant. Les
+  // deux champs suivants le detaillent, pour que l'ecart entre le tarif de la
+  // grille et le total ne reste pas inexplique.
   int? montant;
+  int? montantHt;
+  int? tva;
   String? depart;
   String? destination;
   String? typeLivraison;
@@ -34,6 +39,8 @@ class DetailResume {
   DetailResume(
       {this.distance,
         this.montant,
+        this.montantHt,
+        this.tva,
         this.depart,
         this.destination,
         this.typeLivraison,
@@ -43,6 +50,10 @@ class DetailResume {
   DetailResume.fromJson(Map<String, dynamic> json) {
     distance = json['distance'];
     montant = json['montant'];
+    // Champs absents si le serveur n'est pas encore a jour : le detail ne
+    // s'affiche alors pas, et l'ecran continue de fonctionner comme avant.
+    montantHt = json['montant_ht'];
+    tva = json['tva'];
     depart = json['depart'];
     destination = json['destination'];
     typeLivraison = json['type_livraison'];
@@ -54,6 +65,8 @@ class DetailResume {
     final Map<String, dynamic> data = new Map<String, dynamic>();
     data['distance'] = this.distance;
     data['montant'] = this.montant;
+    data['montant_ht'] = this.montantHt;
+    data['tva'] = this.tva;
     data['depart'] = this.depart;
     data['destination'] = this.destination;
     data['type_livraison'] = this.typeLivraison;

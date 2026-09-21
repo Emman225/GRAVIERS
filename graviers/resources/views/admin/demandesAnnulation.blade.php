@@ -22,6 +22,9 @@
 
     <div class="card mb-4">
         <div class="card-body">
+            <x-export-buttons table-id="liste"
+                              filename="demandes-d-annulation"
+                              title="Demandes d'annulation" />
             <div class="table-responsive">
                 <table class="table table-striped" id="liste">
                     <thead>
@@ -74,13 +77,13 @@
                                         <span class="text-muted">0</span>
                                     @endif
                                 </td>
-                                <td class="text-center">{{ Carbon::parse($demande->created_at)->format('d-m-Y H:i') }}</td>
+                                <td class="text-center">{{ Carbon::parse($demande->created_at)->format('d/m/Y H:i:s') }}</td>
                                 <td class="text-center">
                                     @if (!$demande->est_traite)
                                         <span class="badge bg-warning text-dark">En attente</span>
                                     @elseif ($demande->decision == 1)
                                         <span class="badge bg-success">Approuvée</span>
-                                        <br><small class="text-muted">{{ $demande->decided_at ? Carbon::parse($demande->decided_at)->format('d-m-Y H:i') : '' }}</small>
+                                        <br><small class="text-muted">{{ $demande->decided_at ? Carbon::parse($demande->decided_at)->format('d/m/Y H:i:s') : '' }}</small>
                                     @else
                                         <span class="badge bg-danger">Refusée</span>
                                         @if($demande->note)
@@ -88,13 +91,13 @@
                                         @endif
                                     @endif
                                 </td>
-                                <td class="text-center">
+                                <td class="text-nowrap text-center">
                                     @if (!$demande->est_traite)
                                         <button type="button" class="btn btn-sm btn-success rounded font-sm me-1 {{ $demande->infos->en_traitement ? 'disabled' : '' }}"
                                                 data-bs-toggle="modal" data-bs-target="#approveAnnul-{{ $demande->id }}"
-                                                {{ $demande->infos->en_traitement ? 'disabled title=Traitement déjà démarré' : '' }}>Approuver</button>
+                                                {{ $demande->infos->en_traitement ? 'disabled title=Traitement déjà démarré' : '' }}><i class="material-icons md-more_horiz"></i></button>
                                         <button type="button" class="btn btn-sm btn-danger rounded font-sm"
-                                                data-bs-toggle="modal" data-bs-target="#refuseAnnul-{{ $demande->id }}">Refuser</button>
+                                                data-bs-toggle="modal" data-bs-target="#refuseAnnul-{{ $demande->id }}" title="Refuser"><i class="material-icons md-cancel"></i></button>
                                     @else
                                         <span class="text-muted small">Traitée</span>
                                     @endif

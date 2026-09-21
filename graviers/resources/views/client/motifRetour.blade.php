@@ -72,7 +72,7 @@
                                 @if ($commande)
                                     <div class="retour-produit__commande">
                                         Commande <strong>{{ $commande->numero }}</strong>
-                                        du {{ Carbon::parse($commande->created_at)->format('d/m/Y') }}
+                                        du {{ \Help::dateHeure($commande->created_at) }}
                                     </div>
                                 @endif
                             </div>

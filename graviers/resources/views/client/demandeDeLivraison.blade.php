@@ -23,18 +23,54 @@
         /* Garde-fou : les grilles du thème portent une gouttière négative qui
            dépasse de 2px. Invisible sur ordinateur, elle suffit à faire
            apparaître une barre de défilement horizontale sur téléphone. */
-        .dl-page { background: #f6f8fb; padding: 32px 0 64px; overflow-x: hidden; }
+        .dl-page { background: #edf2f9; padding: 32px 0 64px; overflow-x: hidden; }
 
         .dl-entete { max-width: 900px; margin: 0 auto 28px; text-align: center; }
-        .dl-entete h1 { font-size: 30px; font-weight: 700; color: #102a48; margin-bottom: 10px; }
-        .dl-entete p { color: #5b6b7f; font-size: 16px; margin: 0 auto; max-width: 640px; }
+        /* Lot 109 bis : « Ville » et « Rechercher le lieu… » (prise en charge et destination)
+           prennent toute la largeur — main.css plafonne les listes Select2 à 155 px
+           (.custom_select .select2-container) et le géocodeur Leaflet pose un champ de 246 px
+           dans un bloc qui se rétrécit à son contenu. */
+        .dl-carte .custom_select { width: 100%; }
+        .dl-carte .custom_select .select2-container,
+        .dl-carte .select2-container { width: 100% !important; max-width: none !important; }
+        .dl-carte .select2-container--default .select2-selection--single {
+            height: 50px; border: 1.5px solid #bacde6; border-radius: 12px; padding: 0 12px;
+        }
+        .dl-carte .select2-container--default .select2-selection--single .select2-selection__rendered {
+            line-height: 48px; padding-left: 4px; color: #131a2b; font-size: 15px;
+        }
+        .dl-carte .select2-container--default .select2-selection--single .select2-selection__arrow { height: 48px; right: 12px; }
+        .dl-recherche .leaflet-control-geocoder { width: 100% !important; max-width: none !important; display: block; float: none; margin: 0; }
+        .dl-recherche .leaflet-control-geocoder-form { display: block !important; width: 100%; }
+        /* Le bouton-loupe du plugin (26 px) se retrouvait seul au-dessus du champ : le champ dessine déjà sa loupe. */
+        .dl-recherche .leaflet-control-geocoder-icon { display: none !important; }
+        /* Lot 109 : colonnes du tableau de marchandise réparties sur toute la largeur. */
+        @media (min-width: 768px) {
+            .dl-tableau th:nth-child(1), .dl-tableau td:nth-child(1) { width: 28%; }
+            .dl-tableau th:nth-child(2), .dl-tableau td:nth-child(2) { width: 40%; }
+            .dl-tableau th:nth-child(3), .dl-tableau td:nth-child(3) { width: 12%; }
+            .dl-tableau th:nth-child(4), .dl-tableau td:nth-child(4) { width: 15%; }
+            .dl-tableau td .form-control, .dl-tableau td .form-select { width: 100%; min-width: 0; }
+        }
+        .dl-entete h1 {
+            font-size: 32px; font-weight: 700; color: #131a2b;
+            margin-bottom: 14px; letter-spacing: -.5px;
+        }
+        .dl-entete h1::after {
+            content: ''; display: block;
+            width: 64px; height: 4px; margin: 12px auto 0;
+            border-radius: 2px;
+            background: linear-gradient(90deg, #23326e, #1b58a5);
+        }
+        .dl-entete p { color: #56637a; font-size: 16px; margin: 0 auto; max-width: 640px; }
 
         .dl-carte {
             background: #fff;
-            border: 1px solid #e4eaf1;
-            border-radius: 14px;
-            box-shadow: 0 2px 10px rgba(16, 42, 72, .05);
-            padding: 26px 26px 22px;
+            border: 1.2px solid #bacde6;
+            border-radius: 16px;
+            box-shadow: 0 1px 3px rgba(19, 26, 43, .06),
+                        0 8px 24px rgba(19, 26, 43, .07);
+            padding: 28px 28px 24px;
             margin-bottom: 22px;
         }
 
@@ -42,20 +78,22 @@
         .dl-etape { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
         .dl-etape__num {
             flex: 0 0 auto;
-            width: 34px; height: 34px;
+            width: 38px; height: 38px;
             border-radius: 50%;
-            background: #1c57a3; color: #fff;
+            background: linear-gradient(135deg, #23326e, #1b58a5);
+            color: #fff;
             font-weight: 700; font-size: 15px;
             display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 2px 6px rgba(35, 50, 110, .28);
         }
-        .dl-etape__titre { margin: 0; font-size: 19px; font-weight: 700; color: #102a48; }
-        .dl-etape__aide { margin: 2px 0 0; font-size: 13.5px; color: #7a8a9c; }
+        .dl-etape__titre { margin: 0; font-size: 19px; font-weight: 700; color: #131a2b; }
+        .dl-etape__aide { margin: 2px 0 0; font-size: 13.5px; color: #8794ab; }
 
         /* Champs : le noir pur du thème d'origine écrasait la page. */
         .dl-carte .form-control,
         .dl-carte .form-select,
         .dl-carte select.form-control {
-            border: 1px solid #d5dee8 !important;
+            border: 1px solid #d4e1f0 !important;
             border-radius: 8px;
             min-height: 46px;
             font-size: 15px;
@@ -64,21 +102,21 @@
         .dl-carte textarea.form-control { min-height: 92px; height: auto; }
         .dl-carte .form-control:focus,
         .dl-carte .form-select:focus {
-            border-color: #1c57a3 !important;
-            box-shadow: 0 0 0 3px rgba(28, 87, 163, .12);
+            border-color: #23326e !important;
+            box-shadow: 0 0 0 3px rgba(35, 50, 110, .12);
         }
-        .dl-libelle { display: block; font-size: 13.5px; font-weight: 600; color: #48586b; margin-bottom: 6px; }
+        .dl-libelle { display: block; font-size: 13.5px; font-weight: 600; color: #56637a; margin-bottom: 6px; }
 
         /* Tableau des marchandises */
         .dl-tableau { margin: 0; }
         .dl-tableau > thead th {
-            background: #1c57a3; color: #fff;
+            background: #23326e; color: #fff;
             font-size: 13.5px; font-weight: 600;
             border: 0; padding: 12px 10px; white-space: nowrap;
         }
         .dl-tableau > thead th:first-child { border-top-left-radius: 8px; }
         .dl-tableau > thead th:last-child { border-top-right-radius: 8px; }
-        .dl-tableau > tbody > tr > td { border-color: #e4eaf1; padding: 10px; vertical-align: top; }
+        .dl-tableau > tbody > tr > td { border-color: #d4e1f0; padding: 10px; vertical-align: top; }
         .dl-tableau .btn-danger {
             width: 38px; height: 38px; padding: 0;
             border-radius: 8px;
@@ -87,32 +125,115 @@
         }
 
         .dl-ajouter {
-            background: #eef4fb; color: #1c57a3;
-            border: 1px dashed #9dbbdd; border-radius: 8px;
+            background: #e6eef9; color: #23326e;
+            border: 1px dashed #bacde6; border-radius: 8px;
             font-weight: 600; padding: 10px 18px;
         }
-        .dl-ajouter:hover { background: #e2edf9; color: #14406f; }
+        .dl-ajouter:hover { background: #dbe7f6; color: #182248; }
 
-        /* Recherche d'adresse.
+        /* ===================================================================
+           RECHERCHE D'ADRESSE
 
-           Le bloc est posé en absolu par-dessus la carte pour que la liste des
-           suggestions la recouvre. Il portait « left: 10px » AVEC
+           Le champ mesurait 44px, sans repère visuel, et la LISTE DES
+           SUGGESTIONS n'avait AUCUN style : elle sortait telle que le plugin la
+           produit — texte brut, sans séparation, sans survol, sans bordure —
+           posée par-dessus la carte. C'était le point le plus utilisé de la
+           page, et le moins soigné.
+
+           Le bloc reste posé en absolu par-dessus la carte pour que les
+           suggestions la recouvrent. Il portait « left: 10px » AVEC
            « width: 100% » : sa largeur partait donc du bord gauche du parent et
            débordait de 10px, et le formulaire du géocodeur, non contraint,
-           poussait l'ensemble à 135px hors de l'écran. On borne par la droite. */
-        .dl-recherche { position: relative; min-height: 54px; margin-bottom: 12px; }
+           poussait l'ensemble à 135px hors de l'écran. On borne par la droite.
+           =================================================================== */
+        .dl-recherche { position: relative; min-height: 66px; margin-bottom: 14px; }
         .dl-recherche > div {
             position: absolute; top: 0; left: 0; right: 0;
             width: auto !important;
             z-index: 999;
         }
-        .dl-recherche .leaflet-control-geocoder { max-width: 100%; box-sizing: border-box; }
-        .dl-recherche .leaflet-control-geocoder-form input {
-            width: 100%; box-sizing: border-box;
-            min-height: 44px; padding: 8px 12px;
-            border: 1px solid #d5dee8; border-radius: 8px;
+        .dl-recherche .leaflet-control-geocoder {
+            max-width: 100%; box-sizing: border-box;
+            background: transparent; border: 0; box-shadow: none;
         }
-        .dl-recherche .leaflet-control-geocoder-alternatives { max-width: 100%; }
+        .dl-recherche .leaflet-control-geocoder-form { position: relative; }
+
+        /* Loupe dessinée en fond : le plugin ne prévoit pas d'emplacement pour
+           un pictogramme, et ajouter un élément casserait son balisage. */
+        /* Le « !important » n'est pas un raccourci : « myStyle.css » impose
+           bordure, rayon, marge interne et corps de texte sur TOUT
+           « form input[type=text] » du site avec !important, et
+           « premium-client.css » y ajoute un « background » raccourci — qui
+           efface au passage l'image de la loupe. Sans cela, aucune des lignes
+           ci-dessous ne s'applique : le champ reprend l'aspect commun, et la
+           marge de 48px reservee au pictogramme disparait avec lui.
+           La portee reste limitee a « .dl-recherche » : rien d'autre sur le
+           site n'est touche. */
+        .dl-recherche .leaflet-control-geocoder-form input {
+            width: 100% !important; box-sizing: border-box;
+            min-height: 60px !important;
+            padding: 12px 16px 12px 50px !important;
+            font-size: 16px !important; color: #131a2b !important;
+            background-color: #fff !important;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238794ab' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E") !important;
+            background-repeat: no-repeat !important;
+            background-position: 16px center !important;
+            background-size: 22px 22px !important;
+            border: 1.5px solid #bacde6 !important;
+            border-radius: 12px !important;
+            box-shadow: 0 1px 3px rgba(19, 26, 43, .06) !important;
+            transition: border-color .15s, box-shadow .15s;
+        }
+        .dl-recherche .leaflet-control-geocoder-form input::placeholder { color: #8794ab; }
+        .dl-recherche .leaflet-control-geocoder-form input:focus {
+            outline: none;
+            border-color: #23326e !important;
+            box-shadow: 0 0 0 4px rgba(35, 50, 110, .14) !important;
+        }
+
+        /* La liste des suggestions — l'élément qui n'avait aucun style. */
+        .dl-recherche .leaflet-control-geocoder-alternatives {
+            max-width: 100%;
+            margin: 8px 0 0;
+            padding: 6px;
+            list-style: none;
+            background: #fff;
+            border: 1px solid #d4e1f0;
+            border-radius: 12px;
+            box-shadow: 0 12px 28px rgba(19, 26, 43, .14);
+            max-height: 320px; overflow-y: auto;
+        }
+        .dl-recherche .leaflet-control-geocoder-alternatives li { border: 0; }
+        .dl-recherche .leaflet-control-geocoder-alternatives li a {
+            display: block;
+            padding: 11px 14px;
+            border-radius: 8px;
+            font-size: 14.5px; line-height: 1.4;
+            color: #131a2b; text-decoration: none;
+            white-space: normal;
+        }
+        .dl-recherche .leaflet-control-geocoder-alternatives li a:hover,
+        .dl-recherche .leaflet-control-geocoder-alternatives li.leaflet-control-geocoder-selected a {
+            background: #e6eef9; color: #23326e;
+        }
+        /* Le plugin met le nom du lieu en <span class="…-address"> quand
+           l'adresse détaillée est demandée : on distingue le lieu de sa
+           localité, au lieu d'une seule ligne indifférenciée. */
+        .dl-recherche .leaflet-control-geocoder-address-detail { color: #56637a; font-size: 13px; }
+
+        /* « Aucun lieu trouvé » : c'était du texte nu, sans cadre. */
+        .dl-recherche .leaflet-control-geocoder-error {
+            display: block; margin: 8px 0 0;
+            padding: 12px 14px;
+            background: #fbf2e2; border: 1px solid rgba(183, 121, 31, .25);
+            border-radius: 10px;
+            font-size: 14px; color: #8a5c14;
+        }
+
+        /* Indicateur d'attente du plugin, pour qu'il ne reste pas collé au bord. */
+        .dl-recherche .leaflet-control-geocoder-throbber .leaflet-control-geocoder-form input {
+            background-image: none;
+        }
 
         /* Sélecteur porté par l'identifiant : myStyle.css impose
            « #map { height: 500px; width: 70%; margin: auto } » à l'échelle du
@@ -122,15 +243,21 @@
         #map.dl-carteleaflet,
         #map1.dl-carteleaflet {
             height: 420px; width: 100%; margin: 0;
-            border: 1px solid #d5dee8; border-radius: 10px;
-            overflow: hidden; background: #dde6f0;
+            border: 1px solid #d4e1f0; border-radius: 10px;
+            overflow: hidden; background: #e4edf7;
         }
-        .dl-coordonnees { font-size: 13px; color: #7a8a9c; margin-top: 8px; }
+        .dl-coordonnees { font-size: 13px; color: #8794ab; margin-top: 8px; }
 
         .dl-envoyer {
-            width: 100%; padding: 15px 20px;
-            font-size: 16px; font-weight: 600; border-radius: 10px;
+            width: 100%; padding: 16px 20px;
+            font-size: 16.5px; font-weight: 700; border-radius: 12px;
+            border: 0;
+            background: linear-gradient(135deg, #23326e, #1b58a5) !important;
+            box-shadow: 0 6px 18px rgba(35, 50, 110, .28) !important;
+            border-radius: 12px !important;
+            color: #fff !important;
         }
+        .dl-envoyer:hover { background: linear-gradient(135deg, #182248, #17498a) !important; }
 
         @media (max-width: 767px) {
             .dl-page { padding: 20px 0 40px; }
@@ -148,14 +275,14 @@
             .dl-tableau > thead { display: none; }
             .dl-tableau, .dl-tableau > tbody, .dl-tableau > tbody > tr, .dl-tableau > tbody > tr > td { display: block; width: 100%; }
             .dl-tableau > tbody > tr {
-                border: 1px solid #e4eaf1; border-radius: 10px;
-                padding: 6px 10px 10px; margin-bottom: 14px; background: #fbfcfe;
+                border: 1px solid #d4e1f0; border-radius: 10px;
+                padding: 6px 10px 10px; margin-bottom: 14px; background: #f7faff;
             }
             .dl-tableau > tbody > tr > td { border: 0; padding: 8px 0; }
             .dl-tableau > tbody > tr > td::before {
                 content: attr(data-libelle);
                 display: block;
-                font-size: 12.5px; font-weight: 600; color: #48586b;
+                font-size: 12.5px; font-weight: 600; color: #56637a;
                 margin-bottom: 5px;
             }
             .dl-tableau > tbody > tr > td.dl-cellule-action { text-align: right; padding-top: 4px; }
@@ -177,7 +304,8 @@
             </div>
 
             <div class="row justify-content-center">
-                <div class="col-lg-10">
+                {{-- Lot 109 : toute la largeur du conteneur (col-lg-10 laissait 20 % de vide). --}}
+                <div class="col-lg-12">
 
                     {{-- La page est consultable sans compte. On prévient d'emblée le
                          visiteur que l'envoi demande une connexion, plutôt que de le
@@ -303,6 +431,8 @@
                                     <label class="dl-libelle" for="dl-date">Date de livraison souhaitée</label>
                                     <input required type="date" class="form-control" id="dl-date"
                                         min="{{ now()->format('Y-m-d') }}" name="date" value="{{ date('Y-m-d') }}">
+                                    {{-- Le délai toléré (lot 81, 15/09/2026). --}}
+                                    <small class="text-muted d-block mt-1">{{ \Help::mentionDelaiLivraison() }}</small>
                                 </div>
                             </div>
                         </div>
@@ -329,7 +459,7 @@
                                 </select>
                             </div>
 
-                            <label class="dl-libelle">Rechercher une adresse</label>
+                            <label class="dl-libelle">Rechercher le lieu de prise en charge <span class="champ-obligatoire" style="color:#d9534f;font-weight:bold;margin-left:2px;">*</span></label>
                             <div class="dl-recherche">
                                 <div id="search-container1"></div>
                             </div>
@@ -363,7 +493,7 @@
                                 </select>
                             </div>
 
-                            <label class="dl-libelle">Rechercher une adresse</label>
+                            <label class="dl-libelle">Rechercher le lieu de destination <span class="champ-obligatoire" style="color:#d9534f;font-weight:bold;margin-left:2px;">*</span></label>
                             <div class="dl-recherche">
                                 <div id="search-container2"></div>
                             </div>
@@ -478,12 +608,11 @@
         // La carte de destination, elle, n'a jamais eu ce doublon.
 
         // INITIALISATION DE LA BARRE DE RECHERCHE
-        var geocoder = L.Control.geocoder({
-            title: 'Barre de recherche',
-            placeholder: 'Entrez votre adresse',
+        var geocoder = creerRechercheLieu({
+            title: 'Rechercher le lieu de prise en charge',
+            placeholder: 'Où récupérons-nous la marchandise ?',
             collapsed: false,
             defaultMarkGeocode: false,
-
         });
 
         // LE CONTENEUR DE LA BARRE DE RECHERCHE
@@ -505,22 +634,37 @@
                 searchInput.style.width = '100%';
             }
 
-            //SUPPRIMER LE RESULTAT DE RECHERCHE
-        geocoder.on('markgeocode', function (e) {
-            // Masquer ou supprimer la liste des résultats
-            var resultsContainer = document.querySelector('.leaflet-control-geocoder-alternatives');
-            if (resultsContainer) {
-                resultsContainer.style.display = 'none'; // Masquer la liste
-                // ou
-                // resultsContainer.remove(); // Supprimer la liste
+        // REFERMER LA LISTE UNE FOIS LE LIEU CHOISI, PUIS LA ROUVRIR.
+        //
+        // Deux défauts corrigés ici :
+        //
+        //  1. Le masquage visait « document.querySelector(...) », c'est-à-dire
+        //     la PREMIÈRE liste de la page — celle du départ — quelle que soit
+        //     la barre qui venait d'être utilisée. Choisir une destination
+        //     refermait donc la liste du départ. On se limite au conteneur de
+        //     cette barre-ci.
+        //
+        //  2. La réouverture n'écoutait que « startgeocode », l'événement
+        //     d'une recherche VALIDÉE. Depuis que les suggestions apparaissent
+        //     à la frappe, c'est « startsuggest » qui est émis : sans lui, la
+        //     liste refermée après un premier choix ne serait jamais rouverte,
+        //     et le client ne verrait plus aucune proposition ensuite.
+        function listeDesSuggestions() {
+            return geocoder.getContainer()
+                           .querySelector('.leaflet-control-geocoder-alternatives');
+        }
+
+        geocoder.on('markgeocode', function () {
+            var liste = listeDesSuggestions();
+            if (liste) {
+                liste.style.display = 'none';
             }
         });
 
-        // RETABLIR L'AFFICHAGE PAR DEFAUT
-        geocoder.on('startgeocode', function() {
-            var resultsContainer = geocoder.getContainer().querySelector('.leaflet-control-geocoder-alternatives');
-            if (resultsContainer) {
-                resultsContainer.style.display = 'block'; // Rétablir l'affichage par défaut
+        geocoder.on('startgeocode startsuggest', function () {
+            var liste = listeDesSuggestions();
+            if (liste) {
+                liste.style.display = 'block';
             }
         });
 
@@ -635,9 +779,9 @@
         attribution: '© OpenStreetMap contributors'
     }).addTo(map1);
 
-    const geocoder1 = L.Control.geocoder({
-        title: 'Barre de recherche',
-        placeholder: 'Entrez votre adresse',
+    const geocoder1 = creerRechercheLieu({
+        title: 'Rechercher le lieu de destination',
+        placeholder: 'Où livrons-nous la marchandise ?',
         collapsed: false,
         defaultMarkGeocode: false
     });
@@ -690,6 +834,24 @@
     }
 
     geocoder1.on('markgeocode', e => updateMarkerPosition1(e.geocode.center, e.geocode.name));
+
+    // Même traitement que pour la barre de départ : la liste des suggestions
+    // restait ouverte par-dessus la carte de destination une fois le lieu
+    // choisi, alors qu'elle se refermait sur l'autre carte.
+    function listeDesSuggestions1() {
+        return geocoder1.getContainer()
+                        .querySelector('.leaflet-control-geocoder-alternatives');
+    }
+
+    geocoder1.on('markgeocode', () => {
+        const liste = listeDesSuggestions1();
+        if (liste) { liste.style.display = 'none'; }
+    });
+
+    geocoder1.on('startgeocode startsuggest', () => {
+        const liste = listeDesSuggestions1();
+        if (liste) { liste.style.display = 'block'; }
+    });
 
     map1.on('click', e => {
         fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${e.latlng.lat}&lon=${e.latlng.lng}`)

@@ -18,11 +18,8 @@
                 <div class="card mb-4">
                     <header class="card-header">
                         <div class="row gx-3">
-                            <div class="col col-check flex-grow-0">
-                                <div class="form-check ms-2">
-                                    <input class="form-check-input" type="checkbox" value="" />
-                                </div>
-                            </div>
+                            {{-- Case a cocher retiree : sans nom, sans valeur et sans script,
+                                 c etait un « tout selectionner » herite du gabarit. --}}
 
                             <div class="col-md-2 col-6">
                                 <input type="date" value="02.05.2021" class="form-control" />
@@ -85,17 +82,15 @@
                                                 <span class="badge bg-warning text-dark">En attente</span>
                                             @endif
                                         </td>
-                                        <td class="text-end">
-                                            <a href="{{route('paye.facture',['reference' => $ligne->id, 'action' => 'telecharger'])}}" class="btn btn-sm font-sm rounded btn-brand"> <i class="material-icons md-edit"></i> Télécharger </a>
+                                        <td class="text-nowrap text-end">
+                                            <a href="{{route('paye.facture',['reference' => $ligne->id, 'action' => 'telecharger'])}}" class="btn btn-sm font-sm rounded btn-secondary" title="Télécharger le reçu"><i class="material-icons md-get_app"></i></a>
                                             @if($ligne->statut != \Help::$STATUT_ACTIF && $ligne->statut != 3 && $ligne->code_paiement)
                                                 <form action="{{ route('show.confirmerPaiementManuel') }}" method="post" class="d-inline js-confirm-paiement">
                                                     @csrf
                                                     <input type="hidden" name="codePaiement" value="{{ $ligne->code_paiement }}">
                                                     <input type="hidden" name="reference" value="{{ $ligne->reference }}">
                                                     <input type="hidden" name="moyen_paiement" value="{{ $ligne->moyen_paiement ?: 'Confirmation manuelle' }}">
-                                                    <button type="submit" class="btn btn-sm font-sm rounded btn-success">
-                                                        <i class="material-icons md-check"></i> Confirmer le paiement
-                                                    </button>
+                                                    <button type="submit" class="btn btn-sm font-sm rounded btn-success" title="Confirmer le paiement"><i class="material-icons md-check"></i></button>
                                                 </form>
                                             @endif
                                         </td>
@@ -137,7 +132,7 @@
                 e.preventDefault();
 
                 if (typeof Swal === 'undefined') { // repli si SweetAlert2 indisponible
-                    if (confirm(MSG_CONFIRM_PAIEMENT)) { form.dataset.confirmed = '1'; form.submit(); }
+                    confirmer(MSG_CONFIRM_PAIEMENT).then(function (ok) { if (ok) { form.dataset.confirmed = '1'; form.submit(); } });
                     return;
                 }
 

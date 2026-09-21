@@ -6,6 +6,9 @@ use Help;
 use Retour;
 use App\Models\User;
 use App\Models\Client;
+// La classe est déclarée « Devis » dans app/Models/Devis.php : la casse doit
+// être exacte, Windows la pardonne et Linux non.
+use App\Models\Devis;
 use App\Models\Facture;
 use App\Models\Commande;
 use App\Models\Location;
@@ -20,6 +23,7 @@ use App\Models\DetailLocation;
 use App\Models\DemandeLivraison;
 use App\Models\DetailsLivraison;
 use App\Models\CommissionApporteur;
+use App\Support\AffaireCommissionnable;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -159,13 +163,32 @@ class PaiementController extends Controller
                                 // $intervalPoint->id plantait alors le callback AVANT
                                 // $paiement->save() -> paiement jamais soldé (statut resté 2),
                                 // commission et points jamais attribués.
-                                $intervalPoint = IntervalPoint::lireIntPointSurMontant($paiement->montant_total);
-                                if ($intervalPoint && $intervalPoint->id > 0 && $clientPayeur && $clientPayeur->id > 0) {
-                                    $clientPayeur->point += $intervalPoint->nombre_point;
+                                // LA MEME REGLE QUE LE GUICHET.
+                                //
+                                // La grille interval_point donnait 1 a 15 points
+                                // selon le montant, quand le guichet en donnait
+                                // 200 forfaitaires : 5 000 000 F rapportaient
+                                // 200 points en agence et 1 par le mobile. Le
+                                // canal decidait de la recompense.
+                                //
+                                // Help::pointsPour applique desormais le meme
+                                // bareme partout, et le nombre attribue est
+                                // inscrit sur le reglement pour pouvoir etre
+                                // repris a l'annulation.
+                                $points = Help::pointsPour((float) $paiement->montant_total);
+
+                                if ($points > 0 && $clientPayeur && $clientPayeur->id > 0) {
+                                    $clientPayeur->point += $points;
                                     $clientPayeur->save();
+                                    $paiement->points_attribues = $points;
                                 }
                             }
                             $paiement->save();
+
+                            // LE REÇU DU CLIENT (point 11) : le site l'envoie en PDF,
+                            // sinon l'API l'envoie en texte. Une seule fois par
+                            // règlement, et jamais bloquant pour la confirmation.
+                            \App\Services\RecuPaiementDistant::envoyer($paiement);
 
                             // Statut de paiement du SERVICE (même convention que le callback
                             // web PaiementEnLigne) : 3 = soldé, 2 = partiellement payé.
@@ -193,6 +216,28 @@ class PaiementController extends Controller
                                     if ($paiement->montant_restant <= 0 && $comSvc->etat_commande == Help::$COMMANDE_EN_ATTENTE_PAIEMENT) {
                                         $comSvc->etat_commande = Help::$COMMANDE_EN_ATTENTE;
                                         $comSvc->save();
+                                    }
+                                    // Commande payée en ligne : sa FACTURE part au client par le
+                                    // site (lot 81, 15/09/2026), une seule fois, jamais bloquant.
+                                    if ($paiement->montant_restant <= 0) {
+                                        \App\Services\DocumentCommandeDistant::envoyerApresLaReponse($comSvc);
+                                    }
+
+                                    // ET LE DEVIS EST CLOS.
+                                    //
+                                    // Il l'était dès l'enregistrement de la
+                                    // commande, avant même le départ vers la
+                                    // passerelle : un paiement annulé laissait
+                                    // un devis annoncé « Commandé » sans qu'un
+                                    // franc soit encaissé. Il attend désormais
+                                    // ce moment-ci — atteint par le callback
+                                    // comme par la vérification différée — et
+                                    // l'opération est sans effet s'il est déjà
+                                    // clos.
+                                    if ($paiement->montant_restant <= 0 && $comSvc->devis_id) {
+                                        Devis::where('id', $comSvc->devis_id)
+                                            ->where('statut', '!=', Help::$STATUT_INACTIF)
+                                            ->update(['statut' => Help::$STATUT_INACTIF]);
                                     }
                                 }
                             }
@@ -449,6 +494,11 @@ class PaiementController extends Controller
                 $pais = Paiement::liste(null, $client->id, [Help::$STATUT_ACTIF]);
                 foreach ($pais as $d) {
                     $d->date_paiement = $d->created_at->format("d/m/Y H:i:s");
+                    // L'AFFAIRE ET L'ÉTAT (10/09/2026), comme dans « Paiements
+                    // effectués » du site : commande, location ou livraison
+                    // réglée, et l'état du circuit de preuve (point 20).
+                    $d->affaire = self::libelleAffaireDuPaiement($d);
+                    $d->libelle_etat = self::libelleEtatDuPaiement($d);
                 }
                 $retour->data = $pais;
                 $retour->code = 200;
@@ -471,6 +521,40 @@ class PaiementController extends Controller
         return response()->json($retour);
     }
 
+    /** « Commande N », « Location N » ou « Livraison N », selon le service du règlement. */
+    private static function libelleAffaireDuPaiement(Paiement $p): string
+    {
+        if (!$p->service_id) {
+            return '';
+        }
+        if ($p->service === Help::$LOCATION) {
+            $numero = Location::where('id', $p->service_id)->value('numero');
+            return $numero ? 'Location ' . $numero : '';
+        }
+        if ($p->service === Help::$LIVRAISON) {
+            $numero = DemandeLivraison::where('id', $p->service_id)->value('numero');
+            return $numero ? 'Livraison ' . $numero : '';
+        }
+        $numero = Commande::where('id', $p->service_id)->value('numero');
+        return $numero ? 'Commande ' . $numero : '';
+    }
+
+    /** L'état du règlement lu par le client : même règle que le site. */
+    private static function libelleEtatDuPaiement(Paiement $p): string
+    {
+        if ((int) $p->statut === 2) {
+            return 'En attente de validation';
+        }
+        $etat = $p->etat_reglement ?? null;
+        if ($etat === 'EFFECTUEE') {
+            return 'Effectuée';
+        }
+        if (!empty($etat)) {
+            return 'Validée — en cours';
+        }
+        return 'Payé';
+    }
+
     public function listeFacture(Request $request)
     {
         Request()->validate([
@@ -490,11 +574,23 @@ class PaiementController extends Controller
                 //     $leStatut = $request->statut;
                 // }
                 $client = Client::lireSurUser($user->id);
-                $pais = Facture::liste(null, null, $client->id, $leStatut);
-                foreach ($pais as $d) {
-                    $d->date_paiement = $d->created_at->format("d/m/Y H:i:s");
+                // LA LISTE DU SITE (lot 89, 16/09/2026) : « Mes paiements » du web,
+                // règlements effectués (statut 1, reçu sur paiement_id) et paiements
+                // en attente (statut 2, montant = reste à payer). L'ancienne liste des
+                // factures ne sert plus que de repli quand le site ne répond pas.
+                $duSite = \App\Services\PaiementsDistant::liste($client);
+                if ($duSite !== null) {
+                    $retour->data = $duSite;
+                    $retour->source = 'site';
+                } else {
+                    $pais = Facture::liste(null, null, $client->id, $leStatut);
+                    foreach ($pais as $d) {
+                        $d->date_paiement = $d->created_at->format("d/m/Y H:i:s");
+                    }
+                    $retour->data = $pais;
+                    $retour->source = 'repli';
+                    $retour->message_repli = \App\Services\PaiementsDistant::$derniereErreur;
                 }
-                $retour->data = $pais;
                 $retour->code = 200;
                 // Le message est affichable par l'application : ne pas y concaténer la
                 // fiche client complète (e-mail, contacts, NCC/RCCM, points, à-terme).
@@ -513,6 +609,134 @@ class PaiementController extends Controller
         }
 
         return response()->json($retour);
+    }
+
+    /**
+     * LE REÇU DE L'APPLICATION EST CELUI DU SITE (lot 88, 15/09/2026). Mêmes
+     * paramètres que liste-ligne-paiement-sur-code (niveau 1 = code de paiement
+     * de la passerelle, sinon identifiant du règlement) ; le règlement doit être
+     * au client connecté. Réponse : le PDF (application/pdf), ou un JSON 503 si
+     * le site ne l'a pas fourni — l'application garde alors son reçu local.
+     */
+    /** LES FACTURES DGI DU CLIENT (lot 95, 16/09/2026) : la liste du site, relayée. */
+    public function listeFacturesDgi(Request $request)
+    {
+        Request()->validate(['access' => 'required', 'type' => 'required']);
+        $retour = new Retour();
+        try {
+            $user = User::lire(Crypt::decryptString($request->access));
+            $client = $user->id > 0 ? Client::lireSurUser($user->id) : null;
+            if (!$client || !$client->id) {
+                $retour->code = 404;
+                $retour->message = 'Impossible de récupérer l\'utilisateur';
+                return response()->json($retour, 200);
+            }
+            $lignes = \App\Services\FactureDistant::liste($client);
+            if ($lignes === null) {
+                $retour->code = 503;
+                $retour->message = 'Les factures du site ne sont pas disponibles : ' . \App\Services\FactureDistant::$derniereErreur;
+                return response()->json($retour, 200);
+            }
+            $retour->code = 200;
+            $retour->data = $lignes;
+        } catch (\Throwable $e) {
+            $retour->code = 500;
+            $retour->message = $e->getMessage();
+        }
+
+        return response()->json($retour, 200);
+    }
+
+    /** LE PDF D'UNE FACTURE DGI DU CLIENT (lot 95) : celui du site, relayé ; le client ne voit que les siennes. */
+    public function factureDgiPdf(Request $request)
+    {
+        Request()->validate(['access' => 'required', 'type' => 'required', 'idFacture' => 'required']);
+        $retour = new Retour();
+        try {
+            $user = User::lire(Crypt::decryptString($request->access));
+            $client = $user->id > 0 ? Client::lireSurUser($user->id) : null;
+            if (!$client || !$client->id) {
+                $retour->code = 404;
+                $retour->message = 'Impossible de récupérer l\'utilisateur';
+                return response()->json($retour, 200);
+            }
+            $facture = Facture::find((int) $request->idFacture);
+            if (!$facture || (int) $facture->client_id !== (int) $client->id) {
+                $retour->code = 404;
+                $retour->message = 'Facture introuvable';
+                return response()->json($retour, 200);
+            }
+            $pdf = \App\Services\FactureDistant::pdf((int) $facture->id);
+            if ($pdf === null) {
+                $retour->code = 503;
+                $retour->message = 'La facture du site n\'est pas disponible : ' . \App\Services\FactureDistant::$derniereErreur;
+                return response()->json($retour, 200);
+            }
+
+            return response($pdf, 200, [
+                'Content-Type'        => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="Facture_' . $facture->numero . '.pdf"',
+            ]);
+        } catch (\Throwable $e) {
+            $retour->code = 500;
+            $retour->message = $e->getMessage();
+        }
+
+        return response()->json($retour, 200);
+    }
+
+    public function recuPaiementPdf(Request $request)
+    {
+        Request()->validate([
+            'access' => "required",
+            'type' => "required",
+            'codePaiement' => "nullable",
+            'idPaiement' => "nullable",
+            'niveau' => "required",
+        ]);
+        $retour = new Retour();
+
+        try {
+            $user = User::lire(Crypt::decryptString($request->access));
+            $clientCourant = $user->id > 0 ? Client::lireSurUser($user->id) : null;
+            if (!$clientCourant || !$clientCourant->id) {
+                $retour->code = 404;
+                $retour->message = 'Impossible de récupérer l\'utilisateur';
+                return response()->json($retour, 200);
+            }
+
+            $idPaiement = (int) $request->niveau === 1
+                ? (int) (LignePaiement::listeSurCode($request->codePaiement, $clientCourant->id)->first()->paiement_id ?? 0)
+                : (int) $request->idPaiement;
+            $paiement = $idPaiement > 0 ? Paiement::find($idPaiement) : null;
+            if (!$paiement || (int) $paiement->client_id !== (int) $clientCourant->id) {
+                $retour->code = 404;
+                $retour->message = 'Règlement introuvable';
+                return response()->json($retour, 200);
+            }
+
+            $pdf = \App\Services\RecuPaiementDistant::pdf($paiement);
+            if ($pdf === null) {
+                $retour->code = 503;
+                // Le motif est dit à l'application, qui l'affiche : c'est le seul
+                // moyen de savoir, depuis le téléphone, pourquoi le reçu du site manque.
+                $retour->message = 'Le reçu du site n\'est pas disponible : ' . \App\Services\RecuPaiementDistant::$derniereErreur;
+                return response()->json($retour, 200);
+            }
+
+            return response($pdf, 200, [
+                'Content-Type'        => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="recu-' . $paiement->id . '.pdf"',
+            ]);
+        } catch (ValidationException $e) {
+            $retour->code = 501;
+            $retour->message = collect($e->errors())->flatten()->implode(" \n ");
+        } catch (\Throwable $th) {
+            $retour->code = 500;
+            $retour->message = 'Une erreur s\'est produite code: 500 ' . $th->getMessage();
+        }
+
+        return response()->json($retour, 200);
     }
 
     public function listeLignePaiementSurCode(Request $request)
@@ -881,9 +1105,23 @@ class PaiementController extends Controller
             return;
         }
 
-        // commission_apporteur.type_affaire est un enum('LOCATION','VENTE') :
-        // passer 'COMMANDE' (valeur de Help::$COMMANDE) était rejeté/vidé par MySQL.
-        $typeAffaire = ($typeService == Help::$LOCATION) ? 'LOCATION' : 'VENTE';
+        // ON NE COMMISSIONNE QUE CE QUI PEUT ÊTRE RATTACHÉ.
+        //
+        // `type_affaire` est un enum('LOCATION','VENTE') : il n'a pas de place
+        // pour une demande de livraison. Ranger tout le reste en 'VENTE'
+        // fabriquait une commission pointant sur une commande inexistante — ou
+        // sur celle qui porte le même identifiant, et l'application affichait
+        // alors le client d'un autre. Même règle que le site.
+        $typeAffaire = AffaireCommissionnable::typeSiRattachable($typeService, $idService);
+
+        if (!$typeAffaire) {
+            \Log::warning('Commission mobile non créée : affaire non commissionnable', [
+                'apporteur_id' => $apporteur->id,
+                'service'      => $typeService,
+                'service_id'   => $idService,
+            ]);
+            return;
+        }
 
         // Anti-doublon : le callback PaySecure peut être rejoué -> ne jamais
         // créditer deux fois la même affaire (même logique que le web).

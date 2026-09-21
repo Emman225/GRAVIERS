@@ -59,10 +59,15 @@ class ChiffreAffaireQuantiteServieTest extends TestCase
 
     public function test_un_bon_non_valide_ne_compte_pas(): void
     {
-        $bon = Enlevement::whereNotNull('fournisseur_validation')->whereNull('deleted_at')->first();
+        $bon = Enlevement::whereNotNull('fournisseur_validation')
+            ->where('statut', \Help::$STATUT_ACTIF)
+            ->whereNotNull('produit_id')
+            ->whereNull('deleted_at')
+            ->get()
+            ->first(fn ($b) => \App\Support\BonsDeVente::prixFacture($b) !== null);
 
         if (!$bon) {
-            $this->markTestSkipped('Aucun bon validé.');
+            $this->markTestSkipped('Aucun bon servi rattaché à sa ligne de commande.');
         }
 
         $avant = $this->donneesEcran();
@@ -81,7 +86,11 @@ class ChiffreAffaireQuantiteServieTest extends TestCase
     public function test_la_quantite_retenue_est_celle_servie(): void
     {
         $bon = Enlevement::whereNotNull('fournisseur_validation')
-            ->where('statut', \Help::$STATUT_ACTIF)->whereNull('deleted_at')->first();
+            ->where('statut', \Help::$STATUT_ACTIF)
+            ->whereNotNull('produit_id')
+            ->whereNull('deleted_at')
+            ->get()
+            ->first(fn ($b) => \App\Support\BonsDeVente::prixFacture($b) !== null);
 
         if (!$bon) {
             $this->markTestSkipped('Aucun bon validé.');

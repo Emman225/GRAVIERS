@@ -107,7 +107,7 @@
                                     <i class="material-icons md-email" style="font-size:14px;vertical-align:middle;color:#1c57a3;"></i>
                                     Email professionnel <span class="text-danger">*</span>
                                 </label>
-                                <input class="form-control" name="email" placeholder="admin@gravierci.com" type="email"
+                                <input class="form-control" name="email" placeholder="admin@votre-domaine.com" type="email"
                                        required value="{{ old('email') }}" autocomplete="email" />
                                 <small class="text-muted">Récupération de mot de passe et notifications.</small>
                                 @error('email')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
@@ -133,16 +133,14 @@
                             </div>
                         </div>
 
-                        {{-- Login --}}
+                        {{-- Champ identifiant supprimé (09/09/2026) : généré automatiquement,
+                             comme le mot de passe, et envoyé au nouvel admin par email. --}}
                         <div class="mt-3">
-                            <label class="form-label fw-bold">
-                                <i class="material-icons md-account_circle" style="font-size:14px;vertical-align:middle;color:#1c57a3;"></i>
-                                Identifiant de connexion (login) <span class="text-danger">*</span>
-                            </label>
-                            <input class="form-control" name="login" placeholder="Ex: admin2" type="text"
-                                   required value="{{ old('login') }}" autocomplete="username" />
-                            <small class="text-muted">Utilisé pour se connecter à l'espace admin (au lieu de l'email).</small>
-                            @error('login')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
+                            <div class="alert alert-info py-2 mb-0">
+                                <i class="material-icons md-account_circle" style="font-size:14px;vertical-align:middle;"></i>
+                                L'identifiant de connexion (login) sera <strong>généré automatiquement</strong> à partir du
+                                prénom et du nom, et envoyé au nouvel administrateur par email.
+                            </div>
                         </div>
 
                         {{-- Agence de rattachement --}}
@@ -175,7 +173,7 @@
                         <div class="mt-3">
                             <div class="alert alert-info py-2 mb-0">
                                 <i class="material-icons md-info" style="font-size:14px;vertical-align:middle;"></i>
-                                Le mot de passe sera <strong>généré automatiquement</strong> et envoyé au nouvel administrateur par email.
+                                Le mot de passe sera <strong>généré automatiquement</strong> et envoyé, avec l'identifiant, au nouvel administrateur par email.
                             </div>
                         </div>
 

@@ -24,7 +24,7 @@
             <h2><i class="material-icons md-star"></i> Ce que vous y gagnez</h2>
             <div class="page-inst__grille">
                 <div class="page-inst__tuile">
-                    <i class="material-icons md-event_repeat"></i>
+                    <i class="material-icons md-event"></i>
                     <strong>Des courses régulières</strong>
                     <span>Les livraisons vous sont affectées depuis notre plateforme, sans démarchage de votre part.</span>
                 </div>
@@ -47,7 +47,7 @@
         </div>
 
         <div class="page-inst__carte">
-            <h2><i class="material-icons md-checklist"></i> Ce qu'il faut réunir</h2>
+            <h2><i class="material-icons md-playlist_add_check"></i> Ce qu'il faut réunir</h2>
             <ul>
                 <li>Un véhicule adapté au transport de matériaux : camion-benne, porteur ou utilitaire.</li>
                 <li>Les documents du véhicule à jour : carte grise, visite technique, assurance.</li>

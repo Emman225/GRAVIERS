@@ -15,24 +15,28 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <!-- Favicon -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
-    <link rel="shortcut icon" type="image/x-icon" href="{{ asset(config("constantes.logo")) }}" />
+    @include('layout._favicon')
     <!-- Material Icons (Round) -->
     <link rel="stylesheet" href="{{ asset('backend/assets/css/vendors/material-icon-round.css') }}" />
 
     <!-- Template CSS -->
     <link rel="stylesheet" href="{{ asset('frontend/assets/css/plugins/slider-range.css') }}" />
-    <link rel="stylesheet" href="{{ asset('frontend/assets/css/main.css?v=6.0') }}" />
+    <link rel="stylesheet" href="{{ asset('frontend/assets/css/main.css?v=6.3') }}" />
     <link rel="stylesheet" href="{{ asset('frontend/assets/css/myStyle.css') }}">
-    <link rel="stylesheet" href="{{ asset('frontend/assets/css/premium-client.css') }}">
+    <link rel="stylesheet" href="{{ asset('frontend/assets/css/premium-client.css?v=2.6') }}">
     {{-- v1.1 : texte et icônes du menu latéral passés en blanc. Le numéro de
          version doit être incrémenté à chaque modification du fichier, sinon les
          navigateurs continuent de servir la feuille mise en cache. --}}
-    <link rel="stylesheet" href="{{ asset('frontend/assets/css/premium-client-account.css?v=1.1') }}">
+    <link rel="stylesheet" href="{{ asset('frontend/assets/css/premium-client-account.css?v=1.2') }}">
     <link rel="stylesheet" href="{{ asset('frontend/assets/css/premium-auth.css?v=4.0') }}">
     <link rel="stylesheet" href="{{ asset('frontend/assets/css/premium-product-detail.css?v=1.3') }}">
     <link rel="stylesheet" href="{{ asset('frontend/assets/css/premium-responsive.css?v=1.0') }}">
+    {{-- 12/09/2026 : site grand public 100 % responsive — feuille additive (< 992 px seulement), chargée en dernier. --}}
+    <link rel="stylesheet" href="{{ asset('frontend/assets/css/responsive-dalakoun.css?v=1.1') }}">
     <script defer src="{{ asset('frontend/assets/js/table-dropdown-fix.js?v=6.0') }}"></script>
-    <script defer src="{{ asset('frontend/assets/js/delete-confirm.js?v=2.0') }}"></script>
+    <script defer src="{{ asset('frontend/assets/js/delete-confirm.js?v=2.4') }}"></script>
+    {{-- Astérisque sur tout champ obligatoire (lot 81, 15/09/2026). --}}
+    <script defer src="{{ asset('frontend/assets/js/champs-obligatoires.js?v=1.0') }}"></script>
 
     {{-- carte (Leaflet hébergé en local pour éviter la dépendance au CDN unpkg) --}}
     <link rel="stylesheet" href="{{ asset('frontend/assets/leaflet/leaflet.css') }}" />

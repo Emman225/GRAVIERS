@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:mon_gravier_com/components/empty_user_widget.dart';
@@ -11,6 +10,9 @@ import 'package:mon_gravier_com/globale.dart';
 import 'package:mon_gravier_com/impression/impression_recu_paiement_pdf.dart';
 import 'package:searchable_listview/searchable_listview.dart';
 
+import '../../components/bouton_retour.dart';
+import '../../components/etat_vide.dart';
+import '../../components/carte_operation.dart';
 import '../../helper/constants.dart';
 import '../../models/retour_liste_un_new_paiement.dart';
 
@@ -105,27 +107,8 @@ class PaiementScreenState extends State<PaiementScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Paiements effectués et impression de reçu"),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       body: SafeArea(
         child: (user.token == null || user.token == "")
@@ -133,13 +116,6 @@ class PaiementScreenState extends State<PaiementScreen> {
             : Container(
                 width: double.infinity,
                 height: heightOfScreen(context),
-                decoration: const BoxDecoration(
-                  image: DecorationImage(
-                    image: AssetImage("assets/images/bg.jpg"),
-                    fit: BoxFit.cover,
-                    opacity: 0.1,
-                  ),
-                ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   child: Padding(
@@ -155,81 +131,41 @@ class PaiementScreenState extends State<PaiementScreen> {
                         return mtna.compareTo(mtnb);
                       },
                       physics: const BouncingScrollPhysics(),
-                      builder: (paiements, index, p) => GestureDetector(
-                        onTap: () => {
-                          Get.toNamed(ImpressionRecuPaiementPdf.routeName, arguments: [2, "",p.id])
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.all(8.0),
-                          child: Container(
-                            height: 160,
-                            decoration: BoxDecoration(
-                              color: ids.contains(p.id) ? Colors.green[100] : Colors.grey[200],
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: mainSpaceBet,
-                              children: [
-                                const SizedBox(
-                                  width: 10,
-                                ),
-                                Container(
-                                    width: 40,
-                                    height: 40,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(30),
-                                      image: const DecorationImage(
-                                          image: AssetImage(
-                                              "assets/images/attente.png"),
-                                          fit: BoxFit.cover,
-                                          opacity: 0.6),
-                                    ),
-                                    child: Container()),
-                                const SizedBox(
-                                  width: 10,
-                                ),
-                                Flexible(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        '# ${p.code}',
-                                        style: const TextStyle(
-                                          color: Colors.red,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      Text(
-                                        "Total: ${formaterMontant(p.montantTotal?.toDouble() ?? 0)}",
-                                        style: const TextStyle(
-                                          color: Colors.blue,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      Text(
-                                        p.libelle.toString(),
-                                        style: const TextStyle(
-                                          color: Colors.black,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      Text(
-                                        '${p.datePaiement}',
-                                        style: const TextStyle(
-                                          color: Colors.black,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const Icon(Icons.navigate_next_sharp,
-                                    color: greyColor, size: 20),
-                              ],
+                      builder: (paiements, index, p) => Padding(
+                          padding: const EdgeInsets.only(bottom: kSpaceMd),
+                          child: CarteOperation(
+                            icone: Icons.payments_outlined,
+                            numero: "Règlement ${p.code}",
+                            montant: formaterMontant(
+                                p.montantTotal?.toDouble() ?? 0),
+                            // L'affaire réglée devant le libellé (10/09/2026).
+                            mention: (p.affaire ?? '').isNotEmpty
+                                ? "${p.affaire} — ${p.libelle}"
+                                : p.libelle.toString(),
+                            date: "${p.datePaiement}",
+                            // L'état du circuit de preuve (point 20) : « Effectuée »
+                            // en vert, « Validée — en cours » en orange, « Payé » en vert.
+                            statut: p.libelleEtat,
+                            couleurStatut: (p.libelleEtat ?? '').startsWith('Validée')
+                                ? kWarningColor
+                                : kSuccessColor,
+                            fondStatut: (p.libelleEtat ?? '').startsWith('Validée')
+                                ? kWarningSoftColor
+                                : kSuccessSoftColor,
+                            // Ouvre le reçu du règlement, comme avant la
+                            // refonte de cette liste.
+                            onTap: () => Get.toNamed(
+                              ImpressionRecuPaiementPdf.routeName,
+                              arguments: [2, "", p.id],
                             ),
                           ),
                         ),
+                      emptyWidget: const EtatVide(
+                        compact: true,
+                        icone: Icons.payments_outlined,
+                        titre: "Aucun règlement",
+                        message:
+                            "Vos règlements apparaîtront ici, avec leur reçu.",
                       ),
                       initialList: paiements,
                       filter: (p0) {
@@ -238,19 +174,14 @@ class PaiementScreenState extends State<PaiementScreen> {
                         (c.datePaiement.toString().contains(p0) ||
                             c.code.toString().contains(p0) ||
                             c.montantTotal.toString().contains(p0) ||
+                            (c.affaire ?? '').contains(p0) ||
                             c.service.toString().contains(p0)))
                             .toList();
                       },
-                      inputDecoration: InputDecoration(
-                        labelText: "Recherchez...",
-                        fillColor: Colors.white,
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(
-                            color: kPrimaryColor,
-                            width: 1.0,
-                          ),
-                          borderRadius: BorderRadius.circular(10.0),
-                        ),
+                      inputDecoration: const InputDecoration(
+                        hintText: "Rechercher un paiement...",
+                        floatingLabelBehavior: FloatingLabelBehavior.never,
+                        prefixIcon: Icon(Icons.search, size: 20),
                       ),
                     ),
                   ),

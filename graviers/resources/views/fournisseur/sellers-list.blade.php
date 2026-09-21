@@ -29,8 +29,8 @@
                 <table class="table table-striped" id="liste">
                     <thead style="background-color: #1c57a3; color: white;">
                         <tr>
-                            <th class="text-center">Code Fourn.</th>
-                            <th class="text-center">Raison Sociale</th>
+                            <th class="text-center">Code fourn.</th>
+                            <th class="text-center">Raison sociale</th>
                             <th class="text-center">Type</th>
                             <th class="text-center">Produit principal</th>
                             <th class="text-center">Contact</th>
@@ -81,42 +81,58 @@
                                         <span class="badge bg-danger">Bloqué</span>
                                     @endif
                                 </td>
-                                <td>
-                                    <div class="dropdown">
-                                        <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm"> <i class="material-icons md-more_horiz"></i> Actions</a>
-                                        <div class="dropdown-menu">
-                                            <button type="button" class="dropdown-item" data-toggle="modal"
-                                                data-target="#exampleModalCenter{{ $fournisseur->id }}">
-                                                Voir les produits
-                                            </button>
-                                             <a href="{{ route('show.editSellers', $fournisseur->id) }}"
-                                                class="dropdown-item">Modifier les infos
-                                            </a>
-                                            @if($fournisseur->dfe)
-                                                <a href="{{ route('show.fournisseurDocument', [$fournisseur->id, 'dfe']) }}" target="_blank"
-                                                    class="dropdown-item"><i class="material-icons md-description align-middle"></i> Voir la DFE</a>
-                                            @else
-                                                <span class="dropdown-item text-muted">DFE non fournie</span>
-                                            @endif
-                                            @if($fournisseur->registre_commerce)
-                                                <a href="{{ route('show.fournisseurDocument', [$fournisseur->id, 'rc']) }}" target="_blank"
-                                                    class="dropdown-item"><i class="material-icons md-description align-middle"></i> Voir le registre de commerce</a>
-                                            @else
-                                                <span class="dropdown-item text-muted">Registre de commerce non fourni</span>
-                                            @endif
-                                            <button
-                                                class="dropdown-item"
-                                                data-id="{{ $fournisseur->id }}" data-nom="{{ $fournisseur->nom }}"
-                                                data-bs-toggle="modal" data-bs-target="#blockModal-{{ $fournisseur->user_id }}">
-                                                {{ $fournisseur->user?->statut == 2 ? 'Débloquer' : 'Bloquer' }}
-                                            </button>
-                                            <button class="dropdown-item text-danger"
-                                                data-nom="{{ $fournisseur->nom_prenoms }}" data-bs-toggle="modal"
-                                                data-bs-target="#deleteModal-{{ $fournisseur->id }}">
-                                                Supprimer
-                                            </button>
-                                        </div>
-                                    </div>
+                                <td class="text-nowrap">
+                                    {{-- MODIFIER : UN BOUTON, PAS UNE ENTREE DE MENU.
+                                         La modification existait deja, mais enfouie dans
+                                         « Actions » : il fallait deja savoir qu'elle etait
+                                         la pour l'y chercher. C'est l'action la plus
+                                         courante sur cette liste, elle se voit. --}}
+                                    {{-- TOUTES LES COMMANDES ENSEMBLE, SUR UNE SEULE LIGNE.
+
+                                         « Modifier » etait un bouton a part, pose a cote d'un menu
+                                         qui cachait les cinq autres : deux endroits pour une meme
+                                         colonne. Le menu est sorti, les six commandes sont six
+                                         boutons de meme facture, au format de la liste des
+                                         diapositives. --}}
+                                    <a href="{{ route('show.editSellers', $fournisseur->id) }}"
+                                       class="btn btn-sm btn-primary" title="Modifier les informations du fournisseur">
+                                        <i class="material-icons md-edit"></i>
+                                    </a>
+                                    <button type="button" class="btn btn-sm btn-info" title="Voir les produits"
+                                            data-toggle="modal" data-target="#exampleModalCenter{{ $fournisseur->id }}">
+                                        <i class="material-icons md-list_alt"></i>
+                                    </button>
+                                    @if($fournisseur->dfe)
+                                        <a href="{{ route('show.fournisseurDocument', [$fournisseur->id, 'dfe']) }}" target="_blank"
+                                           class="btn btn-sm btn-secondary" title="Voir la DFE">
+                                            <i class="material-icons md-description"></i>
+                                        </a>
+                                    @else
+                                        <span class="btn btn-sm btn-light disabled" title="DFE non fournie">
+                                            <i class="material-icons md-description text-muted"></i>
+                                        </span>
+                                    @endif
+                                    @if($fournisseur->registre_commerce)
+                                        <a href="{{ route('show.fournisseurDocument', [$fournisseur->id, 'rc']) }}" target="_blank"
+                                           class="btn btn-sm btn-secondary" title="Voir le registre de commerce">
+                                            <i class="material-icons md-assignment"></i>
+                                        </a>
+                                    @else
+                                        <span class="btn btn-sm btn-light disabled" title="Registre de commerce non fourni">
+                                            <i class="material-icons md-assignment text-muted"></i>
+                                        </span>
+                                    @endif
+                                    <button class="btn btn-sm {{ $fournisseur->user?->statut == 2 ? 'btn-success' : 'btn-warning' }}"
+                                            title="{{ $fournisseur->user?->statut == 2 ? 'Débloquer ce fournisseur' : 'Bloquer ce fournisseur' }}"
+                                            data-id="{{ $fournisseur->id }}" data-nom="{{ $fournisseur->nom }}"
+                                            data-bs-toggle="modal" data-bs-target="#blockModal-{{ $fournisseur->user_id }}">
+                                        <i class="material-icons {{ $fournisseur->user?->statut == 2 ? 'md-check_circle' : 'md-block' }}"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-danger" title="Supprimer ce fournisseur"
+                                            data-nom="{{ $fournisseur->nom_prenoms }}" data-bs-toggle="modal"
+                                            data-bs-target="#deleteModal-{{ $fournisseur->id }}">
+                                        <i class="material-icons md-delete"></i>
+                                    </button>
                                 </td>
                             </tr>
                         @endforeach

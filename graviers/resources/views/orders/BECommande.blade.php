@@ -106,22 +106,8 @@
                                     </a>
                                 </div>
                             </div>
-                            <div class="card-body">
-                                @if ($estPdf)
-                                    <embed src="{{ $urlBl }}" type="application/pdf"
-                                           width="100%" height="600px"
-                                           style="border: 1px solid #ddd;" />
-                                @elseif ($estImage)
-                                    <div class="text-center">
-                                        <img src="{{ $urlBl }}" alt="Bon de commande"
-                                             style="max-width: 100%; max-height: 600px; border: 1px solid #ddd;">
-                                    </div>
-                                @else
-                                    <p class="text-muted">
-                                        Format <strong>{{ $extensionBl }}</strong> non prévisualisable —
-                                        utilisez les boutons « Consulter » ou « Télécharger ».
-                                    </p>
-                                @endif
+                            {{-- L'aperçu du fichier a été retiré le 08/09/2026 : la barre
+                                 suffit, « Consulter » l'ouvre, « Télécharger » l'enregistre. --}}
                             </div>
                         </div>
                     </div>
@@ -130,8 +116,12 @@
 
             <div class="row">
                 <div class="col-lg-12">
+                    {{-- Les trois exports du tableau des produits (08/09/2026). --}}
+                    <x-export-buttons table-id="tableProduitsBE"
+                                      filename="produits-commande-{{ $commande->numero }}"
+                                      title="Produits de la commande {{ $commande->numero }}" />
                     <div class="table-responsive">
-                        <table class="table">
+                        <table class="table" id="tableProduitsBE">
                             <thead>
                                 <tr>
                                     <th width="40%">Produit</th>
@@ -196,7 +186,18 @@
                                                 <dd>
                                                     {{-- Le fcfa n'a pas de décimales : un restant < 1 (résidu
                                                          d'arrondi TVA, ex. 0,2) = commande soldée. --}}
-                                                    @if ($restant >= $montantAPayer)
+                                                    @if ($restant >= $montantAPayer && ($montantEnAttente ?? 0) > 0)
+                                                        {{-- Le client a versé, le caissier a encaissé : dire
+                                                             « aucun paiement » serait faux pour les deux. Le
+                                                             règlement attend seulement sa seconde validation. --}}
+                                                        <span class="badge bg-info text-dark">
+                                                            Paiement saisi, en attente de validation
+                                                        </span>
+                                                        <div class="small text-muted mt-1">
+                                                            {{ Help::formatNombre($montantEnAttente, true) }}
+                                                            à valider par un second administrateur
+                                                        </div>
+                                                    @elseif ($restant >= $montantAPayer)
                                                         <span class="badge bg-danger">
                                                             Aucun paiement effectué
                                                         </span>
@@ -487,8 +488,11 @@
                         <h3>Les factures</h3>
                     </span>
                     @if (!$commande->factures->isEmpty())
-
-                        <table class="table table-striped">
+                        {{-- Les trois exports du tableau des factures (08/09/2026). --}}
+                        <x-export-buttons table-id="tableFacturesBE"
+                                          filename="factures-commande-{{ $commande->numero }}"
+                                          title="Factures de la commande {{ $commande->numero }}" />
+                        <table class="table table-striped" id="tableFacturesBE">
                             <thead class="thead-dark">
 
                                 <tr>
@@ -524,7 +528,7 @@
 
                                 @foreach ($commande->factures as $key =>  $facture)
                                     @php
-                                        $supplement = $facture->commande?->cout_livraison_client + ($facture->commande?->TvaCommande?->montant ?? 0) - $commande->remise;
+                                        $supplement = $facture->commande?->cout_livraison_client + ($facture->commande?->tva_transport ?? 0) + ($facture->commande?->TvaCommande?->montant ?? 0) - $commande->remise;
                                         // dd($supplement, $facture->montant);
                                     @endphp
 

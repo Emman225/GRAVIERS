@@ -17,8 +17,11 @@
 
     <div class="card mb-4">
         <div class="card-body">
+            <x-export-buttons table-id="listeTicketsAgent"
+                              filename="mes-tickets-sav"
+                              title="Mes tickets SAV" />
             <div class="table-responsive">
-                <table class="table table-striped">
+                <table id="listeTicketsAgent" class="table table-striped">
                     <thead style="background-color:#1c57a3;color:#fff;">
                         <tr>
                             <th>N° ticket</th>
@@ -42,7 +45,7 @@
                                 <td>{{ $ticket->client?->display_name }}</td>
                                 <td>{{ $ticket->detailCommande?->produit?->nom ?? '-' }}</td>
                                 <td>{{ $ticket->objet }}</td>
-                                <td>{{ Carbon::parse($ticket->created_at)->format('d/m/Y H:i') }}</td>
+                                <td>{{ Carbon::parse($ticket->created_at)->format('d/m/Y H:i:s') }}</td>
                                 <td class="text-center"><span class="badge rounded-pill {{ $badge }}">{{ $libelle }}</span></td>
                                 <td class="text-center">
                                     @if ($st === 3)

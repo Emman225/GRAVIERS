@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:buttons_tabbar/buttons_tabbar.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:hawk_fab_menu/hawk_fab_menu.dart';
 import 'package:http/http.dart' as http;
@@ -14,6 +13,7 @@ import 'package:mon_gravier_com/screens/demande_livraison/demande_livraison_scre
 import 'package:mon_gravier_com/screens/liste_demande_livraison/liste_demande_livraison_screen.dart';
 import 'package:mon_gravier_com/screens/livraison/components/livraison_liste_screen.dart';
 
+import '../../components/bouton_retour.dart';
 import '../../components/empty_user_widget.dart';
 import '../../helper/constants.dart';
 
@@ -31,9 +31,13 @@ class LivraisonScreenState extends State<LivraisonScreen> {
   HawkFabMenuController hawkFabMenuController = HawkFabMenuController();
   RetourLivraison liv = RetourLivraison();
 
-  chargerLivraison() async {
+  chargerLivraison({bool sansLoader = false}) async {
     if (await verifierConnexion()) {
-      afficherChargement();
+      // Au glisser, l'indicateur du geste suffit : le voile par-dessus
+      // masquerait justement ce qu'on vient de tirer pour voir.
+      if (sansLoader == false) {
+        afficherChargement();
+      }
 
       var param = {
         "access": user.token.toString(),
@@ -74,9 +78,12 @@ class LivraisonScreenState extends State<LivraisonScreen> {
                   .where((c) => c.etatLivraison == LIVRAISON_LIVREE)
                   .toList();
               pages = [
-                LivraisonListeScreen(livraisons: livraisonAttente),
-                LivraisonListeScreen(livraisons: livraisonEnTraitement),
-                LivraisonListeScreen(livraisons: livraisonEffectue),
+                LivraisonListeScreen(livraisons: livraisonAttente,
+                    onRafraichir: () => chargerLivraison(sansLoader: true)),
+                LivraisonListeScreen(livraisons: livraisonEnTraitement,
+                    onRafraichir: () => chargerLivraison(sansLoader: true)),
+                LivraisonListeScreen(livraisons: livraisonEffectue,
+                    onRafraichir: () => chargerLivraison(sansLoader: true)),
               ];
             });
           } else {
@@ -93,7 +100,9 @@ class LivraisonScreenState extends State<LivraisonScreen> {
           print(e.toString());
         }
       }
-      fermerChargement();
+      if (sansLoader == false) {
+        fermerChargement();
+      }
     } else {
       afficherInfo("Veuillez vérifier votre connexion internet");
     }
@@ -102,9 +111,12 @@ class LivraisonScreenState extends State<LivraisonScreen> {
   @override
   void initState() {
     pages = [
-      LivraisonListeScreen(livraisons: livraisonAttente),
-      LivraisonListeScreen(livraisons: livraisonEnTraitement),
-      LivraisonListeScreen(livraisons: livraisonEffectue),
+      LivraisonListeScreen(livraisons: livraisonAttente,
+                    onRafraichir: () => chargerLivraison(sansLoader: true)),
+      LivraisonListeScreen(livraisons: livraisonEnTraitement,
+                    onRafraichir: () => chargerLivraison(sansLoader: true)),
+      LivraisonListeScreen(livraisons: livraisonEffectue,
+                    onRafraichir: () => chargerLivraison(sansLoader: true)),
     ];
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -121,6 +133,12 @@ class LivraisonScreenState extends State<LivraisonScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Liste des livraisons"),
+        // Onglet de la barre du bas : rien à dépiler, le retour ramène à
+        // l'accueil.
+        leading: BoutonRetour(
+          onTap: retourAccueil,
+          tooltip: "Retour à l'accueil",
+        ),
         automaticallyImplyLeading: false,
       ),
       // floatingActionButton: FloatingActionButton.extended(
@@ -132,59 +150,74 @@ class LivraisonScreenState extends State<LivraisonScreen> {
       // ),
       body: (user.token == null || user.token == "")
           ? const EmptyUserWidget()
+          // Le bouton du menu était TURQUOISE (0xff03dac6, l'accent par défaut
+          // du thème sombre de Material), l'une de ses entrées ROUGE avec un
+          // libellé BLEU, l'autre sur fond bleu : quatre couleurs étrangères à
+          // l'application, sur son écran de livraison.
           : HawkFabMenu(
               icon: AnimatedIcons.menu_arrow,
-              fabColor: const Color(0xff03dac6),
+              fabColor: kPrimaryColor,
               iconColor: whiteColor,
               hawkFabMenuController: hawkFabMenuController,
               items: [
                 HawkFabMenuItem(
-                  label: 'Liste demande de livraison',
+                  label: 'Mes demandes de livraison',
                   ontap: () =>
                       Get.toNamed(ListeDemandeLivraisonScreen.routeName),
-                  icon: const Icon(Icons.list_alt_rounded),
-                  color: Colors.red,
-                  labelColor: Colors.blue,
+                  icon: const Icon(Icons.list_alt_rounded, color: Colors.white),
+                  color: kPrimaryColor,
+                  labelColor: kTextColor,
+                  labelBackgroundColor: kSurfaceColor,
                 ),
                 HawkFabMenuItem(
                   label: 'Nouvelle demande de livraison',
                   ontap: () => Get.toNamed(DemandeLivraisonScreen.routeName),
-                  icon: const Icon(Icons.add),
-                  labelColor: Colors.white,
-                  labelBackgroundColor: Colors.blue,
+                  icon: const Icon(Icons.add, color: Colors.white),
+                  color: kAccentColor,
+                  labelColor: kTextColor,
+                  labelBackgroundColor: kSurfaceColor,
                 ),
               ],
               body: SafeArea(
                 child: Container(
                   width: double.infinity,
                   height: heightOfScreen(context),
-                  decoration: const BoxDecoration(
-                    image: DecorationImage(
-                      image: AssetImage("assets/images/bg.jpg"),
-                      fit: BoxFit.cover,
-                      opacity: 0.1,
-                    ),
-                  ),
                   child: DefaultTabController(
                     length: pages.length,
                     child: Column(
                       children: <Widget>[
                         ButtonsTabBar(
-                          radius: 10,
-                          backgroundColor: kPrimaryColor,
-                          unselectedBackgroundColor: kSecondaryColor,
-                          unselectedLabelStyle:
-                              const TextStyle(color: whiteColor),
-                          labelStyle: const TextStyle(
-                              color: Colors.white, fontWeight: FontWeight.bold),
+                          radius: kRadiusPill,
+                  // 64 = 40 de pastille + 12 d'air au-dessus et au-dessous.
+                  // A 42 sans marge verticale, les onglets touchaient la
+                  // section du dessus et le champ de recherche du dessous.
+                  height: 64,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: kSpaceLg),
+                  buttonMargin: const EdgeInsets.symmetric(
+                      vertical: kSpaceMd, horizontal: 3),
+                  backgroundColor: kPrimaryColor,
+                  unselectedBackgroundColor: kSurfaceColor,
+                  borderWidth: 1.4,
+                  borderColor: kPrimaryColor,
+                  // L'onglet inactif etait gris sur gris : rien ne disait qu'il
+                  // etait cliquable. Contour, libelle et pictogramme prennent
+                  // le bleu de la marque — c'est la couleur qui porte
+                  // l'information, le remplissage qui dit lequel est ouvert.
+                  unselectedBorderColor: kPrimaryColor,
+                  labelSpacing: kSpaceSm,
+                  labelStyle: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700),
+                  unselectedLabelStyle: const TextStyle(
+                      color: kPrimaryColor,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600),
                           tabs: const [
-                            Tab(icon: Icon(Icons.pause), text: "En Attente"),
-                            Tab(
-                                icon: Icon(Icons.play_arrow_outlined),
-                                text: "En Traitement"),
-                            Tab(
-                                icon: Icon(Icons.flag_outlined),
-                                text: "Effectuée"),
+                            Tab(icon: Icon(Icons.pause, size: 17), text: "En Attente"),
+                            Tab(icon: Icon(Icons.play_arrow_outlined, size: 17), text: "En Traitement"),
+                            Tab(icon: Icon(Icons.flag_outlined, size: 17), text: "Effectuée"),
                           ],
                         ),
                         Expanded(

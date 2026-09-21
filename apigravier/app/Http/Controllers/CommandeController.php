@@ -51,7 +51,14 @@ class CommandeController extends Controller
                 $client = Client::lireSurUser($user->id);
                 $retour->data = [
                     'commande' => Commande::liste($client->id),
-                    'location' => Location::liste($client->id),
+                    // Les locations, avec l'état de leur livraison (10/09/2026) :
+                    // « Livrée le … », « Retirée le … », « En livraison » — la
+                    // location elle-même reste EN COURS jusqu'au retour du matériel.
+                    'location' => Location::liste($client->id)->each(function ($l) {
+                        $etat = Location::etatLivraison($l);
+                        $l->etat_livraison_code    = $etat['code'] ?? null;
+                        $l->etat_livraison_libelle = $etat['libelle'] ?? null;
+                    }),
                 ];
                 $retour->code = 200;
                 $retour->message = 'ok';
@@ -151,14 +158,37 @@ class CommandeController extends Controller
                 $client = Client::lireSurUser($user->id);
                 $ville = Ville::lire($user->ville_id);
 
+                // LE NUMÉRO DE BON DE COMMANDE INTERNE (09/09/2026) : obligatoire pour
+                // une ENTREPRISE qui demande un devis de VENTE, comme pour la commande ;
+                // l'application l'exige déjà à l'écran, ce contrôle-ci fait foi. Il est
+                // figé sur le devis et reporté devant chaque désignation.
+                $estVente = is_numeric($request->service) ? (int) $request->service === 1 : $request->service == 'VENTE';
+                if ($client->type_client == Help::$ENTREPRISE && $estVente
+                    && trim((string) $request->numero_bc) === '') {
+                    DB::rollBack();
+                    $retour->code = 400;
+                    $retour->message = "Le numéro de bon de commande interne est obligatoire pour une entreprise : "
+                        . "il sera reporté sur votre devis.";
+                    return response()->json($retour);
+                }
+
                 $devis = new Devis();
                 $devis->numero = Help::genererNumeroUnique('devis');
                 $devis->client_id = $client->id;
+                $devis->numero_bon_commande = trim((string) $request->numero_bc) ?: null;
                 $devis->montant = $request->total;
                 $devis->libelle = $request->libelle;
                 $devis->statut = Help::$STATUT_ACTIF;
                 $devis->tva = $request->montantTva;
                 $devis->cout_livraison = ($request->meFaireLivre == true || $request->meFaireLivre == 1) ? $request->coutLivraison : 0;
+                // TVA sur le transport (point 5), au taux du client, figée sur le devis.
+                // TVA du transport propre au client (10/09/2026).
+                $devis->tva_transport = Help::tvaTransportPour($client, (float) $devis->cout_livraison);
+                // AIRSI figé sur le devis : HT net de remise + TVA.
+                $devis->airsi = Help::airsiPour($client,
+                    max(0, (float) $request->montantHt - (float) ($request->coutReduction ?? 0)) + (float) $request->montantTva,
+                    max(0, (float) $request->montantHt - (float) ($request->coutReduction ?? 0)), Help::tauxTvaClient($client) / 100,
+                    (float) $devis->cout_livraison, (float) $devis->tva_transport > 0 ? Help::tauxTvaTransportClient($client) / 100 : 0.0);
                 $devis->cout_reduction = $request->coutReduction;
                 $devis->montant_ht = $request->montantHt;
                 $devis->mode_paiement_id = $request->moyenPaiement;
@@ -262,11 +292,16 @@ class CommandeController extends Controller
 
                 $retour->code = 200;
                 $retour->data = [
-                    'montant_ht'   => round($calcul['ht']),
-                    'montant_tva'  => round($calcul['tva']),
-                    'livraison'    => round($calcul['livraison']),
-                    'remise'       => round($calcul['remise']),
-                    'total'        => $calcul['total'],
+                    'montant_ht'            => round($calcul['ht']),
+                    'montant_tva'           => round($calcul['tva']),
+                    'livraison'             => round($calcul['livraison']),
+                    // TVA sur le transport (point 5) : l'application l'affiche
+                    // sur une ligne à part, elle est déjà comprise dans `total`.
+                    'montant_tva_transport' => round($calcul['tva_transport'] ?? 0),
+                    // AIRSI (10/09/2026) : ligne « autres taxes », déjà comprise dans `total`.
+                    'montant_airsi'         => round($calcul['airsi'] ?? 0),
+                    'remise'                => round($calcul['remise']),
+                    'total'                 => $calcul['total'],
                 ];
                 $retour->message = 'ok';
             } else {
@@ -500,6 +535,20 @@ class CommandeController extends Controller
 
                 $client = Client::lireSurUser($user->id);
 
+                // LE BON DE COMMANDE D'UNE ENTREPRISE EST OBLIGATOIRE (07/09/2026).
+                //
+                // L'application l'exige déjà à l'écran ; ce contrôle-ci fait foi.
+                // Il porte sur la VENTE — ce point d'entrée n'enregistre que des
+                // ventes, les locations passent par LocationController.
+                if ($client->type_client == Help::$ENTREPRISE
+                    && trim((string) $request->numero_bc) === '') {
+                    DB::rollBack();
+                    $retour->code = 400;
+                    $retour->message = "Le numéro de bon de commande est obligatoire pour une entreprise : "
+                        . "il sera reporté sur votre facture.";
+                    return response()->json($retour);
+                }
+
                 // =====================================================================
                 // MONTANTS CALCULÉS PAR LE SERVEUR
                 // ---------------------------------------------------------------------
@@ -529,6 +578,50 @@ class CommandeController extends Controller
                 $pointsUtilises   = $calcul['points_utilises'];
                 $reductionValide  = $calcul['reduction_valide'];
 
+                // LE PLAFOND DU PAIEMENT EN LIGNE — AVANT TOUTE ÉCRITURE.
+                //
+                // Demander « En ligne » au-dessus du plafond ne refusait rien :
+                // la passerelle était simplement SAUTÉE et la commande entrait
+                // dans la file du gestionnaire comme si elle devait être réglée
+                // au comptoir — sans qu'un franc soit encaissé et sans que
+                // l'application puisse le dire au client.
+                //
+                // L'application filtre déjà son menu au-dessus du plafond ; ce
+                // refus protège les versions plus anciennes et tout appel qui
+                // ne passerait pas par elle. Elle sait l'afficher : elle montre
+                // `message` dès que `code` n'est pas 200.
+                if ($request->mode_paiement == 1
+                    && \App\Support\PlafondPaiementEnLigne::depasse($totalServeur)) {
+                    DB::rollBack();
+                    $retour->code = 400;
+                    $retour->message = \App\Support\PlafondPaiementEnLigne::refus();
+                    return response()->json($retour);
+                }
+
+                // UNE COMMANDE SANS ARTICLE N'EST PAS UNE COMMANDE.
+                //
+                // Une commande enregistrée avec son montant et AUCUNE ligne
+                // s'affiche partout — espace client, application, listes du
+                // gestionnaire — sans que personne puisse dire ce qui a été
+                // acheté : son écran de détail s'ouvre blanc et son bon
+                // s'imprime vide. On refuse plutôt que d'enregistrer une somme
+                // sans contrepartie.
+                if (empty($lignes)) {
+                    DB::rollBack();
+                    \Log::error('Commande mobile refusée : panier illisible', [
+                        'client_id'     => $client->id,
+                        'lignes_recues' => is_array($request->lignes)
+                            ? count($request->lignes)
+                            : gettype($request->lignes),
+                        'total_envoye'  => (float) $request->total,
+                    ]);
+                    $retour->code = 400;
+                    $retour->message = "Votre panier n'a pas pu être lu. Fermez et "
+                        . "rouvrez l'application, reprenez vos articles, puis validez "
+                        . "de nouveau.";
+                    return response()->json($retour);
+                }
+
                 if (abs($totalServeur - (float) $request->total) > 1 || !empty($calcul['ecarts'])) {
                     \Log::warning('Commande mobile — montants recalculés par le serveur', [
                         'client_id'        => $client->id,
@@ -551,7 +644,13 @@ class CommandeController extends Controller
                 // Elle n'existait que côté web : un client à terme atteignant son
                 // plafond n'avait qu'à ouvrir l'application pour continuer à commander.
                 // Une limite contournable en changeant de canal n'est pas une limite.
-                if ($refus = $this->refusPlafondCredit($client, $totalServeur)) {
+                // Une avance disponible couvre d'abord la commande : seul le
+                // reliquat engage le crédit (point 19, réponse Q2 du 07/09/2026).
+                // Seul le « Paiement en agence » (mode 3) consomme l'avance.
+                $montantACredit = (int) $request->mode_paiement === 3
+                    ? max(0, $totalServeur - \App\Services\Avances::soldeDisponible($client))
+                    : $totalServeur;
+                if ($refus = $this->refusPlafondCredit($client, $montantACredit)) {
                     DB::rollBack();
                     $retour->code = 403;
                     $retour->message = $refus;
@@ -603,13 +702,21 @@ class CommandeController extends Controller
                 // paiement n'est pas confirmé. Le callback la passe à « EN ATTENTE ».
                 // (Parité avec le web ; mêmes conditions que le déclenchement du paiement
                 //  en ligne plus bas : mode_paiement == 1 && total <= 2 000 000.)
-                $commandePaieEnLigne = ($request->mode_paiement == 1 && $totalServeur <= 2000000);
+                // Le plafond a été opposé au client plus haut, avant toute
+                // écriture : ici il ne reste que le mode choisi. Le seuil était
+                // recopié dans les deux endroits, et la règle finissait par
+                // diverger d'un point d'entrée à l'autre.
+                $commandePaieEnLigne = ($request->mode_paiement == 1);
                 $commande->etat_commande = $commandePaieEnLigne ? Help::$COMMANDE_EN_ATTENTE_PAIEMENT : Help::$COMMANDE_EN_ATTENTE;
                 $commande->statut = Help::$STATUT_ACTIF;
                 $commande->note = $request->note;
                 $commande->date_livraison = $request->date_livraison;
                 $commande->type_livraison_id = $request->type_livraison;
                 $commande->cout_livraison_client = $montantLivraison;
+                // TVA sur le transport (point 5), figée avec la commande.
+                $commande->tva_transport = (float) ($calcul['tva_transport'] ?? 0);
+                // AIRSI figé sur la commande (10/09/2026).
+                $commande->airsi = (float) ($calcul['airsi'] ?? 0);
                 $commande->est_livrable = $request->meFaireLivre;
                 // Remise recalculée par le serveur (code promo revérifié + points
                 // plafonnés au solde réel), pas celle annoncée par l'application.
@@ -638,7 +745,18 @@ class CommandeController extends Controller
                     // renvoyée à l'application ne retient que les devis en statut ACTIF :
                     // le devis transformé disparaît donc de « Mes devis enregistrés »,
                     // comme il disparaît de l'espace client du site.
-                    if ($devisOrigine) {
+                    //
+                    // MAIS SEULEMENT QUAND LA COMMANDE TIENT.
+                    //
+                    // Le devis était clos dès l'enregistrement, y compris quand
+                    // la commande partait « EN ATTENTE DE PAIEMENT » : un client
+                    // qui annulait son règlement sur la passerelle laissait
+                    // derrière lui un devis annoncé « Commandé » alors que rien
+                    // n'avait été encaissé. Même défaut que sur le site,
+                    // constaté le 04/09/2026 sur le devis n° 429808.
+                    //
+                    // PaiementController le clôt à la confirmation du paiement.
+                    if ($devisOrigine && !$commandePaieEnLigne) {
                         $devisOrigine->statut = Help::$STATUT_INACTIF;
                         $devisOrigine->save();
                     }
@@ -687,6 +805,25 @@ class CommandeController extends Controller
                         $ligne->save();
                     }
 
+                    // CE QUI EST ENREGISTRÉ DOIT CORRESPONDRE À CE QUI A ÉTÉ ACHETÉ.
+                    //
+                    // On est encore dans la transaction : une ligne manquante
+                    // annule TOUTE la commande, plutôt que d'en laisser une
+                    // incomplète — le client la croirait passée.
+                    $posees = DetailCommande::where('commande_id', $commande->id)->count();
+                    if ($posees !== count($lignes)) {
+                        DB::rollBack();
+                        \Log::error('Commande mobile annulée : lignes incomplètes', [
+                            'commande_id' => $commande->id,
+                            'attendues'   => count($lignes),
+                            'enregistrees'=> $posees,
+                        ]);
+                        $retour->code = 500;
+                        $retour->message = "Votre commande n'a pas pu être enregistrée "
+                            . "entièrement. Rien n'a été retenu : merci de la repasser.";
+                        return response()->json($retour);
+                    }
+
                     //On vas payé l'apporteur d'aff
                     // if ($client->parrain_id > 0) {
                     //     $this->payerApporteurAffaire($client->parrain_id, $commande->id, $commande->montant_total, Help::$VENTE);
@@ -694,6 +831,24 @@ class CommandeController extends Controller
 
                     $retour->code = 200;
                     $retour->message = 'Commande effectuée avec succès nous vous contacterons dans quelque instant';
+
+                    // LA PROFORMA PART AU CLIENT (lot 81, 15/09/2026) : le site produit
+                    // le PDF et l'envoie (jeton interne). Une commande à payer en ligne
+                    // recevra sa facture au paiement confirmé. Jamais bloquant.
+                    if (!$commandePaieEnLigne) {
+                        \App\Services\DocumentCommandeDistant::envoyerApresLaReponse($commande);
+                    }
+
+                    // AVANCE DU CLIENT (point 19, 07/09/2026) : une commande réglée
+                    // « en agence » (mode 3) s'impute d'elle-même sur les avances
+                    // disponibles, du dépôt le plus ancien au plus récent. Même
+                    // règle que le site. Un mode en ligne n'y touche pas (Q5).
+                    if ((int) $request->mode_paiement === 3) {
+                        $imputationAvance = \App\Services\Avances::imputerSurCommande($commande, $client);
+                        $retour->avance_imputee = $imputationAvance['impute'];
+                        $retour->reste_a_regler = $imputationAvance['reste'];
+                        $retour->message .= \App\Services\Avances::messageImputation($imputationAvance);
+                    }
 
                     $ret = array();
                     // Le paiement en ligne repose sur le MODE CHOISI, plus sur le statut
@@ -831,10 +986,32 @@ class CommandeController extends Controller
                     return response()->json($retour);
                 }
 
+                // LES CODES DE CHAQUE LIGNE (point 17, complété le 08/09/2026).
+                //
+                // Le client remet le code de livraison au livreur et le bon
+                // d'enlèvement au fournisseur (ou au fournisseur seul, s'il
+                // retire lui-même). L'application ne les montrait que dans la
+                // liste des livraisons ; le détail de la commande les porte
+                // désormais, ligne par ligne, pour les courses acceptées.
+                $lignes = DetailCommande::liste(null, $id, $client->id, true);
+                foreach ($lignes as $ligne) {
+                    $ligne->codes = DB::table('livraison')
+                        ->leftJoin('enlevement', 'enlevement.livraison_id', '=', 'livraison.id')
+                        ->where('livraison.detail_commande_id', $ligne->id)
+                        ->where('livraison.accepte', 1)
+                        ->whereNull('livraison.deleted_at')
+                        ->orderBy('livraison.id')
+                        ->get([
+                            'livraison.numero as code_livraison',
+                            'enlevement.code_enleve as code_enlevement',
+                        ]);
+                }
+
                 $retour->data = [
                     'client_a_terme' => $client->client_a_terme == true ? true : false,
                     'commande' => $commande,
-                    'lignes' => DetailCommande::liste(null, $id, $client->id),
+                    // Ecran de LECTURE : les lignes d'une commande annulee restent visibles.
+                    'lignes' => $lignes,
                 ];
                 $retour->code = 200;
                 $retour->message = 'ok';
@@ -911,6 +1088,28 @@ class CommandeController extends Controller
                     return response()->json($retour);
                 }
 
+                // MÊME RÈGLE QUE LE SITE (10/09/2026) : un devis se supprime tant
+                // qu'il est en attente — ni transformé en commande (statut 2), ni
+                // rattaché à une commande encore vivante. Une commande abandonnée
+                // sur la passerelle ne retient pas le devis.
+                if ((int) $devis->statut !== (int) Help::$STATUT_ACTIF) {
+                    $retour->code = 400;
+                    $retour->message = "Ce devis a déjà été transformé en commande : il ne peut plus être supprimé.";
+                    return response()->json($retour);
+                }
+                $commandeVivante = Commande::where('devis_id', $devis->id)
+                    ->whereNotIn('etat_commande', ['ANNULEE', Help::$COMMANDE_EN_ATTENTE_PAIEMENT])
+                    ->orderByDesc('id')->first();
+                if ($commandeVivante) {
+                    $retour->code = 400;
+                    $retour->message = "Ce devis est rattaché à la commande n° {$commandeVivante->numero} : il ne peut plus être supprimé.";
+                    return response()->json($retour);
+                }
+
+                // MÊME ARCHIVAGE QUE LE SITE (Devis::supprimer) : statut inactif
+                // ET soft delete. Sans le soft delete, Help::$STATUT_INACTIF (2)
+                // étant aussi le statut des devis passés en commande, un devis
+                // supprimé depuis l'application réapparaissait dans « Historique ».
                 $devis->statut = Help::$STATUT_INACTIF;
                 $devis->save();
 
@@ -919,6 +1118,7 @@ class CommandeController extends Controller
                     $d->statut = Help::$STATUT_INACTIF;
                     $d->save();
                 }
+                $devis->delete();
 
                 $retour->code = 200;
                 $retour->message = "Devis supprimé avec succès";

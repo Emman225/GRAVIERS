@@ -7,6 +7,17 @@
 @section('title', 'traitement de commande')
 @section('contenu')
 
+    {{-- CLÉ PROPRE, ET NON « error ».
+         Flasher capte success/error/warning/info et les rejoue en bulle
+         éphémère. Cet avertissement doit rester à l'écran tant que le
+         gestionnaire n'a pas relevé le code et prévenu son client. --}}
+    @if (session('code_non_envoye'))
+        <div class="alert alert-danger">
+            <strong>Code non transmis au client.</strong><br>
+            {{ session('code_non_envoye') }}
+        </div>
+    @endif
+
     <div class="content-header">
         <div>
             <h2 class="content-title card-title">Détails de la commande {{ $commande->numero }}</h2>
@@ -102,7 +113,6 @@
                                     <th>Produit</th>
                                     <th>Fournisseur</th>
                                     <th>Stock</th>
-                                    <th>Prix fournisseur</th>
                                     <th>Quantite</th>
                                     <th>Livreur</th>
                                     <th>Vehicule</th>
@@ -177,11 +187,6 @@
                                                             {{ $qte }} </td>
 
                                                         <td> <input required class="form-control"
-                                                                value="{{ $produit->prix_fournisseur }}" type="number"
-                                                                name="prix_fournisseur" min="1">
-                                                        </td>
-
-                                                        <td> <input required class="form-control"
                                                                 value="{{ $totalEnlev > 0 ? $qteRestant : $produit->pivot->qte }}"
                                                                 type="number" name="qte" placeholder="Quantité"
                                                                 min="0.1"
@@ -214,8 +219,8 @@
                                                                 name="date">
                                                         </td>
 
-                                                        <td>
-                                                            <button class="btn btn-success" type="submit">Valider</button>
+                                                        <td class="text-nowrap">
+                                                            <button class="btn btn-success" type="submit" title="Valider"><i class="material-icons md-check_circle"></i></button>
                                                         </td>
 
                                                     </form>

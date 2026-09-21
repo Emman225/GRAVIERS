@@ -75,7 +75,7 @@
     </section>
 
     <section class="recap-guide-section recap-guide-contact">
-        <h6 class="recap-guide-title">📞 Service Recouvrement GRAVIER.COM</h6>
+        <h6 class="recap-guide-title">📞 Service recouvrement GRAVIER.COM</h6>
         <p class="mb-1"><strong>Email :</strong> <a href="mailto:recouvrement@gravier.com">recouvrement@gravier.com</a></p>
         <p class="mb-0"><strong>Téléphone :</strong> +225 27 22 00 00 00</p>
     </section>

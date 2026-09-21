@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:mon_gravier_com_livreur/helper/constants.dart';
 import 'package:mon_gravier_com_livreur/screens/modifier_mot_de_passe/components/modifier_pass_form.dart';
+import '../../../components/bouton_retour.dart';
 
 class ModifierPasseScreen extends StatelessWidget {
   static String routeName = "/modifier_pass";
@@ -11,27 +11,8 @@ class ModifierPasseScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Modifier mon mot de passe"),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       body: SafeArea(
         child: Padding(

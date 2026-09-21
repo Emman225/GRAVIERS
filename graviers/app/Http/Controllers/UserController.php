@@ -63,12 +63,43 @@ use Spatie\Permission\Models\Role;
 
 class UserController extends Controller
 {
-    public function appliqueTva(Client $client){
+    /**
+     * Bascule de la TVA marchandise d'un client. Au RETRAIT, l'administrateur
+     * dit si l'exonération est légale (TVAD) ou conventionnelle (TVAC), lot 82
+     * (15/09/2026) : c'est le code de taxe de ses lignes sur la facture DGI.
+     * Sans choix (ancien lien), le réglage FNE_EXEMPT_TAX s'applique. Au
+     * rétablissement, le code s'efface.
+     */
+    public function appliqueTva(Request $request, Client $client){
+        $retire = (int) $client->applique_tva === 1;
+        $code   = strtoupper(trim((string) $request->query('code', '')));
+        if (!isset(Client::EXONERATIONS_FNE[$code])) {
+            $code = (string) config('fne.defaults.exempt_tax', 'TVAD');
+        }
+
         $client->update([
-            'applique_tva' => !$client->applique_tva
+            'applique_tva' => $retire ? 0 : 1,
+        ]);
+        if (\Illuminate\Support\Facades\Schema::hasColumn('client', 'code_exoneration_fne')) {
+            Client::where('id', $client->id)->update(['code_exoneration_fne' => $retire ? $code : null]);
+        }
+
+        return back()->with('success', $retire
+            ? 'TVA retirée pour ce client : ' . (Client::EXONERATIONS_FNE[$code] ?? '') . ' (' . $code . ').'
+            : 'TVA appliquée de nouveau pour ce client.');
+    }
+
+    /**
+     * TVA sur le TRANSPORT, retirable par client (10/09/2026) — indépendante de
+     * la TVA marchandise. Appliquée par défaut ; ne vaut que si la configuration
+     * taxe le transport.
+     */
+    public function appliqueTvaTransport(Client $client){
+        $client->update([
+            'applique_tva_transport' => (int) ($client->applique_tva_transport ?? 1) === 1 ? 0 : 1,
         ]);
 
-        return back()->with('success','Action effectuée avec succès');
+        return back()->with('success', 'TVA sur le transport ' . ((int) $client->fresh()->applique_tva_transport === 1 ? 'appliquée' : 'retirée') . ' pour ce client.');
     }
 
     /**
@@ -118,16 +149,38 @@ class UserController extends Controller
         // lire d'abord évite toute ambiguïté sur ce qui est comparé à quoi.
         $encours = (float) $client->encoursCredit();
 
-        $client->update([
-            'plafond_credit' => $nouveauPlafond,
-            'delai_paiement' => $nouveauDelai,
+        // LE PLAFOND NE BOUGE PAS ENCORE : la révision attend son second
+        // contrôle. C'est le montant que l'entreprise accepte de ne pas
+        // encaisser tout de suite ; le relever seul revenait à s'accorder une
+        // exposition sans que personne d'autre ne l'ait vue passer.
+        if (!\App\Models\DecisionClientTerme::tableExiste()) {
+            return back()->with('error',
+                'La table des décisions de crédit n\'existe pas encore sur ce serveur : lancez la migration.');
+        }
+
+        if ($enCours = \App\Models\DecisionClientTerme::enAttentePour((int) $client->id)) {
+            return back()->with('error',
+                'Une décision attend déjà sa validation sur ce client : ' . $enCours->libelleType() . '.');
+        }
+
+        \App\Models\DecisionClientTerme::create([
+            'client_id'         => $client->id,
+            'type'              => \App\Models\DecisionClientTerme::PLAFOND,
+            'plafond_credit'    => $nouveauPlafond,
+            'delai_paiement'    => $nouveauDelai,
+            'commentaire'       => $request->motif,
+            'ancien_plafond'    => $ancienPlafond,
+            'ancien_delai'      => $ancienDelai,
+            'user_valide_id'    => Auth::id(),
+            'date_validation_1' => now(),
+            'statut'            => \App\Models\DecisionClientTerme::EN_ATTENTE,
         ]);
 
         \Help::ecrireLog(
             'modifierPlafondCredit',
-            'Révision du plafond de crédit — ' . $client->display_name,
+            'Révision du plafond de crédit (saisie, en attente de validation) — ' . $client->display_name,
             sprintf(
-                'Client #%d : plafond %s -> %s FCFA ; délai %d -> %d jours.%s',
+                'Client #%d : plafond %s -> %s FCFA ; délai %d -> %d jours (en attente de la seconde validation).%s',
                 $client->id,
                 number_format($ancienPlafond, 0, ',', ' '),
                 number_format($nouveauPlafond, 0, ',', ' '),
@@ -142,8 +195,14 @@ class UserController extends Controller
             Auth::id()
         );
 
-        $confirmation = 'Plafond de crédit mis à jour : '
-            . number_format($nouveauPlafond, 0, ',', ' ') . ' FCFA sur ' . $nouveauDelai . ' jours.';
+        // Le message dit ce qui s'est RÉELLEMENT passé : la révision est
+        // enregistrée, pas appliquée. Annoncer « mis à jour » ferait croire le
+        // plafond déjà relevé, et le gestionnaire quitterait la page rassuré à
+        // tort.
+        $confirmation = 'Révision enregistrée : '
+            . number_format($ancienPlafond, 0, ',', ' ') . ' → '
+            . number_format($nouveauPlafond, 0, ',', ' ') . ' FCFA sur ' . $nouveauDelai . ' jours. '
+            . 'Elle prendra effet après validation par un second administrateur.';
 
         // Ramener le plafond SOUS l'encours déjà consommé est une décision
         // légitime — c'est même le geste attendu face à un mauvais payeur : on
@@ -158,8 +217,8 @@ class UserController extends Controller
         // s'efface d'elle-même. Ce message-ci doit rester affiché.
         if ($nouveauPlafond > 0 && $nouveauPlafond < $encours) {
             return back()->with('avertissement_plafond', $confirmation
-                . ' Attention : ce plafond est inférieur à l\'encours déjà engagé ('
-                . number_format($encours, 0, ',', ' ') . ' FCFA). Le crédit disponible du client est donc nul, '
+                . ' Attention : ce plafond sera inférieur à l\'encours déjà engagé ('
+                . number_format($encours, 0, ',', ' ') . ' FCFA). Une fois validée, le crédit disponible du client sera nul, '
                 . 'et il ne pourra plus commander à terme tant qu\'il n\'aura pas réglé au moins '
                 . number_format($encours - $nouveauPlafond, 0, ',', ' ') . ' FCFA.');
         }
@@ -206,22 +265,27 @@ class UserController extends Controller
     }
 
     public function actionFacture(Commande $commande, Facture $facture, $action, $livraison){
+        // Le document de la DGI dès que la facture est certifiée (lot 96).
+        if ($r = \App\Services\DocumentDgi::reponse($facture, (string) $action)) {
+            return $r;
+        }
+        // Un avoir (lot 92) a son propre document.
+        if ($facture->estUnAvoir()) {
+            return app(\App\Http\Controllers\OrdersController::class)->factureAvoir($facture, $action);
+        }
 
         // dd($commande, $facture, $action);
 
-        $config = Configuration::first();
+        // Mêmes données que la facture envoyée par courriel : un seul jeu,
+        // tenu par FacturationCommande::donneesDocument (point 8, 07/09/2026).
+        $donnees = \App\Services\FacturationCommande::donneesDocument($facture, $commande);
+        // Le lien de la liste dit si c'est la première facture ; on le garde
+        // quand il est renseigné, il sert au client comme au back-office.
+        if ($livraison !== null && $livraison !== '') {
+            $donnees['livraison'] = (int) $livraison;
+        }
 
-        $enlevements = Enlevement::where('facture_id', $facture->id)->get();
-
-        $image = config("constantes.logo");
-
-        $client = $commande->client;
-        $fneData = FneService::getDonneesFne($facture, $client);
-
-        $pdf = PDF::loadView('document.factureCommande', array_merge([
-            'commande' => $commande, 'image' => $image, 'enlevements' => $enlevements,
-            'facture' => $facture, 'config' => $config, 'livraison' => $livraison,
-        ], $fneData))
+        $pdf = PDF::loadView('document.factureCommande', $donnees)
             ->setOptions(['isHTML5ParseEnebled' => true, 'defaultPaperOrientation' => 'portait']);
 
         if($action == 'voir'){
@@ -240,13 +304,20 @@ class UserController extends Controller
     }
 
     public function lesRegionsValid(Request $request){
+        // `regions.nom` porte une contrainte d'UNICITE en base. Sans la
+        // controler ici, un nom deja pris ne produisait pas un message mais une
+        // ERREUR 500 : MySQL refusait l'insertion et l'exception remontait
+        // jusqu'a l'ecran. Les dix-neuf regions de Cote d'Ivoire etant deja
+        // enregistrees, c'est le premier mur que rencontre celui qui ressaisit
+        // une region existante.
         $request->validate([
-            'nom' => 'required',
+            'nom' => 'required|unique:regions,nom',
             'adresse_geo' => 'required',
             'long' => 'required',
             'lat' => 'required',
         ],[
             'nom.required' => 'Le nom est requis',
+            'nom.unique' => 'Cette région existe déjà',
             'adresse_geo.required' => 'La description est requise',
             'long.required' => 'La longitude est requise',
             'lat.required' => 'La latitude est requise',
@@ -263,14 +334,51 @@ class UserController extends Controller
         return redirect()->route('show.lesRegions')->with('success','Région ajoutée');
     }
 
+    /**
+     * La page de creation. Le formulaire ne partage plus l'ecran de la liste :
+     * on y consultait et on y saisissait au meme endroit, et la liste reculait
+     * de toute la hauteur de la carte au premier clic.
+     */
+    public function nouvelleRegion(){
+        return view('gestionnaire.formRegion',[
+            'regions' => Region::orderBy('nom','asc')->get(),
+            'laRegion' => new Region
+        ]);
+    }
+
      public function modifierRegion(Region $region){
-        return view('gestionnaire.lesRegions',[
+        return view('gestionnaire.formRegion',[
             'regions' => Region::orderBy('nom','asc')->get(),
             'laRegion' => $region
         ]);
     }
     public function modifierRegionValid(Request $request, Region $region){
-        // dd($request->all());
+        // LA MODIFICATION NE VALIDAIT RIEN, ET EFFACAIT CE QU'ELLE NE RECEVAIT PAS.
+        //
+        // La creation exige nom, adresse et coordonnees ; la modification, elle,
+        // recopiait sans controle ce qui arrivait. Un formulaire qui ne portait
+        // pas les coordonnees — c'etait le cas, faute des champs correspondants —
+        // ecrivait donc NULL par-dessus des valeurs justes. Onze des dix-neuf
+        // regions se sont retrouvees sans coordonnees ni description.
+        //
+        // On applique les memes exigences qu'a la creation : mieux vaut refuser
+        // un enregistrement incomplet que perdre en silence ce qui etait la.
+        $request->validate([
+            // « ignore » : la region conserve evidemment le droit de garder son
+            // propre nom. Sans cela, tout enregistrement sans changement de nom
+            // serait refuse.
+            'nom' => 'required|unique:regions,nom,' . $region->id,
+            'adresse_geo' => 'required',
+            'long' => 'required',
+            'lat' => 'required',
+        ], [
+            'nom.required' => 'Le nom est requis',
+            'nom.unique' => 'Une autre région porte déjà ce nom',
+            'adresse_geo.required' => 'La description est requise',
+            'long.required' => 'La longitude est requise',
+            'lat.required' => 'La latitude est requise',
+        ]);
+
         $region->nom = $request->nom;
         $region->long = $request->long;
         $region->lat = $request->lat;
@@ -280,9 +388,42 @@ class UserController extends Controller
         return redirect()->route('show.lesRegions')->with('success','Région modifiée');
     }
     public function supprimerRegion(Region $region){
+        // ERREUR 500 A LA SUPPRESSION — constatee le 27/08/2026 sur la region 13.
+        //
+        // Cette methode ecrivait `deleted_at`, colonne que la table `regions` NE
+        // POSSEDE PAS : « Unknown column 'deleted_at' in 'field list' ». Aucune
+        // region ne pouvait donc etre supprimee, et l'ecran restait blanc.
+        //
+        // Le modele `Ville` pratique la suppression douce, et l'intention etait
+        // visiblement la meme ici. On s'en ecarte volontairement, pour deux
+        // raisons :
+        //
+        //   · `regions.nom` porte une contrainte d'UNICITE en base, qui ne
+        //     distingue pas une ligne effacee d'une ligne vivante. Une region
+        //     seulement marquee supprimee garderait son nom reserve POUR
+        //     TOUJOURS : on ne pourrait plus jamais recreer « Gontougo » apres
+        //     l'avoir retiree par erreur. C'est un piege certain.
+        //
+        //   · aucune autre table que `ville` ne reference une region, et il n'y
+        //     a donc rien a preserver pour l'historique — ni commande, ni
+        //     livraison, ni facture n'en garde trace.
+        //
+        // La suppression est donc REELLE, mais refusee tant que des villes y
+        // sont rattachees : rien ne les relie par une cle etrangere, elles
+        // deviendraient orphelines en silence.
+        $villes = $region->villes()->count();
 
-        $region->deleted_at = date('Y-m-d H:i:s');
-        $region->save();
+        if ($villes > 0) {
+            return redirect()->route('show.lesRegions')->with(
+                'erreurRegion',
+                "Impossible de supprimer « {$region->nom} » : {$villes} ville"
+                . ($villes > 1 ? 's y sont rattachées' : ' y est rattachée')
+                . ". Rattachez-les à une autre région avant de la supprimer."
+            );
+        }
+
+        $region->delete();
+
         return redirect()->route('show.lesRegions')->with('success','Région supprimée');
     }
 
@@ -449,7 +590,29 @@ class UserController extends Controller
     }
 
     public function demandeLivraisonlist(){
-        $livraison = DemandeLivraison::where('statut',1)->latest()->get();
+        // UNE DEMANDE NON PAYÉE N'EST PAS UNE DEMANDE.
+        //
+        // Elle est enregistrée AVANT l'ouverture de la passerelle : le client
+        // qui referme celle-ci — pour changer de mode, ou parce qu'il renonce —
+        // laisse derrière lui une demande complète, proposée à l'affectation
+        // comme les autres. Le 25/08/2026, un client a ainsi produit DEUX
+        // demandes pour un seul transport, et le gestionnaire a vu les deux.
+        //
+        // On ne la SUPPRIME pas : le client peut revenir régler, et une trace
+        // vaut mieux qu'un trou. On la tient simplement hors de cet écran tant
+        // que l'argent n'est pas arrivé. Le règlement AU GUICHET, lui, est un
+        // engagement pris en agence : la demande reste exploitable d'emblée.
+        //
+        // Le tri se fait en PHP et non en SQL : estExploitable() interroge le
+        // mode de paiement et les règlements, ce qu'une clause where ne sait
+        // pas exprimer sans dupliquer la règle — et deux copies d'une règle
+        // finissent toujours par diverger.
+        $livraison = DemandeLivraison::where('statut', 1)
+            ->with('ModeDePaiement')
+            ->latest()
+            ->get()
+            ->filter->estExploitable()
+            ->values();
         return view('gestionnaire.demandeLivraisonlist',[
             'livraisons' => $livraison
         ]);
@@ -479,6 +642,66 @@ class UserController extends Controller
             'vehicules' => Vehicule::orderByDesc('capacite')->get()
         ]);
 
+    }
+
+    /**
+     * RENVOYER AU CLIENT LE CODE D'UNE COURSE DE TRANSPORT.
+     *
+     * Le courriel part à l'affectation, et une seule fois. S'il échoue — SMTP
+     * indisponible, boîte pleine — ou s'il atterrit dans les indésirables, le
+     * client n'a aucun moyen d'obtenir son code, et le livreur ne peut pas
+     * clore la course : il faut alors pouvoir le renvoyer sans toucher à la
+     * base ni réaffecter le camion.
+     *
+     * Le résultat est annoncé tel quel, succès comme échec : annoncer un envoi
+     * qui n'a pas eu lieu rejouerait exactement le problème qu'on corrige.
+     */
+    public function renvoyerCodeDemandeLivraison(Livraison $livraison)
+    {
+        $detail  = $livraison->detail_livraison_id
+            ? DetailLivraison::find($livraison->detail_livraison_id)
+            : null;
+
+        $demande = $detail?->demandeLivraison;
+
+        if (!$demande) {
+            return back()->with('code_non_envoye',
+                "Cette course n'est rattachée à aucune demande de livraison : le code ne peut pas être renvoyé.");
+        }
+
+        // Une course REFUSÉE porte un code qui ne vaut plus rien : le livreur ne
+        // la validera jamais. L'envoyer entretiendrait la confusion.
+        if ((int) $livraison->accepte === Livraison::REFUSEE) {
+            return back()->with('code_non_envoye',
+                "Cette course a été refusée par le livreur : son code est caduc. "
+                . "Réaffectez la demande, un nouveau code partira.");
+        }
+
+        $client = $demande->client;
+
+        $adresse = $client?->user?->email ?: ($client?->email ?: null);
+
+        if (!$adresse) {
+            return back()->with('code_non_envoye',
+                "Ce client n'a aucune adresse e-mail : communiquez-lui le code {$livraison->numero} par téléphone.");
+        }
+
+        try {
+            Mail::send(new \App\Mail\receptionCodeDemandeLivraison(
+                $livraison, $demande, $client, $detail
+            ));
+        } catch (\Throwable $e) {
+            \Log::warning('Renvoi du code de validation échoué: ' . $e->getMessage());
+
+            return back()->with('code_non_envoye', sprintf(
+                "L'envoi a de nouveau échoué (%s). Communiquez le code %s au client par téléphone.",
+                $e->getMessage(),
+                $livraison->numero
+            ));
+        }
+
+        return back()->with('code_renvoye',
+            "Code {$livraison->numero} renvoyé à {$adresse}.");
     }
 
     /**
@@ -547,10 +770,16 @@ class UserController extends Controller
      * jamais une location payée (statut 3) ni déjà validée (EN COURS / TERMINE).
      */
     public function supprimerLocation(\App\Models\Location $location){
-        // Suppression réservée aux locations SANS AUCUN paiement (statut 1) :
-        // dès qu'un acompte est encaissé (statut 2) ou que c'est soldé (statut 3),
-        // on ne supprime plus — il y a de l'argent sur cette location.
-        if ($location->statut != 1) {
+        // Suppression réservée aux locations SANS AUCUN paiement : dès qu'un
+        // acompte est encaissé, on ne supprime plus — il y a de l'argent sur
+        // cette location.
+        //
+        // LA QUESTION SE POSE À L'ARGENT, PAS AU DRAPEAU. `location.statut`
+        // reste à 1 quand un chemin de paiement oublie de le poser : cette
+        // garde — la seule qui protège vraiment, le bouton n'étant qu'un
+        // affichage — laissait alors supprimer une location réellement
+        // encaissée, et l'argent restait en caisse sans rien en face.
+        if ($location->etatPaiement() !== 'AUCUN') {
             return back()->with('error', 'Un paiement a déjà été enregistré sur cette location : suppression impossible.');
         }
         if ($location->etatLibelle() !== Help::$LOCATION_EN_ATTENTE) {
@@ -586,7 +815,9 @@ class UserController extends Controller
         }
         // Paiement soldé exigé avant validation (même règle que les commandes),
         // sauf client à terme qui paie à crédit.
-        if ($location->statut != 3 && $location->client->client_a_terme != 1) {
+        // L'ARGENT, PAS LE DRAPEAU : une location payee dont le drapeau etait
+        // reste en arriere se voyait refuser sa validation.
+        if (!$location->estSoldee() && $location->client->client_a_terme != 1) {
             return redirect()->route('show.listeLocationEnAttente')
                 ->with('error', 'Le paiement de cette location doit être soldé avant de pouvoir la valider.');
         }
@@ -596,11 +827,32 @@ class UserController extends Controller
             return (float) ($d->produit->caution ?? 0) * (float) $d->qte;
         });
 
+        // LES FOURNISSEURS DE CHAQUE LIGNE, pour que le gestionnaire designe
+        // celui qui remettra le materiel.
+        //
+        // Une location ne creait AUCUN bon d'enlevement : le livreur se
+        // presentait chez le fournisseur sans rien a lui montrer, alors que la
+        // vente lui donne un code depuis toujours. Un bon exige un fournisseur,
+        // et le choix ne peut pas etre devine : les produits de location en
+        // comptent jusqu'a cinq.
+        $fournisseursParLigne = [];
+
+        foreach ($location->detailLocation as $ligne) {
+            $fournisseursParLigne[$ligne->id] = \App\Models\StockProduit::with('fournisseur.user')
+                ->where('produit_id', $ligne->produit_id)
+                ->where('statut', Help::$STATUT_ACTIF)
+                ->whereNull('deleted_at')
+                ->where('prix', '>', 0)
+                ->orderBy('prix')
+                ->get();
+        }
+
         return view('gestionnaire.validerLocation', [
-            'location'        => $location,
-            'cautionSuggeree' => $cautionSuggeree,
-            'livreurs'        => Livreur::where('statut', Help::$STATUT_ACTIF)->with('user')->get(),
-            'vehicules'       => Vehicule::orderByDesc('capacite')->get(),
+            'location'             => $location,
+            'cautionSuggeree'      => $cautionSuggeree,
+            'livreurs'             => Livreur::where('statut', Help::$STATUT_ACTIF)->with('user')->get(),
+            'vehicules'            => Vehicule::orderByDesc('capacite')->get(),
+            'fournisseursParLigne' => $fournisseursParLigne,
         ]);
     }
 
@@ -610,22 +862,46 @@ class UserController extends Controller
      * la location EN COURS. Transactionnel.
      */
     public function validerLocation(Request $request, \App\Models\Location $location){
-        // « Retrait sur place » : le client vient chercher le matériel, aucun livreur
-        // n'intervient -> livreur/véhicule ne sont plus exigés. Le mode est pré-coché
-        // depuis le choix du client (location.est_livrable) mais reste modifiable par le
-        // gestionnaire : les locations créées AVANT l'ajout de est_livrable n'ont pas de
-        // choix fiable, et le client peut aussi avoir changé d'avis par téléphone.
+        // LE MODE DE RÉCUPÉRATION N'EST PLUS UN CHOIX DU GESTIONNAIRE.
+        //
+        // L'écran proposait deux cases à cocher, pré-remplies depuis le choix du
+        // client mais modifiables. Le gestionnaire pouvait donc contredire son
+        // client sans s'en rendre compte — et le formulaire acceptait « livraison »
+        // sur une location sans adresse, ou « retrait » sur une location qui en
+        // portait une.
+        //
+        // Il CONSTATE désormais le mode, il ne le décide plus. La règle vit sur le
+        // modèle (Location::estRetraitSurPlace) : l'écran et ce contrôleur la
+        // lisent au même endroit, ils ne peuvent plus diverger.
+        $estRetrait = $location->estRetraitSurPlace();
+
         $request->validate([
-            'mode_livraison' => 'required|in:livraison,retrait',
-            'livreur'  => 'required_if:mode_livraison,livraison|nullable|integer|exists:livreur,id',
-            'vehicule' => 'required_if:mode_livraison,livraison|nullable|integer|exists:vehicule,id',
+            // `required_if` visait le champ du formulaire, qui n'existe plus : la
+            // règle se construit maintenant à partir du mode réel.
+            'livreur'  => [$estRetrait ? 'nullable' : 'required', 'nullable', 'integer', 'exists:livreur,id'],
+            'vehicule' => [$estRetrait ? 'nullable' : 'required', 'nullable', 'integer', 'exists:vehicule,id'],
             'caution'  => 'nullable|numeric|min:0',
+            // Un bon d'enlevement sans fournisseur n'existe pas, et un bon sans
+            // prix vaudrait un du de zero — c'est le defaut deja corrige sur les
+            // ventes. On exige donc la designation, ligne par ligne.
+            'fournisseur'   => 'required|array',
+            'fournisseur.*' => 'required|integer|exists:fournisseur,id',
+            // La quantité remise, ligne par ligne. Une quantité nulle ou
+            // négative produirait un bon sans objet et un dû faux.
+            'qte'           => 'required|array',
+            'qte.*'         => 'required|numeric|min:0.01',
         ], [
-            'livreur.required_if'  => 'Veuillez sélectionner un livreur.',
-            'vehicule.required_if' => 'Veuillez sélectionner un véhicule.',
+            'livreur.required'  => 'Veuillez sélectionner un livreur.',
+            'vehicule.required' => 'Veuillez sélectionner un véhicule.',
+            // « required » et non « required_if » : le fournisseur est exigé dans
+            // les DEUX modes depuis que le retrait produit lui aussi un bon.
+            'fournisseur.required'   => 'Veuillez désigner le fournisseur de chaque matériel.',
+            'fournisseur.*.required' => 'Veuillez désigner le fournisseur de chaque matériel.',
+            'qte.required'    => 'Veuillez indiquer la quantité remise pour chaque matériel.',
+            'qte.*.required'  => 'Veuillez indiquer la quantité remise pour chaque matériel.',
+            'qte.*.min'       => 'La quantité remise doit être supérieure à zéro.',
         ]);
 
-        $estRetrait = $request->mode_livraison === 'retrait';
 
         // Une location dont le livreur a REFUSÉ la course doit pouvoir être
         // reconfiée. Le verrou sur EN ATTENTE l'interdisait : l'affectation fait
@@ -640,9 +916,33 @@ class UserController extends Controller
         }
         // Paiement soldé exigé avant validation (même règle que les commandes),
         // sauf client à terme qui paie à crédit.
-        if ($location->statut != 3 && $location->client->client_a_terme != 1) {
+        // L'ARGENT, PAS LE DRAPEAU : une location payee dont le drapeau etait
+        // reste en arriere se voyait refuser sa validation.
+        if (!$location->estSoldee() && $location->client->client_a_terme != 1) {
             return redirect()->route('show.listeLocationEnAttente')
                 ->with('error', 'Le paiement de cette location doit être soldé avant de pouvoir la valider.');
+        }
+
+        // AUCUNE COURSE DE LIVREUR SANS ADRESSE.
+        //
+        // Sans adresse, le livreur reçoit une course qu'il ne peut pas faire :
+        // son écran affiche « Lieu : null », et la distance retenue pour sa
+        // rémunération vaut 0 km. Le cas venait des locations « Retrait sur
+        // place » présentées à tort comme livrables (le choix du client
+        // n'était pas enregistré) ; il peut aussi venir d'une location du
+        // mobile passée sans adresse, ou d'un gestionnaire qui bascule en
+        // livraison une location qui n'en prévoyait pas.
+        //
+        // Le refus est explicite : mieux vaut renvoyer le gestionnaire vers le
+        // retrait sur place que d'envoyer un livreur nulle part.
+        if (!$estRetrait && !$location->adresse_livraison_id) {
+            return back()->withInput()->with(
+                'error',
+                'Cette location est à livrer, mais ne porte aucune adresse. Faites '
+                . 'enregistrer l’adresse de livraison par le client avant de lui '
+                . 'affecter un livreur : un livreur envoyé sans adresse ne sait pas '
+                . 'où aller, et sa rémunération se calcule sur une distance nulle.'
+            );
         }
 
         $conf    = Configuration::first();
@@ -657,49 +957,146 @@ class UserController extends Controller
 
         $livraisonsCreees = [];
         \DB::transaction(function () use ($location, $request, $livreur, $conf, $distance, $estRetrait, $lignesARefaire, &$livraisonsCreees) {
-            // Retrait sur place : aucune livraison à créer. En créer une serait une
-            // livraison fantôme, qui polluerait la tournée du livreur et enverrait au
-            // client un code de validation pour une livraison qui n'aura jamais lieu.
-            // Réaffectation : on ne recrée QUE les courses refusées. Repasser
-            // sur toutes les lignes enverrait un second livreur sur du matériel
-            // déjà pris en charge, et un second code de validation au client.
-            $lignes = $estRetrait
-                ? collect()
-                : ($lignesARefaire->isNotEmpty() ? $lignesARefaire : $location->detailLocation);
+            // RETRAIT SUR PLACE : LE CLIENT AUSSI A BESOIN D'UN BON.
+            //
+            // Ce cas ne produisait RIEN — ni course, ni bon d'enlevement. Le
+            // client se presentait chez le fournisseur sans preuve, et le
+            // fournisseur n'avait aucun bon a valider : la quantite remise
+            // n'etait enregistree nulle part, et sa dette non plus.
+            //
+            // La crainte d'origine — une « livraison fantome » qui polluerait la
+            // tournee du livreur — etait fondee, mais elle a sa reponse : la
+            // colonne `livre_par` (1 = LIVREUR, 2 = CLIENT). Les listes du
+            // livreur filtrent toutes sur `livre_par = 1` (LivreurController,
+            // lignes 744 et 786) : une course de retrait ne s'y affiche pas.
+            // C'est exactement ce que fait deja la VENTE en retrait sur place
+            // (OrdersController), et les locations s'y alignent.
+            $lignes = $lignesARefaire->isNotEmpty() ? $lignesARefaire : $location->detailLocation;
+
+            $fournisseursChoisis = (array) $request->input('fournisseur', []);
+            $quantitesRemises    = (array) $request->input('qte', []);
 
             foreach ($lignes as $detail) {
+                // Le fournisseur designe pour cette ligne. Une ligne sans
+                // designation ne doit pas produire un bon orphelin : on s'arrete.
+                $fournisseurLigne = $fournisseursChoisis[$detail->id] ?? null;
+
+                // LA QUANTITE RETENUE, declaree AVANT tout emploi.
+                //
+                // Elle sert a la course comme au bon : la declarer plus bas la
+                // laissait vide au moment de creer la course, et la course
+                // partait a zero.
+                //
+                // Repli sur la quantite commandee : une ligne apparue entre
+                // l'affichage du formulaire et son envoi n'aurait pas de champ,
+                // et un bon a zero vaudrait un du nul.
+                $qteRemise = (float) ($quantitesRemises[$detail->id] ?? $detail->qte);
+
+                if (!$fournisseurLigne) {
+                    // UN FORMULAIRE INCOMPLET RÉPOND, IL NE CASSE PAS.
+                    //
+                    // Cette exception remontait en page blanche (erreur 500) :
+                    // le gestionnaire ne savait ni ce qui manquait, ni que sa
+                    // location n'était pas validée. La validation ci-dessus
+                    // exige désormais un fournisseur par ligne ; ce garde-fou
+                    // ne sert plus que si une ligne apparaît entre l'affichage
+                    // du formulaire et son envoi.
+                    throw new \Illuminate\Validation\ValidationException(
+                        \Illuminate\Support\Facades\Validator::make([], [])->after(function ($v) use ($detail) {
+                            $v->errors()->add('fournisseur', 'Aucun fournisseur désigné pour « '
+                                . (optional($detail->produit)->nom ?? 'un matériel')
+                                . ' ». La location n’a pas été validée.');
+                        })
+                    );
+                }
+
                 // LOCATION : le matériel loué n'est pas mesuré en tonnes. Le repli de
                 // rémunération est le coût d'UN déplacement (distance × coût fixe), SANS
                 // facteur "voyages/tonnage" (qui n'a de sens que pour le gravier en vrac).
                 // Les modes de tarification du livreur (km / base) priment de toute façon.
                 $coutGlobal = (float) $distance * (float) ($conf->cout_liv_fixe ?? 0);
                 $tarif = $livreur
-                    ? $livreur->tarificationLivraison((float) $distance, $coutGlobal)
+                    ? $livreur->tarifLivraison(
+                        optional(\App\Models\Produit::find($detail->produit_id))->unite_produit_id,
+                        (float) $detail->qte,
+                        (float) $distance,
+                        $coutGlobal
+                    )
                     : ['forfait_base' => $coutGlobal, 'frais_km' => 0.0, 'total' => $coutGlobal];
 
                 $liv = Livraison::create([
-                    'numero'               => uniqid(),
-                    'livreur_id'           => $request->livreur,
-                    'vehicule_id'          => $request->vehicule,
+                    'numero'               => \Help::genererNumeroUnique('livraison'),
+                    // En RETRAIT SUR PLACE, personne ne livre : ni livreur, ni
+                    // vehicule. `livre_par = 2` (CLIENT) tient la course hors
+                    // des listes du livreur, qui filtrent sur 1.
+                    'livreur_id'           => $estRetrait ? null : $request->livreur,
+                    'vehicule_id'          => $estRetrait ? null : $request->vehicule,
                     'client_id'            => $location->client_id,
                     'adresse_livraison_id' => $location->adresse_livraison_id,
                     'date_livraison'       => $detail->debut ?? $location->date_location ?? now()->toDateString(),
-                    'qte'                  => $detail->qte,
+                    // La quantité RETENUE par le gestionnaire, et non celle
+                    // commandée : c'est elle qui part chez le fournisseur.
+                    'qte'                  => $qteRemise,
                     // Pour une livraison de LOCATION, detail_commande_id porte l'id du detail_location.
                     'detail_commande_id'   => $detail->id,
                     'provenance'           => Help::$LOCATION,
                     'cout_livraison'       => $tarif['total'],
                     'forfait_base'         => $tarif['forfait_base'],
                     'frais_km'             => $tarif['frais_km'],
+                    'source_tarif'         => $tarif['source'] ?? null,
                     'distance_km'          => round((float) $distance, 2),
                     'etat_livraison'       => Help::$LIVRAISON_EN_ATTENTE,
                     'statut'               => Help::$STATUT_ACTIF,
                     'gestionnaire_id'      => Auth::id(),
-                    'accepte'              => 2,
-                    'livre_par'            => 1,
+                    // Une course de retrait n'attend l'acceptation de personne.
+                    'accepte'              => $estRetrait ? 1 : 2,
+                    'livre_par'            => $estRetrait ? 2 : 1,
                 ]);
-                // Pour l'envoi du code de validation au client (après commit).
-                $livraisonsCreees[] = ['livraison' => $liv, 'produit' => $detail->produit];
+                // LE BON D'ENLEVEMENT — CE QUE LE LIVREUR MONTRE AU FOURNISSEUR.
+                //
+                // Il n'en existait aucun pour les locations. La plomberie, elle,
+                // etait deja la : la liste du livreur joint `enlevement` en
+                // leftJoin et lit `code_enleve`, exactement comme pour une
+                // vente. Il ne manquait que la ligne.
+                //
+                // LE MONTANT PORTE LA DUREE. La dette se calcule
+                // `quantite x prix_fournisseur` (Enlevement::montantDu) : un
+                // enlevement n'a pas de notion de jours. On inscrit donc dans
+                // `prix_fournisseur` le prix d'achat MULTIPLIE PAR LE NOMBRE DE
+                // JOURS, de sorte que le du vaille bien
+                // `prix d'achat x quantite x jours`. La quantite reste la
+                // quantite PHYSIQUE remise, et le du suit la quantite
+                // reellement servie en cas de remise partielle.
+                $prixAchat = (float) (\App\Models\StockProduit::where('produit_id', $detail->produit_id)
+                    ->where('fournisseur_id', $fournisseurLigne)
+                    ->where('statut', Help::$STATUT_ACTIF)
+                    ->whereNull('deleted_at')
+                    ->value('prix') ?? 0);
+
+                $jours = max(1, (int) ($detail->nombre_jour ?? 1));
+
+
+                $bon = Enlevement::create([
+                    'fournisseur_id'   => $fournisseurLigne,
+                    'livraison_id'     => $liv->id,
+                    'produit_id'       => $detail->produit_id,
+                    'qte'              => $qteRemise,
+                    'prix_fournisseur' => $prixAchat * $jours,
+                    'livreur_id'       => $estRetrait ? null : $request->livreur,
+                    'vehicule_id'      => $estRetrait ? null : $request->vehicule,
+                    'code_enleve'      => $this->generateCode(),
+                    'gestionnaire_id'  => Auth::id(),
+                    'statut'           => Help::$STATUT_ACTIF,
+                ]);
+
+                // Pour l'envoi du code au client (après commit). Le bon voyage
+                // avec la course : en retrait sur place, c'est SON code que le
+                // client recevra, et non celui de la livraison.
+                $livraisonsCreees[] = [
+                    'livraison' => $liv,
+                    'produit'   => $detail->produit,
+                    'bon'       => $bon,
+                ];
             }
 
             $location->update([
@@ -717,23 +1114,60 @@ class UserController extends Controller
         // Envoi au client du CODE de validation (= numéro de livraison) qu'il communiquera
         // au livreur pour valider la livraison. NON bloquant : un échec d'email ne doit pas
         // empêcher la validation de la location.
+        // L'ÉCHEC D'ENVOI DOIT SE VOIR, PAS SEULEMENT SE JOURNALISER.
+        //
+        // L'envoi était déjà protégé — une panne de messagerie ne cassait pas la
+        // validation — mais il échouait EN SILENCE : le gestionnaire voyait
+        // « Location validée » et le client n'avait aucun code. Personne ne
+        // pouvait s'en apercevoir avant que le livreur ne se présente.
+        $codesManques = 0;
+
         foreach ($livraisonsCreees as $item) {
             try {
-                \Illuminate\Support\Facades\Mail::send(new \App\Mail\receptionCodeLivraisonLocation(
-                    $item['livraison'],
-                    $location,
-                    $location->client,
-                    $item['produit']
-                ));
+                if ($estRetrait) {
+                    // RETRAIT SUR PLACE : c'est le code du BON qui part.
+                    //
+                    // Le client vient chercher lui-meme le materiel :
+                    // personne ne peut lui remettre ce code sur place,
+                    // puisqu'il n'y a pas de livreur. Il le presente au
+                    // fournisseur, qui valide le bon a la quantite remise.
+                    //
+                    // Le code de VALIDATION d'une livraison n'aurait ici
+                    // aucun sens : il sert au client a confirmer une
+                    // reception, et aucune livraison n'aura lieu.
+                    \Illuminate\Support\Facades\Mail::send(new \App\Mail\codeEnlevementLocation(
+                        $item['bon'],
+                        $location,
+                        $location->client,
+                        $item['produit']
+                    ));
+                } else {
+                    \Illuminate\Support\Facades\Mail::send(new \App\Mail\receptionCodeLivraisonLocation(
+                        $item['livraison'],
+                        $location,
+                        $location->client,
+                        $item['produit']
+                    ));
+                }
             } catch (\Throwable $e) {
-                \Log::warning('Email code validation location non envoyé: '.$e->getMessage());
+                $codesManques++;
+                \Log::error("Code de " . ($estRetrait ? "retrait" : "validation")
+                    . " location {$location->numero} non envoyé : " . $e->getMessage());
             }
         }
 
         return redirect()->route('show.listeLocationEnAttente')
             ->with('success', $estRetrait
                 ? 'Location validée en RETRAIT SUR PLACE : aucun livreur affecté, le client vient chercher le matériel. Location passée EN COURS.'
-                : 'Location validée : livraison(s) créée(s), livreur affecté, location passée EN COURS.');
+                : 'Location validée : livraison(s) créée(s), livreur affecté, location passée EN COURS.')
+            // Clé PROPRE : Flasher capte « error » et « warning » pour les rejouer
+            // en bulle éphémère, et l'avertissement se perdrait.
+            ->with('code_non_envoye', $codesManques === 0 ? null : (
+                "La location est bien validée, mais {$codesManques} code(s) "
+                . ($estRetrait ? "de RETRAIT " : "de validation ")
+                . "n'ont PAS pu être envoyés au client. Retrouvez-les dans « Locations "
+                . "traitées » et communiquez-les-lui directement."
+            ));
     }
 
     /**
@@ -779,6 +1213,9 @@ class UserController extends Controller
             'caution_restituee' => $retenue < $caution,
         ]);
 
+        // Les lignes suivent la location (10/09/2026) : l'application les affiche.
+        \App\Models\DetailLocation::where('location_id', $location->id)->update(['etat_location' => Help::$LOCATION_TERMINE]);
+
         $restitue = max(0, $caution - $retenue);
         return redirect()->route('show.listeLocationEnAttente')
             ->with('success', 'Matériel retourné : location TERMINÉE. Caution restituée : '
@@ -790,14 +1227,65 @@ class UserController extends Controller
      * (c) Liste des locations TRAITÉES (déjà validées) : EN COURS ou TERMINÉ.
      * Page distincte de la liste des commandes traitées (évite la confusion).
      */
-    public function locationsTraitees(){
+    public function locationsTraitees(Request $request){
         $locations = Location::whereIn('etat_location', [Help::$LOCATION_EN_COURS, Help::$LOCATION_TERMINE, 2, 3])
             ->with('client', 'livreur.user', 'factureFne')
             ->orderByDesc('updated_at')
             ->get();
 
+        // LES FILTRES.
+        //
+        // Aucune borne par defaut : l'ecran a toujours montre toutes les
+        // locations traitees, et en restreindre l'affichage sans qu'on l'ait
+        // demande ferait croire a des locations disparues. Chaque critere ne
+        // s'applique donc que s'il est rempli.
+        $etat     = trim((string) $request->input('etat'));
+        $paiement = trim((string) $request->input('paiement'));
+        $client   = trim((string) $request->input('client'));
+        $du       = $request->input('du') ?: null;
+        $au       = $request->input('au') ?: null;
+
+        if ($etat !== '') {
+            $locations = $locations->filter(
+                fn ($l) => $l->etatLibelle() === $etat);
+        }
+
+        if ($paiement !== '') {
+            // Sur l'ARGENT, pas sur le drapeau : meme regle que la colonne.
+            $locations = $locations->filter(
+                fn ($l) => $l->etatPaiement() === $paiement);
+        }
+
+        if ($client !== '') {
+            $recherche = mb_strtolower($client);
+            $locations = $locations->filter(function ($l) use ($recherche) {
+                $nom = mb_strtolower((string) ($l->client?->display_name
+                    ?? $l->client?->nom_prenoms ?? $l->client?->nom ?? ''));
+
+                return $nom !== '' && str_contains($nom, $recherche);
+            });
+        }
+
+        // La periode porte sur la DATE DE RETOUR : c'est la seule date que la
+        // liste affiche, et celle qui interesse le gestionnaire.
+        if ($du || $au) {
+            $locations = $locations->filter(function ($l) use ($du, $au) {
+                if (!$l->date_retour) {
+                    return false;
+                }
+                $jour = \Carbon\Carbon::parse($l->date_retour)->format('Y-m-d');
+
+                return (!$du || $jour >= $du) && (!$au || $jour <= $au);
+            });
+        }
+
         return view('gestionnaire.locationsTraitees', [
-            'locations' => $locations,
+            'locations' => $locations->values(),
+            'etat'      => $etat,
+            'paiement'  => $paiement,
+            'client'    => $client,
+            'du'        => $du,
+            'au'        => $au,
         ]);
     }
 
@@ -892,11 +1380,20 @@ class UserController extends Controller
             return redirect()->route('show.demandeLivraisonlist')->with('blocage_reglement', $blocage);
         }
 
-        // dd($deman+deLivraison,$detail);
-        // $statut = [];
-        // $statut = Help::listeStatutLivraison();
-        // dd($demandeLivraison->detailLivraison->cout_livraison_id);
-        $date = $request->date;
+        // LA DATE EST REELLEMENT EXIGEE.
+        //
+        // L'ecran l'annoncait obligatoire — une etoile rouge — mais rien ne la
+        // tenait : ni « required » en HTML, ni controle ici. Le formulaire
+        // partait donc vide, et le repli ci-dessous reprenait EN SILENCE la date
+        // portee par la demande. Le gestionnaire croyait avoir fixe la date
+        // d'affectation ; une autre s'appliquait, sans un mot.
+        //
+        // Le controle est pose AU SERVEUR et non seulement dans la page : le
+        // « required » d'un navigateur se contourne d'un envoi direct.
+        // La date de livraison n'est plus saisie ici (10/09/2026) : le client
+        // l'a choisie à sa demande, et la course reprend demande.date_livraison
+        // (voir la création de la course plus bas). La date postée par l'ancien
+        // formulaire n'était lue nulle part.
 
         // Refus exclus : une course refusee n'a rien transporte, elle ne
         // consomme donc pas la quantite de la ligne (cf. DetailLivraison).
@@ -905,9 +1402,9 @@ class UserController extends Controller
         // dd($qt,$detail->qte,$detail->livraisons->sum('qte'));
         // dd(!$demandeLivraison->livraisons->isEmpty(),$qt,$detail);
 
-        if($request->date == null){
-            $date = $demandeLivraison->date_livraison;
-        }
+        // (Le repli sur la date de la demande a ete retire : il n'etait plus
+        //  atteignable une fois la date exigee, et laisser un repli muet aurait
+        //  entretenu l'idee qu'une date vide est acceptable.)
 
         // Rémunération du livreur.
         //
@@ -930,16 +1427,43 @@ class UserController extends Controller
             ? Help::distance($pec->longitude, $pec->latitude, $dest->longitude, $dest->latitude)
             : 0;
 
-        foreach ($request->id as $camionId) {
+        // Les courses dont le code n'a pas pu partir. Une affectation peut
+        // porter plusieurs camions : on les rassemble pour n'avertir qu'une fois.
+        $codesNonEnvoyes = [];
+
+        foreach ($request->id as $rang => $camionId) {
 
             $camion = Vehicule::where('id',$camionId)->first();
-            $qt = $qt - $camion->capacite;
 
-            if($qt >= 0){
-                $qt1 = $camion->capacite;
-            }else{
-                $qt1 = $qt + $camion->capacite;
+            // LA QUANTITÉ CONFIÉE À CE CAMION.
+            //
+            // Elle était imposée : toujours la capacité du véhicule. Une ligne
+            // de 25 sacs et un camion de 20 demandaient donc DEUX affectations,
+            // deux codes de validation et deux clôtures — pour un seul travail.
+            // Et le calcul de rotations, pourtant présent, ne servait à rien :
+            // une quantité plafonnée à la capacité fait toujours un voyage.
+            //
+            // Le gestionnaire la décide maintenant, comme il le fait déjà sur
+            // une vente (cf. OrdersController, qui prend $request->qte tel quel
+            // et en déduit le nombre de voyages). Le champ est pré-rempli avec
+            // l'ancienne valeur : ne rien toucher donne exactement le
+            // comportement d'avant.
+            //
+            // Bornes : jamais plus que ce qui reste à confier — sans quoi la
+            // ligne serait sur-affectée et ne se clôturerait jamais — et jamais
+            // moins que rien.
+            $parDefaut = min((float) $camion->capacite, (float) $qt);
+            $demandee  = $request->qte[$rang] ?? null;
+
+            $qt1 = ($demandee === null || $demandee === '')
+                ? $parDefaut
+                : max(0, min((float) $demandee, (float) $qt));
+
+            if ($qt1 <= 0) {
+                continue;
             }
+
+            $qt = $qt - $qt1;
 
             //dd($camion);
 
@@ -949,13 +1473,20 @@ class UserController extends Controller
             $voyages    = \App\Models\Livreur::nombreDeVoyages(
                 (float) $qt1,
                 (float) ($camion->capacite ?? 0),
-                (float) ($conf->tonne_moyenne ?? 0)
+                (float) ($conf->tonne_moyenne ?? 0),
+                $detail->unite_produit_id ?? null
             );
             $coutGlobal = (float) $distance * (float) ($conf->cout_liv_fixe ?? 0) * $voyages;
 
             $livreurCamion = $camion->livreur;
             $tarif = $livreurCamion
-                ? $livreurCamion->tarificationLivraison((float) $distance, $coutGlobal, $voyages)
+                ? $livreurCamion->tarifLivraison(
+                    $detail->unite_produit_id ?? null,
+                    (float) $qt1,
+                    (float) $distance,
+                    $coutGlobal,
+                    $voyages
+                )
                 : ['forfait_base' => $coutGlobal, 'frais_km' => 0.0, 'total' => $coutGlobal];
 
             // array_push($lesqte,$qt1);
@@ -964,7 +1495,7 @@ class UserController extends Controller
             //dd($detail);
             // dd(CoutLivraison::find($detail->cout_livraison_id));
             $livraison = [
-                'numero' => uniqid(),
+                'numero' => \Help::genererNumeroUnique('livraison'),
                 'client_id' => $demandeLivraison->client_id,
                 'livreur_id' =>  $camion->livreur_id,
                 'adresse_livraison_id' => $demandeLivraison->destination->id,
@@ -1016,6 +1547,14 @@ class UserController extends Controller
                 ));
             } catch (\Throwable $e) {
                 \Log::warning('Email code validation demande de livraison non envoyé: ' . $e->getMessage());
+
+                // ET ON LE DIT. L'envoi ne doit pas bloquer l'affectation — un
+                // timeout SMTP ne peut pas annuler un camion déjà réservé — mais
+                // se taire est pire : le gestionnaire croyait le client prévenu,
+                // le client attendait un code qui n'arrivait pas, et le livreur
+                // restait bloqué devant une validation qu'il ne pouvait pas
+                // passer. Personne ne savait où regarder.
+                $codesNonEnvoyes[] = $l->numero;
             }
         }
 
@@ -1039,7 +1578,25 @@ class UserController extends Controller
 
 
 
-        return redirect()->route('show.traitelivraisonPage',$demandeLivraison)->with('success','Traitement Validé');
+        $retour = redirect()->route('show.traitelivraisonPage', $demandeLivraison)
+            ->with('success', 'Traitement Validé');
+
+        // Clé PROPRE, pas « error » : Flasher capte success/error/warning/info et
+        // les rejoue en bulle éphémère. Un avertissement de cette portée doit
+        // rester à l'écran jusqu'à ce que le gestionnaire agisse.
+        if (!empty($codesNonEnvoyes)) {
+            // Le code lui-même n'est plus écrit à l'écran (10/09/2026) : le client
+            // le lit sur Mon compte et dans l'application, et « Renvoyer le
+            // code » le lui renvoie sans que le gestionnaire ait à le voir.
+            $retour->with('code_non_envoye', sprintf(
+                "La course a bien été affectée, mais le code de validation n'a PAS pu être "
+                . "envoyé au client (%s). Le client le trouve sur son compte et dans l'application, "
+                . "ou utilisez « Renvoyer le code » ci-dessous. Sans ce code, le livreur ne pourra pas clore la course.",
+                count($codesNonEnvoyes) > 1 ? 'plusieurs courses' : 'échec de l\'envoi'
+            ));
+        }
+
+        return $retour;
     }
 
     public function demandeLivraisonTraitee(){
@@ -1061,7 +1618,7 @@ class UserController extends Controller
     public function restaureLivraison(Request $request, Livraison $livraison){
 
         $nouvelleLivraison = Livraison::create([
-            'numero' => uniqid(),
+            'numero' => \Help::genererNumeroUnique('livraison'),
             'livreur_id' => $request->livreur,
             'client_id' => $livraison->client_id,
            // 'commande_id' => $livraison->commande_id,
@@ -2375,6 +2932,9 @@ class UserController extends Controller
                 'mode_paiement_id' => $demande->mode_paiement_id ?? 6,
                 'date_validation' => now(),
                 'user_valide2_id' => Auth::id(),
+                // Point 20 : acceptée par le 2e validateur, la demande est
+                // « À payer » jusqu'à la preuve du versement et sa finalisation.
+                'etat_reglement' => $accepter ? DemandePaiement::A_PAYER : null,
             ]);
 
             DB::commit();
@@ -2384,6 +2944,89 @@ class UserController extends Controller
             return redirect()->route($routeRetour)->with('error',
                 'Erreur lors de la 2e validation : '.$e->getMessage());
         }
+    }
+
+    /**
+     * PREUVE DU VERSEMENT (point 20, 07/09/2026).
+     *
+     * Après la 2e validation, l'agent qui fait le virement joint la preuve
+     * (capture, reçu bancaire, PDF). Sans elle, la demande ne peut pas être
+     * déclarée effectuée.
+     */
+    public function joindrePreuveDemande(DemandePaiement $demande, \Illuminate\Http\Request $request)
+    {
+        $request->validate([
+            'preuve' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
+        ], [
+            'preuve.required' => 'Joignez la preuve du paiement (PDF, JPG ou PNG, 5 Mo maximum).',
+            'preuve.mimes'    => 'La preuve doit être un PDF ou une image (JPG, PNG).',
+            'preuve.max'      => 'La preuve ne doit pas dépasser 5 Mo.',
+        ]);
+
+        if ((int) $demande->paye !== 1) {
+            return back()->with('error', "Cette demande n'a pas encore reçu ses deux validations : aucune preuve à joindre.");
+        }
+        if ($demande->etat_reglement === DemandePaiement::EFFECTUEE) {
+            return back()->with('error', 'Cette demande est déjà effectuée.');
+        }
+
+        // Sécurité (09/09/2026) : un TROISIÈME administrateur, ni le 1er ni le 2e validateur.
+        if (!$demande->troisiemeAdministrateur(Auth::user())) {
+            return back()->with('error', "Pour des raisons de sécurité, la preuve est téléversée et le paiement finalisé par un troisième administrateur, différent des deux validateurs.");
+        }
+        $chemin = $request->file('preuve')->store('preuves_paiement', 'public');
+
+        $demande->update([
+            'preuve_paiement' => $chemin,
+            'date_preuve'     => now(),
+            'user_preuve_id'  => Auth::id(),
+            'etat_reglement'  => DemandePaiement::PREUVE_JOINTE,
+        ]);
+
+        return back()->with('success', 'Preuve de paiement jointe. Vous pouvez maintenant finaliser le paiement.');
+    }
+
+    /** La preuve, en consultation (back-office seulement). */
+    public function voirPreuveDemande(DemandePaiement $demande)
+    {
+        if (!$demande->preuve_paiement || !\Illuminate\Support\Facades\Storage::disk('public')->exists($demande->preuve_paiement)) {
+            abort(404, 'Aucune preuve jointe.');
+        }
+
+        return \Illuminate\Support\Facades\Storage::disk('public')->response($demande->preuve_paiement);
+    }
+
+    /**
+     * FINALISATION : l'opération est « Effectuée », et le livreur, l'apporteur
+     * ou le fournisseur le voient. Exige une preuve jointe.
+     */
+    public function effectuerDemande(DemandePaiement $demande)
+    {
+        if ((int) $demande->paye !== 1) {
+            return back()->with('error', "Cette demande n'a pas encore reçu ses deux validations.");
+        }
+        if ($demande->etat_reglement === DemandePaiement::EFFECTUEE) {
+            return back()->with('info', 'Cette demande est déjà effectuée.');
+        }
+        if (!$demande->troisiemeAdministrateur(Auth::user())) {
+            return back()->with('error', "Pour des raisons de sécurité, la preuve est téléversée et le paiement finalisé par un troisième administrateur, différent des deux validateurs.");
+        }
+        if ($demande->etat_reglement !== DemandePaiement::PREUVE_JOINTE || !$demande->preuve_paiement) {
+            return back()->with('error', "Joignez d'abord la preuve du paiement : sans elle, l'opération ne peut pas être déclarée effectuée.");
+        }
+
+        $demande->update([
+            'etat_reglement'    => DemandePaiement::EFFECTUEE,
+            'date_effectuee'    => now(),
+            'user_effectuee_id' => Auth::id(),
+        ]);
+
+        // LES BORDEREAUX DES RÈGLEMENTS NÉS DE CETTE DEMANDE partent au
+        // partenaire (11/09/2026), après la réponse, sans jamais remettre en
+        // cause la finalisation (tout est sous try/catch dans le service).
+        \App\Services\RecuDeReglement::envoyerPourLaDemande($demande);
+
+        return back()->with('success', 'Paiement effectué : le bénéficiaire le voit désormais dans son espace.');
     }
 
     public function listePaiementsParClient(Client $client){
@@ -2450,7 +3093,11 @@ class UserController extends Controller
 
     public function listeDemandeClient(){
         return view('client.listeDemandeClient',[
-            'demandes' => DemandeCompteClientATerme::all()
+            'demandes'   => DemandeCompteClientATerme::all(),
+            // Ce qui a été décidé mais n'est pas encore acquis : sans ce bloc,
+            // une approbation saisie disparaîtrait de l'écran sans avoir rien
+            // changé, et on la saisirait une seconde fois.
+            'decisions'  => \App\Models\DecisionClientTerme::enAttente(),
         ]);
     }
 
@@ -2468,31 +3115,38 @@ class UserController extends Controller
                 'delai_paiement.max'      => 'Le délai de paiement ne peut excéder 365 jours.',
             ]);
 
-            $demande->update([
-                'approuve'          => 1,
-                'user_id'           => Auth::user()->id,
-                'plafond_credit'    => $request->plafond_credit,
-                'delai_paiement'    => $request->delai_paiement,
-                'commentaire_admin' => $request->commentaire_admin,
-                'decided_at'        => now(),
-            ]);
-
-            $demande->client->update([
-                'client_a_terme'  => 1,
-                'plafond_credit'  => $request->plafond_credit,
-                'delai_paiement'  => $request->delai_paiement,
-            ]);
-
-            try {
-                if (!empty($demande->client->user->email ?? $demande->client->email ?? null)) {
-                    $to = $demande->client->user->email ?? $demande->client->email;
-                    \Mail::to($to)->send(new \App\Mail\DemandeClientATermeApprouvee($demande->fresh(['client.user'])));
-                }
-            } catch (\Throwable $e) {
-                \Log::error('Erreur envoi email approbation demande client à terme : '.$e->getMessage());
+            // RIEN N'EST ACCORDÉ ICI : la décision attend son second contrôle.
+            //
+            // Ouvrir un compte à terme, c'est décider combien l'entreprise
+            // accepte de ne pas être payée tout de suite. Cela se décidait seul,
+            // d'un clic, et s'appliquait aussitôt — l'e-mail au client partait
+            // dans la foulée, ce qui rendait le retour en arrière impossible.
+            if (!\App\Models\DecisionClientTerme::tableExiste()) {
+                return back()->with('error',
+                    'La table des décisions de crédit n\'existe pas encore sur ce serveur : lancez la migration.');
             }
 
-            return redirect()->route('show.listeDemandeClient')->with('success', 'Demande approuvée et email envoyé au client.');
+            if ($enCours = \App\Models\DecisionClientTerme::enAttentePour((int) $demande->client_id)) {
+                return back()->with('error',
+                    'Une décision attend déjà sa validation sur ce client : ' . $enCours->libelleType() . '.');
+            }
+
+            \App\Models\DecisionClientTerme::create([
+                'client_id'         => $demande->client_id,
+                'demande_id'        => $demande->id,
+                'type'              => \App\Models\DecisionClientTerme::ACTIVATION,
+                'plafond_credit'    => $request->plafond_credit,
+                'delai_paiement'    => $request->delai_paiement,
+                'commentaire'       => $request->commentaire_admin,
+                'ancien_plafond'    => $demande->client?->plafond_credit,
+                'ancien_delai'      => $demande->client?->delai_paiement,
+                'user_valide_id'    => Auth::user()->id,
+                'date_validation_1' => now(),
+                'statut'            => \App\Models\DecisionClientTerme::EN_ATTENTE,
+            ]);
+
+            return redirect()->route('show.listeDemandeClient')->with('success',
+                'Approbation enregistrée. Elle prendra effet — et le client sera prévenu — après validation par un second administrateur.');
         }
 
         // REFUS : motif obligatoire
@@ -2503,23 +3157,30 @@ class UserController extends Controller
             'motif_refus.min'      => 'Le motif doit faire au moins 5 caractères.',
         ]);
 
-        $demande->update([
-            'approuve'    => 2,
-            'user_id'     => Auth::user()->id,
-            'motif_refus' => $request->motif_refus,
-            'decided_at'  => now(),
-        ]);
-
-        try {
-            if (!empty($demande->client->user->email ?? $demande->client->email ?? null)) {
-                $to = $demande->client->user->email ?? $demande->client->email;
-                \Mail::to($to)->send(new \App\Mail\DemandeClientATermeRefusee($demande->fresh(['client.user'])));
-            }
-        } catch (\Throwable $e) {
-            \Log::error('Erreur envoi email refus demande client à terme : '.$e->getMessage());
+        // Le refus suit la même règle que l'accord : un client qu'on écarte est
+        // un client qu'on perd, et l'e-mail qui l'annonce ne se rattrape pas.
+        if (!\App\Models\DecisionClientTerme::tableExiste()) {
+            return back()->with('error',
+                'La table des décisions de crédit n\'existe pas encore sur ce serveur : lancez la migration.');
         }
 
-        return redirect()->route('show.listeDemandeClient')->with('success', 'Demande refusée et email envoyé au client.');
+        if ($enCours = \App\Models\DecisionClientTerme::enAttentePour((int) $demande->client_id)) {
+            return back()->with('error',
+                'Une décision attend déjà sa validation sur ce client : ' . $enCours->libelleType() . '.');
+        }
+
+        \App\Models\DecisionClientTerme::create([
+            'client_id'         => $demande->client_id,
+            'demande_id'        => $demande->id,
+            'type'              => \App\Models\DecisionClientTerme::REFUS_DEMANDE,
+            'commentaire'       => $request->motif_refus,
+            'user_valide_id'    => Auth::user()->id,
+            'date_validation_1' => now(),
+            'statut'            => \App\Models\DecisionClientTerme::EN_ATTENTE,
+        ]);
+
+        return redirect()->route('show.listeDemandeClient')->with('success',
+            'Refus enregistré. Il prendra effet — et le client sera prévenu — après validation par un second administrateur.');
     }
 
     /**
@@ -2669,6 +3330,69 @@ class UserController extends Controller
         return view('siteEnConstruction', ['titre' => $titre]);
     }
 
+    /**
+     * LA PAGE « SITE EN CONSTRUCTION » (lot 114, 19/09/2026). Une personne connectée n'a rien à
+     * y faire : elle va à l'accueil. Mode inactif : la page renvoie aussi à l'accueil.
+     */
+    public function pageSiteEnConstruction()
+    {
+        if (Auth::check() || !Configuration::siteEnConstruction()) {
+            return redirect()->route('client.index');
+        }
+
+        return response()->view('siteEnConstructionMode')->header('X-Robots-Tag', 'noindex, nofollow');
+    }
+
+    /** L'interrupteur de Paramètres : réservé aux administrateurs. */
+    public function basculerSiteEnConstruction(Request $request)
+    {
+        abort_unless(in_array((int) Auth::user()->type_user_id, [\Help::$USER_SA, \Help::$USER_ADMIN], true), 403);
+
+        $config = Configuration::first();
+        $actif = !$config->site_en_construction;
+        $config->update(['site_en_construction' => $actif]);
+
+        return redirect()->route('show.parametre')->with('success', $actif
+            ? "Mode « site en construction » ACTIVÉ : le site public n'est visible que des personnes connectées."
+            : "Mode « site en construction » désactivé : le site public est de nouveau ouvert à tous.");
+    }
+
+    /**
+     * LES TROIS APPLICATIONS ANDROID (lot 110, 17/09/2026).
+     * Le fichier public/telechargements/mon-gravier-<application>.apk est servi tel quel ; s'il
+     * manque, retour à la section « applications » de l'accueil avec un message.
+     */
+    public static function applicationsMobiles(): array
+    {
+        $liste = [
+            'client'    => ['nom' => 'Mon Gravier Client',    'sous' => 'Pour commander et suivre vos livraisons'],
+            'livreur'   => ['nom' => 'Mon Gravier Livreur',   'sous' => 'Pour recevoir et effectuer les courses'],
+            'apporteur' => ['nom' => "Mon Gravier Apporteur", 'sous' => "Pour apporter des clients et gagner des commissions"],
+        ];
+        foreach ($liste as $cle => &$app) {
+            $fichier = public_path('telechargements/mon-gravier-' . $cle . '.apk');
+            $app['disponible'] = is_file($fichier);
+            $app['taille']     = $app['disponible'] ? round(filesize($fichier) / 1048576) . ' Mo' : null;
+            $app['date']       = $app['disponible'] ? date('d/m/Y', filemtime($fichier)) : null;
+            $app['lien']       = route('telechargerApplication', $cle);
+        }
+        return $liste;
+    }
+
+    public function telechargerApplication(string $application)
+    {
+        $fichier = public_path('telechargements/mon-gravier-' . $application . '.apk');
+        if (!is_file($fichier)) {
+            $nom = self::applicationsMobiles()[$application]['nom'] ?? "L'application";
+            return redirect(route('client.index') . '#applications')
+                ->with('application_indisponible', $nom . " sera disponible au téléchargement très prochainement.");
+        }
+
+        return response()->download($fichier, 'mon-gravier-' . $application . '.apk', [
+            'Content-Type' => 'application/vnd.android.package-archive',
+        ]);
+    }
+
     public function pageAPropos(){
         // $produits (quickView) et $categories (footer) sont requis par le layout client.main.
         return view('client.aPropos', [
@@ -2751,7 +3475,7 @@ class UserController extends Controller
             }
         }
 
-        return 'info@fneconnect.net';
+        return \Help::emailContact();
     }
 
     public function error (){
@@ -3336,7 +4060,8 @@ class UserController extends Controller
             'titre'          => 'required|string|max:150',
             'sous_titre'     => 'nullable|string|max:255',
             'num_ordre'      => 'required|integer|min:0|max:999',
-            'type_banniere'  => 'required|in:TOP,FLASH,BOTTOM',
+            // 13/09/2026 : POPUP (fenêtre publicitaire de l'accueil) est un type valide depuis le 23/08
+            'type_banniere'  => 'required|in:TOP,FLASH,BOTTOM,POPUP',
             'heure_decompte' => 'nullable|date',
             'image'          => ($imageObligatoire ? 'required|' : 'nullable|') . 'image|mimes:jpg,jpeg,png,webp|max:2048',
         ];
@@ -3348,7 +4073,7 @@ class UserController extends Controller
             'titre.required'         => 'Le titre est obligatoire.',
             'num_ordre.required'     => "Le numéro d'ordre est obligatoire.",
             'type_banniere.required' => 'Choisissez le type de bannière.',
-            'type_banniere.in'       => 'Le type de bannière doit être Top, Flash ou Bottom.',
+            'type_banniere.in'       => 'Le type de bannière doit être Top, Flash, Bottom ou Popup.',
             'image.required'         => 'Une image est obligatoire pour créer une bannière.',
             'image.max'              => "L'image ne doit pas dépasser 2 Mo.",
             'image.mimes'            => 'Formats acceptés : jpg, jpeg, png, webp.',
@@ -3994,6 +4719,8 @@ class UserController extends Controller
 
         return view('admin.listClient',[
             'clients' => Client::where('statut',1)->where('client_a_terme',0)->get(),
+            // Solde d'avance par client (point 19), en une requête.
+            'soldesAvance' => \App\Models\AvanceClient::soldesParClient(),
         ]);
     }
 
@@ -4051,8 +4778,26 @@ class UserController extends Controller
 
     public function listClientATerme(){
 
+        // LES CLIENTS DONT LE STATUT A ÉTÉ RETIRÉ RESTENT DANS LA LISTE.
+        //
+        // Sans eux, un client retiré disparaîtrait de l'écran — et le bouton
+        // qui permet de lui rendre son statut deviendrait introuvable. Ils
+        // figurent donc ici, marqués « Statut retiré ».
+        $retires = [];
+
+        if (\App\Models\DecisionClientTerme::tableExiste()) {
+            $retires = \App\Models\DecisionClientTerme::where('type', \App\Models\DecisionClientTerme::DESACTIVATION)
+                ->where('statut', \App\Models\DecisionClientTerme::APPLIQUEE)
+                ->pluck('client_id')->unique()->all();
+        }
+
         return view('admin.listClientATerme',[
-            'clients' => Client::where('statut',1)->where('client_a_terme',1)->get(),
+            'clients'   => Client::where('statut', 1)
+                ->where(fn ($q) => $q->where('client_a_terme', 1)->orWhereIn('id', $retires ?: [0]))
+                ->get(),
+            'decisions' => \App\Models\DecisionClientTerme::enAttente(),
+            // Solde d'avance par client (point 19), en une requête.
+            'soldesAvance' => \App\Models\AvanceClient::soldesParClient(),
         ]);
     }
 
@@ -4144,16 +4889,16 @@ class UserController extends Controller
 
         $tauxTva = (float) (Configuration::first()?->tva ?? 18);
 
-        $bonsServis = Enlevement::with(['livraison.detailCommande', 'produit'])
-            ->whereNotNull('fournisseur_validation')
-            ->where('statut', Help::$STATUT_ACTIF)
-            ->when($du, function ($q) use ($du) {
-                $q->where('fournisseur_validation', '>=', $du . ' 00:00:00');
-            })
-            ->when($au, function ($q) use ($au) {
-                $q->where('fournisseur_validation', '<=', $au . ' 23:59:59');
-            })
+        // MÊME RÈGLE QUE « CA DÉTAILLÉ ».
+        //
+        // Les locations n'entrent pas dans le chiffre d'affaires, et un bon
+        // sans ligne de commande n'a pas de prix de vente : lui prêter celui du
+        // catalogue gonflerait le CA d'une recette jamais facturée.
+        $bonsServis = \App\Support\BonsDeVente::servis($du, $au)
+            ->with(['livraison.detailCommande', 'produit'])
             ->get();
+
+        $sansPrix = ['bons' => 0, 'qte' => 0.0];
 
         $ventes = [];
 
@@ -4164,8 +4909,13 @@ class UserController extends Controller
 
             $qte = $bon->quantiteAPayer();
 
-            $prix = optional(optional($bon->livraison)->detailCommande)->prix
-                ?? ($bon->produit?->prix_moyen ?? 0);
+            $prix = \App\Support\BonsDeVente::prixFacture($bon);
+
+            if ($prix === null) {
+                $sansPrix['bons']++;
+                $sansPrix['qte'] += $qte;
+                continue;
+            }
 
             $id = $bon->produit_id;
 
@@ -4239,7 +4989,16 @@ class UserController extends Controller
 
         $totalHt = array_sum(array_column($familles, 'ht'));
 
+        $bonsDeLocation = Enlevement::whereNotNull('fournisseur_validation')
+            ->where('statut', Help::$STATUT_ACTIF)
+            ->whereHas('livraison', fn ($q) => $q->where('provenance', Help::$LOCATION))
+            ->when($du, fn ($q) => $q->where('fournisseur_validation', '>=', $du . ' 00:00:00'))
+            ->when($au, fn ($q) => $q->where('fournisseur_validation', '<=', $au . ' 23:59:59'))
+            ->count();
+
         return view('admin.chiffreDaffaire', [
+            'sansPrix'        => $sansPrix,
+            'bonsDeLocation'  => $bonsDeLocation,
             'familles'   => $familles,
             'du'         => $du,
             'au'         => $au,
@@ -4282,16 +5041,23 @@ class UserController extends Controller
         $du = $request->input('du') ?: null;
         $au = $request->input('au') ?: null;
 
-        $bonsServis = Enlevement::with(['livraison.detailCommande', 'produit.categories'])
-            ->whereNotNull('fournisseur_validation')
-            ->where('statut', Help::$STATUT_ACTIF)
-            ->when($du, function ($q) use ($du) {
-                $q->where('fournisseur_validation', '>=', $du . ' 00:00:00');
-            })
-            ->when($au, function ($q) use ($au) {
-                $q->where('fournisseur_validation', '<=', $au . ' 23:59:59');
-            })
+        // CET ÉCRAN MESURE LES VENTES.
+        //
+        // Les locations en sont écartées, et un bon dont la ligne de commande
+        // a disparu n'a pas de prix de vente connu : la règle tient dans
+        // App\Support\BonsDeVente, pour que les trois écrans qui mesurent le
+        // chiffre d'affaires ne puissent plus diverger.
+        $bonsServis = \App\Support\BonsDeVente::servis($du, $au)
+            ->with(['livraison.detailCommande', 'produit.categories'])
             ->get();
+
+        // CE QU'ON MET DE CÔTÉ, ET QU'ON ANNONCE.
+        //
+        // Ces marchandises sont bien sorties et bien payées au fournisseur,
+        // mais on ne sait pas à quelle vente les rattacher. Leur prêter le prix
+        // du catalogue inventait une recette : c'est ce qui affichait
+        // « Marge brute HT −732 020 fcfa » le 04/09/2026.
+        $sansPrix = ['bons' => 0, 'qte' => 0.0, 'cout' => 0.0];
 
         $lignes = [];
 
@@ -4303,9 +5069,15 @@ class UserController extends Controller
             $qteServie = $bon->quantiteAPayer();
 
             // Le prix réellement facturé au client, qui porte son prix
-            // personnalisé quand il en a un ; le prix moyen n'est qu'un repli.
-            $prix = optional(optional($bon->livraison)->detailCommande)->prix
-                ?? ($bon->produit?->prix_moyen ?? 0);
+            // personnalisé quand il en a un. Jamais celui du catalogue.
+            $prix = \App\Support\BonsDeVente::prixFacture($bon);
+
+            if ($prix === null) {
+                $sansPrix['bons']++;
+                $sansPrix['qte']  += $qteServie;
+                $sansPrix['cout'] += $bon->montantHt();
+                continue;
+            }
 
             $id = $bon->produit_id;
 
@@ -4350,10 +5122,24 @@ class UserController extends Controller
         $totalVente = array_sum(array_column($lignes, 'vente'));
         $totalCout  = array_sum(array_column($lignes, 'cout'));
 
+        // LES LOCATIONS, COMPTÉES POUR ÊTRE ANNONCÉES.
+        //
+        // On ne les additionne pas ici — elles ont leur propre écran — mais on
+        // dit combien ont été mises de côté : un chiffre qui disparaît sans un
+        // mot est un chiffre qu'on croit perdu.
+        $locations = Enlevement::whereNotNull('fournisseur_validation')
+            ->where('statut', Help::$STATUT_ACTIF)
+            ->whereHas('livraison', fn ($q) => $q->where('provenance', Help::$LOCATION))
+            ->when($du, fn ($q) => $q->where('fournisseur_validation', '>=', $du . ' 00:00:00'))
+            ->when($au, fn ($q) => $q->where('fournisseur_validation', '<=', $au . ' 23:59:59'))
+            ->count();
+
         return view('admin.CAdetaille', [
             'stats'            => $stats,
             'du'               => $du,
             'au'               => $au,
+            'sansPrix'         => $sansPrix,
+            'bonsDeLocation'   => $locations,
             'totalQteDemandee' => array_sum(array_column($lignes, 'qteDemandee')),
             'totalQteServie'   => array_sum(array_column($lignes, 'qteServie')),
             'totalDispo'       => array_sum(array_column($lignes, 'dispo')),
@@ -4744,7 +5530,8 @@ class UserController extends Controller
             'prenom'   => 'required|string|max:100',
             'contact'  => 'required|string|max:15',
             'email'    => 'required|email|unique:users,email',
-            'login'    => 'required|string|max:100|unique:users,login',
+            // 'login' retiré (09/09/2026) : généré automatiquement, comme le mot
+            // de passe, et envoyé au nouvel administrateur par courriel.
             // Facultative : elle peut être décidée plus tard depuis la liste des
             // administrateurs. Tant qu'elle manque, il ne peut pas encaisser.
             'agence_id'=> 'nullable|integer|exists:agence,id',
@@ -4752,7 +5539,6 @@ class UserController extends Controller
             'photo'    => 'nullable|file|mimes:jpg,jpeg,png|max:2048',
         ], [
             'email.unique'    => 'Cet email est déjà utilisé.',
-            'login.unique'    => 'Cet identifiant est déjà utilisé.',
             'contact.required'=> 'Le numéro de téléphone est obligatoire.',
             'photo.mimes'     => 'La photo doit être au format JPG, JPEG ou PNG.',
             'photo.max'       => 'La photo ne doit pas dépasser 2 Mo.',
@@ -4761,7 +5547,20 @@ class UserController extends Controller
         // type_user_id = 2 (Admin) — utilise la constante au lieu d'une requête
         // qui pouvait renvoyer NULL si le libellé ne correspondait pas exactement.
         $typeUserId = Help::$USER_ADMIN;
-        $nom_prenom = $request->display_name;
+        $nom_prenom = trim((string) ($request->display_name ?: ($request->prenom . ' ' . $request->nom)));
+
+        // L'IDENTIFIANT DE CONNEXION EST GÉNÉRÉ (09/09/2026), comme pour un
+        // fournisseur ou un livreur : le prénom et le nom, en minuscules sans
+        // accent ni espace, et un suffixe tant que l'identifiant existe déjà
+        // (comptes supprimés compris : un identifiant ne se réattribue pas).
+        // Str::slug plutôt que le service « sluggable » du modèle, dont la
+        // configuration tronque au premier mot (« ange » pour « Ange Émilie Kouassi »).
+        $login = \Illuminate\Support\Str::slug(mb_substr($nom_prenom, 0, 60)) ?: 'admin';
+        $base  = $login;
+        $n     = 1;
+        while (User::withTrashed()->where('login', $login)->exists()) {
+            $login = $base . '-' . (++$n);
+        }
 
         // Construire le numéro complet SANS redoubler l'indicatif : si l'utilisateur
         // a déjà saisi le numéro au format international (+225...) ou avec l'indicatif
@@ -4781,7 +5580,7 @@ class UserController extends Controller
         $nomImage = null;
         if ($request->hasFile('photo')) {
             $ext = $request->file('photo')->getClientOriginalExtension();
-            $nomImage = 'image_admin_' . preg_replace('/[^A-Za-z0-9_-]/', '_', $request->login)
+            $nomImage = 'image_admin_' . preg_replace('/[^A-Za-z0-9_-]/', '_', $login)
                       . '_' . date('YmdHis') . '.' . $ext;
             $request->file('photo')->move(public_path('storage/imageUser'), $nomImage);
         }
@@ -4794,7 +5593,7 @@ class UserController extends Controller
             'nom_prenoms'  => $nom_prenom,
             'email'        => $request->email,
             'contact'      => $contact,
-            'login'        => $request->login,
+            'login'        => $login,
             // Important : utiliser Help::HashPassword (avec préfixe/suffixe sel)
             // car validLogin() vérifie via Help::HashVerifier qui attend ce format.
             // Hash::make() seul produirait un hash que HashVerifier refuserait.
@@ -4825,7 +5624,7 @@ class UserController extends Controller
         }
 
         return redirect()->route('show.registerAdmin')
-            ->with('ok', "Compte administrateur créé avec succès. Les identifiants de connexion de {$nom_prenom} lui ont été envoyés par email.");
+            ->with('ok', "Compte administrateur créé avec succès. L'identifiant « {$user->login} » et le mot de passe de {$nom_prenom} lui ont été envoyés par email.");
     }
 
     public function home (){
@@ -4836,10 +5635,17 @@ class UserController extends Controller
         $endOfPreviousMonth = $now->copy()->subMonth()->endOfMonth();
         $today = $now->copy()->startOfDay();
 
+        // DIX LIGNES NE SE CHERCHENT PAS, ET NE SE PAGINENT PAS.
+        //
+        // Le tableau porte desormais une recherche et une pagination : sur dix
+        // lignes deja toutes visibles, l'une comme l'autre ne servaient a rien.
+        // On en charge cinquante — assez pour que chercher ait un sens, assez
+        // peu pour que le tableau de bord reste leger. « Voir tout » mene
+        // toujours a la liste complete.
         $data['commandes'] = Commande::with(['client:id,nom,prenom'])
             ->where('statut', Help::$STATUT_ACTIF)
             ->orderByDesc('created_at')
-            ->limit(10)
+            ->limit(50)
             ->get();
         $data['totalCommandes'] = Commande::where('statut', Help::$STATUT_ACTIF)->count();
 
@@ -4892,15 +5698,10 @@ class UserController extends Controller
         $produits = \App\Models\Produit::where('statut', \Help::$STATUT_ACTIF)->orderBy('nom')->get();
         $prixPersonnalises = \App\Models\PrixPersonnalise::with(['client', 'produit'])->whereHas('client')->get();
 
-        // Prix fournisseur le plus bas par produit (stock actif, prix > 0) : sert de
-        // prix de référence affiché, cohérent avec le catalogue (et non prix_moyen).
-        $prixFournisseur = \App\Models\StockProduit::where('statut', \Help::$STATUT_ACTIF)
-            ->where('prix', '>', 0)
-            ->whereNull('deleted_at')
-            ->groupBy('produit_id')
-            ->selectRaw('produit_id, MIN(prix) as mn')
-            ->pluck('mn', 'produit_id')
-            ->toArray();
+        // Prix de référence = le prix de vente officiel, celui du catalogue.
+        // On y lisait le fournisseur le moins cher, sans marge : l'écran
+        // comparait donc les tarifs négociés à un prix qui n'existait nulle part.
+        $prixFournisseur = \App\Models\Produit::prixVenteParProduit();
 
         $clientsAvecPrix = $prixPersonnalises->groupBy('client_id')->map(function ($items) {
             $client = $items->first()->client;
@@ -4916,7 +5717,27 @@ class UserController extends Controller
             ];
         });
 
-        return view('layout.parametre',[
+        // ONGLET « AUDIT » — RÉSERVÉ AU SUPERADMINISTRATEUR ET À L'ADMINISTRATEUR.
+        //
+        // Le journal occupait un menu principal ; il est devenu un onglet de
+        // cet écran le 29/08/2026. Sa lecture reste conditionnée au profil,
+        // comme l'était le middleware de l'ancienne route : « Paramètre »
+        // s'ouvre aussi au gestionnaire, qui n'a jamais eu accès au journal.
+        //
+        // La requête n'est lancée QUE pour ces profils : elle rapporte
+        // jusqu'à 300 lignes, et rien ne justifie de la faire peser sur les
+        // autres, qui ne verront jamais l'onglet.
+        $peutVoirAudit = in_array(
+            (int) Auth::user()->type_user_id,
+            [(int) \Help::$USER_SA, (int) \Help::$USER_ADMIN],
+            true
+        );
+
+        $journal = $peutVoirAudit
+            ? \App\Models\Audit::journal(request()->only(['user_id', 'action', 'du', 'au', 'recherche']))
+            : null;
+
+        return view('layout.parametre', array_merge([
             'config' => $config,
             'user' => Auth::user(),
             'gestionnaires' => User::where('type_user_id', 3)->orWhere('type_user_id', 2)->orderByDesc('created_at')->get(),
@@ -4924,16 +5745,30 @@ class UserController extends Controller
             'produits' => $produits,
             'clientsAvecPrix' => $clientsAvecPrix,
             'prixFournisseur' => $prixFournisseur,
-        ]);
+            'peutVoirAudit' => $peutVoirAudit,
+            // L'onglet à rouvrir au chargement (« ?onglet=audit »), pour que
+            // filtrer le journal ne ramène pas sur « Configuration générale ».
+            'ongletDemande' => request('onglet'),
+        ], $journal ?? []));
     }
 
     public function parametreUpdate(Request $request){
         // dd($request->all());
         $config = Configuration::first();
 
+        // Une case décochée n'est pas transmise : sans ce repli, désactiver la
+        // TVA sur le transport serait impossible — le champ absent laisserait
+        // l'ancienne valeur en place.
+        $request->merge(['tva_transport' => $request->boolean('tva_transport') ? 1 : 0]);
+
         $config->update($request->only([
             'tva',
+            'tva_transport',
+            // Taux de l'AIRSI (10/09/2026).
+            'taux_airsi',
             'montant_point',
+            'montant_pour_un_point',
+            'montant_minimum_a_payer',
             'email_tresorier',
             'email_directeur_marketing',
             'gestionnaire1_id',
@@ -4960,6 +5795,28 @@ class UserController extends Controller
             'delai_paiement_commission',
             // Contenu légal paramétrable (termes & conditions)
             'termes_conditions',
+            // MENTIONS LEGALES DE L'ENTREPRISE.
+            //
+            // Ces colonnes existaient en base et les factures les LISAIENT
+            // depuis toujours, mais aucun ecran ne permettait de les saisir :
+            // les lignes s'imprimaient vides chez le client, et les valeurs
+            // enregistrees s'etaient decalees d'une case sans que personne ne
+            // puisse les corriger.
+            //
+            // Le NCC est le plus sensible : FneService en prefixe le numero de
+            // chaque facture normalisee, et il est encode dans le QR code que
+            // l'administration scanne.
+            'raison_sociale',
+            'ncc',
+            'regime_imposition',
+            'centre_impots',
+            'rccm',
+            'ref_bancaires',
+            'adresse_siege',
+            'telephone',
+            'email_entreprise',
+            'capital_social',
+            'cnps',
         ]));
 
         return redirect()->route('show.parametre')->with('success','Les changements ont été appliqué avec succès ');

@@ -328,23 +328,24 @@
                                 <span class="dct-section-numero">2</span> Pièces justificatives
                             </div>
                             <p class="dct-section-aide">
+                                Les trois premières pièces sont <strong>obligatoires</strong>.
                                 Formats acceptés : PDF, JPG, PNG, DOC ou DOCX — 5 Mo maximum par fichier.
                             </p>
 
                             <div class="dct-fichiers">
                                 <div class="dct-champ">
-                                    <label class="dct-label" for="doc_rccm">RCCM / Registre de commerce</label>
-                                    <input type="file" id="doc_rccm" name="documents[rccm]" class="dct-input"
+                                    <label class="dct-label" for="doc_rccm">RCCM / Registre de commerce <span class="req">*</span></label>
+                                    <input type="file" id="doc_rccm" name="documents[rccm]" class="dct-input" required
                                            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
                                 </div>
                                 <div class="dct-champ">
-                                    <label class="dct-label" for="doc_bilan">Attestation de revenus / bilan</label>
-                                    <input type="file" id="doc_bilan" name="documents[bilan]" class="dct-input"
+                                    <label class="dct-label" for="doc_bilan">Attestation de revenus / bilan <span class="req">*</span></label>
+                                    <input type="file" id="doc_bilan" name="documents[bilan]" class="dct-input" required
                                            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
                                 </div>
                                 <div class="dct-champ">
-                                    <label class="dct-label" for="doc_piece">Pièce d'identité du dirigeant</label>
-                                    <input type="file" id="doc_piece" name="documents[piece_id]" class="dct-input"
+                                    <label class="dct-label" for="doc_piece">Pièce d'identité du dirigeant <span class="req">*</span></label>
+                                    <input type="file" id="doc_piece" name="documents[piece_id]" class="dct-input" required
                                            accept=".pdf,.jpg,.jpeg,.png">
                                 </div>
                                 <div class="dct-champ">

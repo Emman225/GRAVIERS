@@ -32,6 +32,40 @@ class Livraison extends Model
     public const A_ACCEPTER = 2;
     public const REFUSEE    = 3;
 
+    /**
+     * L'ÉTAT TEL QU'IL DOIT ÊTRE LU PAR UN HUMAIN.
+     *
+     * Au refus, seule la colonne `accepte` passe à 3 : `etat_livraison` reste
+     * sur sa dernière valeur, « EN ATTENTE » le plus souvent. Les écrans
+     * affichaient donc une course refusée comme si elle attendait encore son
+     * livreur — l'exact contraire de la réalité, et le client se voyait proposer
+     * un code sans effet.
+     *
+     * POURQUOI NE PAS ÉCRIRE « REFUSÉE » DANS LA COLONNE ? Parce que
+     * `etat_livraison` est un ENUM('EN ATTENTE','EN TRAITEMENT','LIVREE','EN
+     * COURS LIVRAISON') : une valeur absente de la liste y serait SILENCIEUSEMENT
+     * tronquée. L'élargir demanderait une migration, et surtout obligerait à
+     * revoir chaque écran qui filtre sur cet état — une valeur inconnue ferait
+     * disparaître des lignes sans prévenir.
+     *
+     * L'information existe déjà et ne peut pas se contredire : `accepte` fait
+     * foi sur le refus, `etat_livraison` sur l'avancement. On les lit ensemble.
+     */
+    public function etatLisible(): string
+    {
+        if ((int) $this->accepte === self::REFUSEE) {
+            return 'REFUSÉE PAR LE LIVREUR';
+        }
+
+        return (string) ($this->etat_livraison ?? '—');
+    }
+
+    /** Cette course a-t-elle été refusée ? */
+    public function estRefusee(): bool
+    {
+        return (int) $this->accepte === self::REFUSEE;
+    }
+
 
     /**
      * Retourne le nom de la colonne facture_id dans enlevement
@@ -53,6 +87,8 @@ class Livraison extends Model
         'commande_id',
         'adresse_livraison_id',
         'date_livraison',
+        // Le moment où la course est passée « LIVREE » (lot 84, 15/09/2026).
+        'date_livree',
         'statut',
         'detail_commande_id',
         'qte',
@@ -73,6 +109,8 @@ class Livraison extends Model
         'distance_km',
         'forfait_base',
         'frais_km',
+        // Grille du livreur, ou repli sur son mode de tarification.
+        'source_tarif',
         'statut_paiement_livreur',
         'date_paiement_livreur',
     ];
@@ -91,6 +129,24 @@ class Livraison extends Model
      * Total dû au livreur pour cette livraison.
      * Si forfait_base/frais_km sont saisis, on les somme. Sinon on retombe sur cout_livraison.
      */
+    /** La grille du livreur a-t-elle fixé cette rémunération ? */
+    public function tarifVientDeLaGrille(): bool
+    {
+        return $this->source_tarif === 'grille';
+    }
+
+    /** Comment la rémunération de cette course a été fixée, en clair. */
+    public function libelleSourceTarif(): string
+    {
+        return match ($this->source_tarif) {
+            'grille' => 'Grille',
+            'tarif'  => 'Tarif livreur',
+            // Les courses antérieures à la mise en place : on ne sait pas, et on
+            // le dit plutôt que de deviner.
+            default  => 'Non renseigné',
+        };
+    }
+
     public function totalDuLivreur(): float
     {
         $forfait = (float) ($this->forfait_base ?? 0);
@@ -376,6 +432,32 @@ class Livraison extends Model
     public function enlevement()
     {
         return $this->hasOne(Enlevement::class, 'livraison_id');
+    }
+
+    /**
+     * CE QUI A RÉELLEMENT ÉTÉ REMIS SUR CETTE COURSE.
+     *
+     * `qte` est la quantité DEMANDÉE : celle que le gestionnaire a inscrite au
+     * traitement, et qui figure sur le bon d'enlèvement. Le fournisseur peut en
+     * servir moins — c'est le cas courant d'un enlèvement partiel, et le
+     * reliquat reste dû.
+     *
+     * Créditer le client de la quantité demandée clôturait la commande alors
+     * qu'il manquait de la marchandise : constaté sur la commande 627042, où
+     * 5 t servies sur 15 faisaient passer la commande en TERMINEE.
+     *
+     * Sans bon — une location, une demande de livraison — il n'y a pas de
+     * fournisseur, et la quantité de la course fait foi.
+     */
+    public function quantiteRemise(): float
+    {
+        $bon = $this->enlevement;
+
+        if (!$bon) {
+            return (float) $this->qte;
+        }
+
+        return $bon->qte_servi !== null ? (float) $bon->qte_servi : (float) $bon->qte;
     }
 
     public function produit(){

@@ -63,7 +63,8 @@
                                         </small>
                                     @endif
                                 </td>
-                                <td class="text-center"> {{ $enlevement->code_enleve}} </td>
+                                {{-- N° public du bon ; le code d'enlèvement n'est montré qu'au client et au fournisseur (14/18). --}}
+                                <td class="text-center"> {{ $enlevement->id }} </td>
                                 <td class="text-center">
                                     <p>{{$enlevement->complement_adresse}}</p>
                                 </td>

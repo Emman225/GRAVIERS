@@ -6,7 +6,7 @@
 </head>
 <body style="font-family: Arial, sans-serif; color:#333; max-width:600px; margin:0 auto;">
     <div style="background:#1c57a3; color:#fff; padding:20px; text-align:center;">
-        <img src="https://graviers.fneconnect.net/frontend/assets/imgs/logo/dalakoun-blanc.png" alt="DALAKOUN"
+        <img src="{{ asset('frontend/assets/imgs/logo/dalakoun-blanc.png') }}" alt="DALAKOUN"
             style="max-width:180px; width:100%; height:auto; margin-bottom:10px;" />
         <h2 style="margin:0;">Demande approuvée</h2>
     </div>

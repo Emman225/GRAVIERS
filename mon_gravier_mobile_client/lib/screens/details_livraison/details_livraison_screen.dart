@@ -2,14 +2,15 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:mon_gravier_com/globale.dart';
+import 'package:mon_gravier_com/components/fiche_details.dart';
 import 'package:http/http.dart' as http;
 import 'package:mon_gravier_com/helper/constants.dart';
 import 'package:mon_gravier_com/models/details_livraison.dart';
 import 'package:mon_gravier_com/models/retour_livraison.dart';
 
+import '../../components/bouton_retour.dart';
 import '../../constants.dart';
 
 class DetailsLivraisonScreen extends StatefulWidget {
@@ -99,29 +100,9 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
       appBar: AppBar(
         title: const Text(
           "Détails livraison",
-          style: TextStyle(color: Colors.black),
         ),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       body: ListView(children: [
         SizedBox(
@@ -131,7 +112,7 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: const Color(0xFFF5F6F9),
+                color: kSurfaceMutedColor,
                 borderRadius: BorderRadius.circular(15),
               ),
               child: Image.network(ligneCommande.image ??
@@ -146,30 +127,30 @@ class _DetailsLivraisonScreenState extends State<DetailsLivraisonScreen> {
             children: [
               Text(
                 ligneCommande.nom.toString(),
-                style: const TextStyle(color: Colors.black, fontSize: 16),
+                style: const TextStyle(
+                    color: kTextColor, fontSize: 17, fontWeight: FontWeight.w700),
                 maxLines: 2,
               ),
-              const SizedBox(height: 8),
-              Text.rich(
-                TextSpan(
-                  text:
-                      "${formaterMontant(ligneCommande.prix?.toDouble() ?? 0)} / ${ligneCommande.unite}",
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w600, color: kPrimaryColor),
+              const SizedBox(height: 12),
+              // Une fiche : libellés en clair, valeurs en gras (08/09/2026).
+              FicheDetails(lignes: [
+                // Demande de livraison (13/09/2026) : la marchandise appartient au
+                // client et n'a pas de prix — la fiche affichait « 0 F / Sac ».
+                // Comme sur le site, pas de prix unitaire pour une course de transport.
+                if (livraison.provenance != 'LIVRAISON')
+                  InfoFiche('Prix unitaire',
+                      "${formaterMontant(ligneCommande.prix?.toDouble() ?? 0)} / ${ligneCommande.unite ?? ''}",
+                      couleur: kPrimaryColor),
+                InfoFiche(
+                  (ligneCommande.etatLivraison == LIVRAISON_LIVREE ||
+                          ligneCommande.etatLocation == LOCATION_TERMINE)
+                      ? 'Quantité livrée'
+                      : 'Quantité à livrer',
+                  "$qteLivree ${ligneCommande.unite ?? ''}",
+                  couleur: kSuccessColor,
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(ligneCommande.description.toString(),
-                  style: black14RegularTextStyle),
-              const SizedBox(height: 20),
-              Text(
-                  (ligneCommande.etatLivraison == LIVRAISON_LIVREE || ligneCommande.etatLocation == LOCATION_TERMINE)
-                      ? "Qte livrée: $qteLivree"
-                      : "Qte à livrer: $qteLivree",
-                  style: green18MediumTextStyle),
-              // Text(
-              //     "Qte total: ${ligneCommande.qte} ${ligneCommande.unite}",
-              //     style: red18MediumTextStyle,),
+                InfoFiche('Description', ligneCommande.description?.toString() ?? ''),
+              ]),
             ],
           ),
         ),

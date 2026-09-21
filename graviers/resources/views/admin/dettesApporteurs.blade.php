@@ -44,7 +44,7 @@
                                 <td class="text-end text-danger">
                                     <strong>{{ Help::formatNombre($apporteur->solde, true) }}</strong>
                                 </td>
-                                <td class="text-center">
+                                <td class="text-nowrap text-center">
                                     <button type="button" class="btn btn-sm btn-outline-secondary btn-historique-apporteur"
                                             data-apporteur-id="{{ $apporteur->id }}">
                                         <i class="material-icons md-history align-middle"></i>
@@ -62,7 +62,7 @@
                                             <tbody>
                                                 @foreach ($apporteur->commissions as $c)
                                                     <tr>
-                                                        <td>{{ \Carbon\Carbon::parse($c->created_at)->format('d/m/Y') }}</td>
+                                                        <td>{{ \Help::dateHeure($c->created_at) }}</td>
                                                         <td>{{ $c->type_affaire ?? '-' }}</td>
                                                         <td class="text-end">{{ Help::formatNombre($c->montant, true) }}</td>
                                                     </tr>
@@ -71,7 +71,7 @@
                                         </table>
                                     </div>
                                 </td>
-                                <td class="text-center">
+                                <td class="text-nowrap text-center">
                                     {{-- Le règlement se fait au guichet, qui porte la double
                                          validation, les reçus et l'imputation sur les pièces.
                                          Le popup local écrivait par un autre chemin. --}}

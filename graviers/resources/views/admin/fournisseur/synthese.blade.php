@@ -219,8 +219,11 @@
                     @if ($dettesParFourn->isEmpty())
                         <p class="text-center text-muted my-4">Aucune dette par fournisseur pour le moment.</p>
                     @else
+                        <x-export-buttons table-id="listeSyntheseFournisseurs"
+                                          filename="synthese-fournisseurs"
+                                          title="Synthèse fournisseurs" />
                         <div class="table-responsive">
-                            <table class="table dash-table align-middle mb-0">
+                            <table id="listeSyntheseFournisseurs" class="table dash-table align-middle mb-0">
                                 <thead>
                                     <tr>
                                         <th>Fournisseur</th>

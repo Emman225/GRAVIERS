@@ -15,6 +15,7 @@ class BlClient extends Model
         "numero",
         "client_id",
         "commande_id",
+        "location_id",
         "fichier",
         "montant",
         "statut",

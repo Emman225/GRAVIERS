@@ -68,7 +68,13 @@ class SellerController extends Controller
             ->take(5)
             ->values();
 
-        $dernieresLivraisons = $bons->take(10);
+        // DIX LIGNES NE SE CHERCHENT PAS, ET NE SE PAGINENT PAS.
+        //
+        // Le tableau porte desormais une recherche et une pagination : sur dix
+        // lignes deja toutes visibles, l'une comme l'autre ne servaient a rien.
+        // Meme choix que le tableau de bord de l'administrateur. « Voir tout »
+        // mene toujours a la liste complete des bons.
+        $dernieresLivraisons = $bons->take(50);
 
         return view('fournisseur.dashboard', [
             'fournisseur'         => $fournisseur,
@@ -159,6 +165,59 @@ class SellerController extends Controller
             'enlevements' => $enlevement,
             'fournisseur' => $fournisseur,
         ]);
+    }
+
+    /**
+     * PLANNING LIVRAISON (lot 83, 15/09/2026) : les bons prévus, par jour et par
+     * produit, 31 jours à partir de la date choisie (aujourd'hui par défaut).
+     * Transposition de la feuille PLANNING du classeur du client.
+     */
+    public function planningLivraison(Request $request)
+    {
+        $fournisseur = Fournisseur::where('user_id', Auth::id())->firstOrFail();
+        $debut = $this->dateDeDebut($request, now());
+        $grille = \App\Services\PlanningFournisseur::grille(
+            $fournisseur, \App\Services\PlanningFournisseur::bonsPrevus($fournisseur), $debut, false
+        );
+
+        return view('fournisseur.planningLivraison', ['fournisseur' => $fournisseur, 'grille' => $grille]);
+    }
+
+    /** HISTORIQUE (lot 83) : la même grille pour les bons enlevés ; 30 jours en arrière par défaut. */
+    public function historiqueEnlevements(Request $request)
+    {
+        $fournisseur = Fournisseur::where('user_id', Auth::id())->firstOrFail();
+        $debut = $this->dateDeDebut($request, now()->subDays(\App\Services\PlanningFournisseur::JOURS - 1));
+        $grille = \App\Services\PlanningFournisseur::grille(
+            $fournisseur, \App\Services\PlanningFournisseur::bonsEnleves($fournisseur), $debut, true
+        );
+
+        return view('fournisseur.historiqueEnlevements', ['fournisseur' => $fournisseur, 'grille' => $grille]);
+    }
+
+    /** RÉCAP PRODUITS (lot 83) : par produit, total, enlevé, prévu, reste, % et nombre de bons. */
+    public function recapProduits()
+    {
+        $fournisseur = Fournisseur::where('user_id', Auth::id())->firstOrFail();
+
+        return view('fournisseur.recapProduits', [
+            'fournisseur' => $fournisseur,
+            'lignes'      => \App\Services\PlanningFournisseur::recap($fournisseur),
+        ]);
+    }
+
+    /** La date « debut » de l'adresse, ou la valeur par défaut si elle est absente ou fausse. */
+    private function dateDeDebut(Request $request, \Carbon\Carbon $defaut): \Carbon\Carbon
+    {
+        $saisie = trim((string) $request->query('debut', ''));
+        if ($saisie === '') {
+            return $defaut->startOfDay();
+        }
+        try {
+            return \Carbon\Carbon::parse($saisie)->startOfDay();
+        } catch (\Throwable $e) {
+            return $defaut->startOfDay();
+        }
     }
 
     public function refuse()
@@ -255,6 +314,47 @@ class SellerController extends Controller
     }
 
 
+    /**
+     * CRÉDITE LE FOURNISSEUR POUR CE QU'IL A RÉELLEMENT SERVI.
+     *
+     * Extrait de bonValidation() le 28/08/2026, pour que la VENTE et la
+     * LOCATION appliquent la même règle : deux copies auraient fini par
+     * diverger, et le solde plafonne les demandes de paiement du fournisseur.
+     *
+     * Le solde était crédité TTC pour tout le monde. Or le client paie trois
+     * choses qui n'ont pas le même destinataire : le produit revient au
+     * fournisseur, la TVA à l'État, le transport à l'entreprise. Le fournisseur
+     * non assujetti ne touche donc que le coût du produit — le créditer TTC
+     * l'autorisait à réclamer 18 % de plus que son dû.
+     *
+     * Le prix retenu est celui INSCRIT SUR LE BON, et non le prix catalogue :
+     * c'est le tarif réellement convenu. Pour une location, il porte déjà le
+     * nombre de jours. Repli sur le stock pour les anciens bons sans prix.
+     */
+    private function crediterFournisseur(Fournisseur $fournisseur, Enlevement $bon, float $qteServi): void
+    {
+        $duStock = StockProduit::where('produit_id', $bon->produit_id)
+            ->where('fournisseur_id', $bon->fournisseur_id)
+            ->first();
+
+        $prixUnitaire = (float) ($bon->prix_fournisseur ?? 0) > 0
+            ? (float) $bon->prix_fournisseur
+            : (float) ($duStock->prix ?? 0);
+
+        // Même taux et même arrondi que le modèle, pour que le solde et la
+        // dette affichée ne divergent jamais d'un franc.
+        $tauxTva   = (float) (\App\Models\Configuration::first()?->tva ?? 18);
+        $montantHt = $qteServi * $prixUnitaire;
+
+        $montantCredite = $fournisseur->assujetti_tva
+            ? round($montantHt + ($montantHt * $tauxTva / 100))
+            : round($montantHt);
+
+        $fournisseur->update([
+            'solde' => (float) $fournisseur->solde + $montantCredite,
+        ]);
+    }
+
     public function bonValidation(Request $request, $code)
     {
         $this->verificationStock();
@@ -292,9 +392,72 @@ class SellerController extends Controller
             return back()->with('error', 'La quantité servie (' . $request->qteServi . ') dépasse celle du bon (' . $bon->qte . ').');
         }
 
+        if ($bon->livraison == null) {
+            return back()->with('error', "Ce bon n'est plus rattaché à une livraison valide. Contactez le gestionnaire.");
+        }
+
+        // ================= LES BONS DE LOCATION ONT LEUR PROPRE CHEMIN =================
+        //
+        // Constaté le 28/08/2026 : le fournisseur validant le bon d'une location
+        // recevait « Ce bon n'est plus rattaché à une livraison valide ».
+        //
+        // Toute la suite de cette méthode est écrite pour les VENTES : elle lit
+        // `livraison->detailCommande`, puis joint `commande` et
+        // `detail_commande`. Or, pour une course de LOCATION,
+        // `livraison.detail_commande_id` porte l'identifiant d'un
+        // `detail_location` — la convention est posée à la création de la course.
+        // La relation ne trouvait donc rien, et le contrôle renvoyait le message
+        // ci-dessus.
+        //
+        // ⚠ ET LE DANGER ÉTAIT PIRE QUE LE REFUS. Si un `detail_commande`
+        //   portait par hasard le même identifiant, la relation aurait rendu la
+        //   ligne d'UNE AUTRE COMMANDE : le contrôle serait passé, et la
+        //   validation aurait écrit l'état de livraison et la quantité servie
+        //   sur la commande d'un autre client. Le refus nous a protégés par
+        //   chance, pas par construction.
+        //
+        // La location suit donc son propre chemin, court et explicite.
+        if ($bon->livraison->provenance === Help::$LOCATION) {
+            $ligneLocation = \App\Models\DetailLocation::find($bon->livraison->detail_commande_id);
+
+            if ($ligneLocation == null) {
+                return back()->with('error', "Ce bon n'est plus rattaché à une location valide. Contactez le gestionnaire.");
+            }
+
+            // 2 = récupération par le client : la validation du bon vaut remise
+            // du matériel. Sinon, un livreur l'achemine et clôturera lui-même.
+            $retraitParClient = $bon->livraison->livre_par == 2;
+
+            $bon->livraison->update([
+                'etat_livraison' => $retraitParClient ? Help::$LIVRAISON_LIVREE : Help::$LIVRAISON_EN_COURS,
+            ]);
+
+            $bon->update([
+                'fournisseur_validation' => date('Y-m-d H:i:s'),
+                'qte_servi'              => $request->qteServi,
+            ]);
+            // Matériel retiré par le client lui-même : la course est livrée, le
+            // bon de livraison lui part (lot 84, 15/09/2026).
+            if ($retraitParClient) {
+                \App\Services\BonDeLivraisonClient::envoyerApresLivraison($bon->livraison);
+            }
+
+            // LE STOCK N'EST PAS TOUCHÉ ICI, et c'est voulu : contrairement à la
+            // vente, la validation d'une location NE DÉCRÉMENTE PAS le stock du
+            // fournisseur. Restituer la part non servie, comme le fait la vente
+            // plus bas, gonflerait donc le stock d'une quantité jamais retirée.
+            $this->crediterFournisseur($fournisseur, $bon, (float) $request->qteServi);
+
+            // L'état de la LOCATION ne se décide pas ici : elle passe EN COURS à
+            // sa validation par le gestionnaire, et TERMINE au retour du
+            // matériel. Y toucher court-circuiterait « Retour du matériel ».
+            return redirect()->route('sellers.bon.detail', $code);
+        }
+        // =============================================================================
+
         // Bon dont la livraison a disparu : la requête ci-dessous concaténait « null »
         // puis lisait [0] d'un résultat vide -> erreur 500 au moment de valider le bon.
-        if ($bon->livraison == null || $bon->livraison->detailCommande == null) {
+        if ($bon->livraison->detailCommande == null) {
             return back()->with('error', "Ce bon n'est plus rattaché à une livraison valide. Contactez le gestionnaire.");
         }
 
@@ -334,40 +497,17 @@ class SellerController extends Controller
 
         $bon->update([
             'fournisseur_validation' => date('Y-m-d H:i:s'),
-            'qte_servi' => $request->qteServi
+            'qte_servi' => $request->qteServi,
         ]);
+        // Marchandise retirée par le client lui-même : la course est livrée, le
+        // bon de livraison lui part (lot 84, 15/09/2026).
+        if ($retraitParClient) {
+            \App\Services\BonDeLivraisonClient::envoyerApresLivraison($bon->livraison);
+        }
 
 
 
         $produit = StockProduit::where('produit_id', $bon->produit_id)->where('fournisseur_id', $bon->fournisseur_id)->first();
-
-        // CRÉDIT au PRIX NÉGOCIÉ : le gestionnaire saisit un prix_fournisseur au
-        // traitement (stocké sur l'enlèvement) ; c'est LUI qui fait foi. L'ancien
-        // calcul utilisait le prix catalogue du stock : si les deux différaient,
-        // le fournisseur était crédité d'un montant différent du convenu.
-        // Repli sur le prix du stock si le bon n'a pas de prix (anciens flux).
-        $prixUnitaire = (float) ($bon->prix_fournisseur ?? 0) > 0
-            ? (float) $bon->prix_fournisseur
-            : (float) ($produit->prix ?? 0);
-
-        // LE SOLDE SUIT CE QUI SERA RÉELLEMENT VERSÉ (Enlevement::montantDu).
-        //
-        // Il était crédité TTC pour tout le monde. Or le client paie trois choses
-        // qui n'ont pas le même destinataire : le produit revient au fournisseur,
-        // la TVA à l'État, le transport à l'entreprise. Le fournisseur non
-        // assujetti ne touche donc que le coût du produit — et comme ce solde
-        // plafonne ses propres demandes de paiement, le créditer TTC l'autorisait
-        // à réclamer 18 % de plus que son dû.
-        //
-        // Seul le fournisseur DÉCLARÉ facture la TVA : elle s'ajoute pour lui seul.
-        // Même taux et même arrondi que le modèle, pour que solde et dette
-        // affichée ne divergent jamais d'un franc.
-        $tauxTva      = (float) (\App\Models\Configuration::first()?->tva ?? 18);
-        $montantHt    = (float) $request->qteServi * $prixUnitaire;
-        $montantCredite = $fournisseur->assujetti_tva
-            ? round($montantHt + ($montantHt * $tauxTva / 100))
-            : round($montantHt);
-        $nouveauSolde = (float) $fournisseur->solde + $montantCredite;
 
         // STOCK : NE PLUS re-décrémenter ici. La quantité du bon a DÉJÀ été retirée
         // du stock au traitement par le gestionnaire (traitementItem /
@@ -381,9 +521,7 @@ class SellerController extends Controller
             ]);
         }
 
-        $fournisseur->update([
-            'solde' => $nouveauSolde
-        ]);
+        $this->crediterFournisseur($fournisseur, $bon, (float) $request->qteServi);
 
 
         if ($bon->livraison->livre_par == 2) { // 2 = récupération par le client
@@ -476,8 +614,11 @@ class SellerController extends Controller
                 'montant'       => (float) $d->montant,
                 // 1 = acceptée, 2 = refusée, NULL/0 = en attente.
                 'statut'        => (int) ($d->paye ?? 0),
+                // Point 20 : validée → « À payer » → « Effectuée ».
+                'etat_reglement' => $d->etat_reglement,
+                'libelle_etat'   => $d->libelleReglement(),
                 'mode'          => $d->modePaiement?->libelle,
-                'date_paiement' => (int) $d->paye === 1 ? $d->updated_at : null,
+                'date_paiement' => (int) $d->paye === 1 ? ($d->date_effectuee ?? $d->updated_at) : null,
                 'origine'       => 'Vous',
                 'detail'        => 'Demande de paiement',
             ])
@@ -487,6 +628,9 @@ class SellerController extends Controller
                     'date'          => $p->date_paiement ?? $p->created_at,
                     'montant'       => (float) $p->montant,
                     'statut'        => 1, // un règlement enregistré est un versement fait
+                    // Point 20 (09/09/2026) : « À payer » puis « Effectuée », comme une demande.
+                    'etat_reglement' => $p->etat_reglement,
+                    'libelle_etat'   => $p->libelleReglement(),
                     'mode'          => $p->modePaiement?->libelle,
                     'date_paiement' => $p->date_paiement ?? $p->created_at,
                     'origine'       => "L'entreprise",

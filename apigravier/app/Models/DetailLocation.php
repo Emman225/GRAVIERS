@@ -55,7 +55,23 @@ class DetailLocation extends Model
         else return new DetailLocation();
     }
 
-    public static function liste($produit_id = null, $location_id = null, $client_id = null)
+    /**
+     * UNE LOCATION ANNULEE GARDE SES LIGNES A L'ECRAN.
+     *
+     * L'annulation depuis le mobile passe chaque ligne a `statut = 2`. Filtree
+     * sur `statut = 1`, cette liste revenait alors VIDE : l'ecran de detail du
+     * client s'affichait entierement blanc, et son bon de location s'imprimait
+     * sans un seul article. Le client ne pouvait plus savoir ce qu'il avait
+     * loue.
+     *
+     * `$inclureInactives` sert donc aux ecrans de LECTURE. Les appelants qui
+     * AGISSENT sur la location — paiement, annulation — gardent le filtre : ils
+     * ne doivent toucher que les lignes vivantes.
+     *
+     * Une ligne RETIREE de la location reste exclue dans les deux cas : elle
+     * est effacee en douceur (`deleted_at`), et Eloquent l'ecarte de lui-meme.
+     */
+    public static function liste($produit_id = null, $location_id = null, $client_id = null, $inclureInactives = false)
     {
         $url = Help::$URL_BASE_FICHIER;
         return DetailLocation::distinct()
@@ -95,8 +111,19 @@ class DetailLocation extends Model
             ->when($client_id, function ($query) use ($client_id) {
                 $query->where('location.client_id', $client_id);
             })
-            ->where('detail_location.statut', Help::$STATUT_ACTIF)
-            ->where('produit.type_affaire', Help::$LOCATION)
+            ->when(!$inclureInactives, function ($query) {
+                $query->where('detail_location.statut', Help::$STATUT_ACTIF);
+            })
+            // LA LIGNE D'UNE LOCATION APPARTIENT À CETTE LOCATION, QUEL QUE
+            // SOIT LE TYPE DE SON PRODUIT.
+            //
+            // Filtre symétrique de celui retiré dans DetailCommande, et porteur du
+            // même risque : une ligne dont le produit n'est pas typé LOCATION était
+            // silencieusement écartée, et l'écran de détail s'ouvrait blanc sans
+            // que rien ne dise qu'une ligne manquait.
+            //
+            // `detail_location` ne contient que des lignes de location : ce filtre
+            // n'écartait donc jamais rien de légitime.
             ->get();
     }
 

@@ -16,19 +16,19 @@
 @section('type_document', isset($commande) ? 'Facture de vente' : 'Proforma')
 
 @if(isset($commande) && $commande->modePaiement)
-    @section('mode_paiement', ucwords($commande->modePaiement?->libelle))
+    @section('mode_paiement', \Help::phrase($commande->modePaiement?->libelle))
 @elseif(isset($mode) && $mode)
-    @section('mode_paiement', ucwords($mode->libelle))
+    @section('mode_paiement', \Help::phrase($mode->libelle))
 @endif
 
 @if($fne_adresse)
-    @section('adresse_livraison', ucwords($fne_adresse))
+    @section('adresse_livraison', \Help::phrase($fne_adresse))
 @endif
 
 @section('articles')
     @if(isset($commande))
         <div style="margin-bottom:10px;">
-            <p style="font-size:9pt;"><strong>Date de commande :</strong> {{ ucfirst($commande->created_at->dayName) . ' ' . $commande->created_at->isoFormat('LL') }} à {{ Carbon::parse($commande->created_at)->format('H:i') }}</p>
+            <p style="font-size:9pt;"><strong>Date de commande :</strong> {{ ucfirst($commande->created_at->dayName) . ' ' . $commande->created_at->isoFormat('LL') }} à {{ Carbon::parse($commande->created_at)->format('H:i:s') }}</p>
             <p style="font-size:9pt;"><strong>Numéro de commande :</strong> {{ $commande->numero }}</p>
         </div>
     @endif
@@ -59,7 +59,7 @@
                     @endphp
                     <tr>
                         <td class="col-ref">{{ str_pad($index, 2, '0', STR_PAD_LEFT) }}</td>
-                        <td class="col-designation">{{ ucwords($detail->produit?->nom) }}</td>
+                        <td class="col-designation">{{ \Help::phrase($detail->produit?->nom) }}</td>
                         <td class="col-pu">{{ number_format($pu, 0, '', ' ') }}</td>
                         <td class="col-qte">{{ $detail->qte }}</td>
                         <td class="col-unite">{{ $detail->produit?->uniteProduit->abreviation ?? 'U' }}</td>
@@ -78,7 +78,7 @@
                     @endphp
                     <tr>
                         <td class="col-ref">{{ str_pad($index, 2, '0', STR_PAD_LEFT) }}</td>
-                        <td class="col-designation">{{ ucwords($produit->model->nom) }}</td>
+                        <td class="col-designation">{{ \Help::phrase($produit->model->nom) }}</td>
                         <td class="col-pu">{{ number_format($pu, 0, '', ' ') }}</td>
                         <td class="col-qte">{{ $produit->qty }}</td>
                         <td class="col-unite">{{ $produit->model->uniteProduit->abreviation ?? 'U' }}</td>
@@ -97,7 +97,7 @@
                     @endphp
                     <tr>
                         <td class="col-ref">{{ str_pad($index, 2, '0', STR_PAD_LEFT) }}</td>
-                        <td class="col-designation">{{ ucwords($detail->produit?->nom) }}</td>
+                        <td class="col-designation">{{ \Help::phrase($detail->produit?->nom) }}</td>
                         <td class="col-pu">{{ number_format($pu, 0, '', ' ') }}</td>
                         <td class="col-qte">{{ $detail->qte }}</td>
                         <td class="col-unite">{{ $detail->produit?->uniteProduit->abreviation ?? 'U' }}</td>
@@ -115,13 +115,16 @@
     @php
         if(isset($commande)) {
             $totalTVA = $commande->TvaCommande?->montant ?? 0;
+            $airsi = (float) ($commande->airsi ?? 0);
             $totalAPayer = $commande->montantAPayer();
         } elseif(session('type') == 'devis' && isset($devis)) {
             $totalTVA = $devis->tva;
-            $totalAPayer = $devis->montant + $devis->tva;
+            $airsi = (float) ($devis->airsi ?? 0);
+            $totalAPayer = $devis->montant + $devis->tva + $airsi;
         } else {
             $totalTVA = ($totalHT * ($config->tva ?? 0)) / 100;
-            $totalAPayer = $totalHT + $totalTVA;
+            $airsi = \Help::airsiPour(Auth::user()?->client, $totalHT + $totalTVA);
+            $totalAPayer = $totalHT + $totalTVA + $airsi;
         }
     @endphp
 
@@ -129,7 +132,7 @@
         <tr><td class="label">TOTAL HT</td><td class="valeur">{{ number_format($totalHT, 0, '', ' ') }}</td></tr>
         <tr><td class="label">TVA ({{ $config->tva ?? 0 }}%)</td><td class="valeur">{{ number_format($totalTVA, 0, '', ' ') }}</td></tr>
         <tr><td class="label">TOTAL TTC</td><td class="valeur">{{ number_format($totalHT + $totalTVA, 0, '', ' ') }}</td></tr>
-        <tr><td class="label">AUTRES TAXES</td><td class="valeur">0</td></tr>
+        @include('document.partials._ligne_airsi', ['airsi' => $airsi ?? 0])
         <tr><td class="label" style="font-size:10pt;">TOTAL A PAYER</td><td class="valeur" style="font-size:10pt; font-weight:bold;">{{ number_format($totalAPayer, 0, '', ' ') }}</td></tr>
     </table></td></tr></table>
 @endsection

@@ -2,17 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:mon_gravier_com_livreur/constants.dart';
 
-import 'package:mon_gravier_com_livreur/helper/constants.dart';
 import 'package:mon_gravier_com_livreur/models/retour_livraison.dart';
 import 'package:mon_gravier_com_livreur/screens/details_livraison/details_livraison_screen.dart';
 import 'package:searchable_listview/searchable_listview.dart';
 
+import '../../../components/carte_operation.dart';
+import '../../../components/etat_vide.dart';
 import '../../../globale.dart';
 
 class LivraisonListeScreen extends StatelessWidget {
-  LivraisonListeScreen({super.key, required this.livraisons, this.onRetour});
+  const LivraisonListeScreen(
+      {super.key, required this.livraisons, this.onRetour, this.onRafraichir});
 
-  List<UneLivraison> livraisons;
+  final List<UneLivraison> livraisons;
 
   /// Appelé au retour de l'écran de détail. Sans ce rechargement, la liste
   /// conservait l'objet AVANT acceptation : en revenant en arrière et en
@@ -20,206 +22,189 @@ class LivraisonListeScreen extends StatelessWidget {
   /// une seconde acceptation partait.
   final VoidCallback? onRetour;
 
+  /// GLISSER DU HAUT VERS LE BAS POUR ACTUALISER.
+  ///
+  /// La liste ne se rafraîchissait qu'en tapant l'icône de la barre du haut :
+  /// le geste que tout le monde essaie d'abord ne faisait rien.
+  final Future<void> Function()? onRafraichir;
+
+  /// L'état d'une livraison, en une couleur et un mot.
+  ({IconData icone, String libelle, Color couleur, Color fond}) _etat(
+      UneLivraison c) {
+    switch (c.etatLivraison) {
+      case LIVRAISON_LIVREE:
+        return (
+          icone: Icons.task_alt_outlined,
+          libelle: "Terminée",
+          couleur: kSuccessColor,
+          fond: kSuccessSoftColor,
+        );
+      case LIVRAISON_EN_ATTENTE:
+        return (
+          icone: Icons.pending_actions_outlined,
+          libelle: "En attente",
+          couleur: kWarningColor,
+          fond: kWarningSoftColor,
+        );
+      default:
+        return (
+          icone: Icons.local_shipping_outlined,
+          libelle: "En cours",
+          couleur: kPrimaryColor,
+          fond: kPrimarySoftColor,
+        );
+    }
+  }
+
+  /// LE TITRE DE LA CARTE.
+  ///
+  /// Le bon d'enlèvement est ce que le livreur présente au fournisseur : c'est
+  /// lui qu'il cherche des yeux quand il en a un. À défaut, le numéro de la
+  /// livraison.
+  String _titre(UneLivraison c) {
+    // Le bon n'est montré qu'une fois la course ACCEPTÉE : avant, le livreur
+    // n'a rien à présenter au fournisseur, et le code ne doit pas circuler.
+    final be = (c.code_enlevement ?? '').trim();
+    if (c.accepte == 1 && be.isNotEmpty && be != 'null') return "Bon d'enlèvement $be";
+
+    // JAMAIS LE NUMÉRO DE LA COURSE (11/09/2026) : c'est le code de livraison,
+    // que le CLIENT remet au livreur pour clore la course. Affiché ici, une
+    // demande de livraison — qui n'a pas de bon d'enlèvement — le livrait au
+    // livreur avant même que le client ne le donne. Le titre dit l'affaire.
+    switch ((c.provenance ?? '').toString().toUpperCase()) {
+      case 'LIVRAISON':
+        return "Demande de livraison";
+      case 'LOCATION':
+        return "Location";
+      case 'COMMANDE':
+        return "Vente";
+    }
+    return "Livraison";
+  }
+
+  /// Ce qui ne tient pas dans le titre, mais qu'on ne peut pas perdre.
+  List<String> _precisions(UneLivraison c) {
+    final lignes = <String>[];
+
+    void ajouter(String etiquette, Object? valeur) {
+      final v = (valeur ?? '').toString().trim();
+      if (v.isEmpty || v == 'null') return;
+      lignes.add("$etiquette : $v");
+    }
+
+    if (c.etatLivraison != LIVRAISON_EN_ATTENTE) {
+      ajouter("Fournisseur", c.nom_fournisseur);
+      final client = (c.nomClient ?? '').toString().trim();
+      final contact = (c.contactClient ?? '').toString().trim();
+      if (client.isNotEmpty && client != 'null') {
+        ajouter("Client",
+            contact.isEmpty || contact == 'null' ? client : "$client - $contact");
+      }
+    }
+
+    ajouter("Type", c.typeLivraison);
+
+    if (c.etatLivraison != LIVRAISON_LIVREE) {
+      ajouter("Lieu", c.lieuAffiche);
+    } else {
+      ajouter("Livrée le", formaterDate(c.updatedAt.toString()));
+    }
+
+    return lignes;
+  }
+
+  Widget _uneCarte(UneLivraison c) {
+    final etat = _etat(c);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: kSpaceMd),
+      child: CarteOperation(
+        icone: etat.icone,
+        numero: _titre(c),
+        montant: formaterMontant(c.coutLivraison?.toDouble() ?? 0),
+        mention: "Livraison du ${formaterDate(c.dateLivraison.toString())}",
+        lignes: _precisions(c),
+        statut: etat.libelle,
+        couleurStatut: etat.couleur,
+        fondStatut: etat.fond,
+        // L'ACTION EST PORTÉE ICI, ET NULLE PART AILLEURS. Un `InkWell` muni
+        // d'une action absorbe le geste : un `GestureDetector` posé autour de
+        // la carte ne serait jamais appelé. Voir carte_operation.dart.
+        onTap: () async {
+          // detailCommandeId est ABSENT pour une livraison issue d'une demande
+          // de livraison (le ternaire prévoit d'ailleurs ce cas, niveau 2) :
+          // le « ! » levait une exception avalée par le framework et la carte
+          // ne réagissait tout simplement pas au toucher.
+          await Get.toNamed(DetailsLivraisonScreen.routeName,
+              arguments: [c, ((c.detailCommandeId ?? 0) > 0) ? 1 : 2, c.qte]);
+          // Rechargement au retour : l'état de la livraison a pu changer.
+          onRetour?.call();
+        },
+      ),
+    );
+  }
+
+  static const _vide = EtatVide(
+    compact: true,
+    icone: Icons.local_shipping_outlined,
+    titre: "Aucune livraison ici",
+    message: "Les livraisons de cet état apparaîtront dans cette liste.",
+  );
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: heightOfScreen(context),
-        decoration: const BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage("assets/images/bg.jpg"),
-            fit: BoxFit.cover,
-            opacity: 0.1,
-          ),
+    // LISTE VIDE : LE GESTE DOIT MARCHER QUAND MÊME.
+    //
+    // `SearchableList` remplace toute la liste par l'état vide, et son
+    // indicateur de rafraîchissement avec : sur un onglet sans livraison — le
+    // cas le plus fréquent en début de journée — le glisser n'aurait rien
+    // donné. On rend alors soi-même un contenu défilable.
+    if (livraisons.isEmpty) {
+      return RefreshIndicator(
+        color: kPrimaryColor,
+        onRefresh: onRafraichir ?? () async {},
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics()),
+          padding: const EdgeInsets.all(kSpaceLg),
+          children: const [SizedBox(height: kSpaceXxl), _vide],
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(15.0),
-          child: SearchableList<UneLivraison>(
-            searchFieldEnabled: true,
-            shrinkWrap: true,
-            autoFocusOnSearch: false,
-            sortWidget: const Icon(Icons.sort),
-            sortPredicate: (a, b) {
-              String mtna = a.dateLivraison ?? '';
-              String mtnb = b.dateLivraison ?? '';
-              return mtna.compareTo(mtnb);
-            },
-            physics: const BouncingScrollPhysics(),
-            builder: (livraisons, index, c) {
-              final bool estTerminee = c.etatLivraison == LIVRAISON_LIVREE;
-              return GestureDetector(
-              onTap: () async {
-                // detailCommandeId est ABSENT pour une livraison issue d'une demande
-                // de livraison (le ternaire prévoit d'ailleurs ce cas, niveau 2) :
-                // le « ! » levait une exception avalée par le framework et la carte
-                // ne réagissait tout simplement pas au toucher.
-                await Get.toNamed(DetailsLivraisonScreen.routeName,
-                    arguments: [c, ((c.detailCommandeId ?? 0) > 0) ? 1 : 2, c.qte]);
-                // Rechargement au retour : l'état de la livraison a pu changer.
-                onRetour?.call();
-              },
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Container(
-                  height: c.etatLivraison == LIVRAISON_EN_ATTENTE ? 150 : 240,
-                  decoration: BoxDecoration(
-                    color: estTerminee ? Colors.green[50] : Colors.grey[200],
-                    borderRadius: BorderRadius.circular(10),
-                    border: estTerminee
-                        ? Border.all(color: Colors.green.shade400, width: 1.5)
-                        : null,
-                  ),
-                  child: Stack(
-                    children: [
-                      Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 15),
-                    child: Row(
-                      mainAxisAlignment: mainSpaceBet,
-                      children: [
-                        Flexible(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              if(c.etatLivraison == LIVRAISON_LIVREE) ...[
-                                Text('N°Livraison: ${c.numero}',
-                                  style: const TextStyle(
-                                    color: kPrimaryColor,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                              if(c.etatLivraison != LIVRAISON_EN_ATTENTE) ...[
-                                if (('${c.code_enlevement ?? ''}').trim().isNotEmpty)
-                                  Text('N°BE: ${c.code_enlevement}',
-                                    style: const TextStyle(
-                                      color: Colors.red,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                if (('${c.nom_fournisseur ?? ''}').trim().isNotEmpty)
-                                  Text('Fournisseur: ${c.nom_fournisseur}',
-                                    style: black14BoldTextStyle,
-                                  ),
-                              ],
-                              Text(
-                                "Cout de livraison: ${formaterMontant(c.coutLivraison?.toDouble() ?? 0)}",
-                                style: const TextStyle(
-                                  color: Colors.blue,
-                                ),
-                              ),
-                              if(c.etatLivraison != LIVRAISON_EN_ATTENTE) ...[
-                                Text(
-                                  'Client: ${c.nomClient} - ${c.contactClient}',
-                                  style: const TextStyle(
-                                    color: Colors.green,
-                                  ),
-                                ),
-                              ],
-                              if (('${c.typeLivraison ?? ''}').trim().isNotEmpty)
-                                Text(
-                                  'Type: ${c.typeLivraison}',
-                                  style: const TextStyle(
-                                    color: kPrimaryColor,
-                                  ),
-                                ),
-                              if(c.etatLivraison != LIVRAISON_LIVREE) ...[
-                                Text(
-                                  'Lieu: ${c.adresse}',
-                                  style: const TextStyle(
-                                    color: Colors.black,
-                                  ),
-                                ),
-                              ],
-                              Text(
-                                'Date livraison: ${formaterDate(c.dateLivraison.toString())}',
-                                style: const TextStyle(
-                                  color: Colors.black,
-                                ),
-                              ),
-                              if(c.etatLivraison == LIVRAISON_LIVREE) ...[
-                                Text('Livraison eff.: ${formaterDate(c.updatedAt.toString())}',),
-                              ],
-                            ],
-                          ),
-                        ),
-                        const Icon(Icons.arrow_forward_ios),
-                      ],
-                    ),
-                  ),
-                      if (estTerminee)
-                        Positioned(
-                          top: 8,
-                          right: 8,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: Colors.green,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.green.withOpacity(0.3),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.check_circle, color: Colors.white, size: 12),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Terminé',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-            },
-            emptyWidget: const Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.error,
-                  color: Colors.red,
-                ),
-                Text('Aucune donnée'),
-              ],
-            ),
-            initialList: livraisons,
-            filter: (p0) {
-              return livraisons
-                  .where((c) => (c.code_enlevement.toString().toUpperCase().contains(p0.trim().toUpperCase()) ||
-                      c.adresse.toString().toUpperCase().contains(p0.trim().toUpperCase()) ||
-                      c.nom_fournisseur.toString().toUpperCase().contains(p0.trim().toUpperCase()) ||
-                      c.typeLivraison.toString().toUpperCase().contains(p0.trim().toUpperCase()) ||
-                      c.coutLivraison.toString().toUpperCase().contains(p0.trim().toUpperCase())))
-                  .toList();
-            },
-            inputDecoration: InputDecoration(
-              labelText: "Recherchez...",
-              fillColor: Colors.white,
-              focusedBorder: OutlineInputBorder(
-                borderSide: const BorderSide(
-                  color: kPrimaryColor,
-                  width: 1.0,
-                ),
-                borderRadius: BorderRadius.circular(10.0),
-              ),
-            ),
-          ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(kSpaceLg),
+      child: SearchableList<UneLivraison>(
+        searchFieldEnabled: true,
+        shrinkWrap: true,
+        autoFocusOnSearch: false,
+        sortWidget: const Icon(Icons.sort),
+        sortPredicate: (a, b) {
+          String mtna = a.dateLivraison ?? '';
+          String mtnb = b.dateLivraison ?? '';
+          return mtna.compareTo(mtnb);
+        },
+        // `AlwaysScrollable` : sans elle, une liste plus courte que l'écran ne
+        // défile pas, et le glisser n'atteint jamais l'indicateur.
+        physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics()),
+        onRefresh: onRafraichir,
+        builder: (livraisons, index, c) => _uneCarte(c),
+        emptyWidget: _vide,
+        initialList: livraisons,
+        filter: (p0) {
+          return livraisons
+              .where((c) => (c.code_enlevement.toString().toUpperCase().contains(p0.trim().toUpperCase()) ||
+                  c.adresse.toString().toUpperCase().contains(p0.trim().toUpperCase()) ||
+                  c.nom_fournisseur.toString().toUpperCase().contains(p0.trim().toUpperCase()) ||
+                  c.typeLivraison.toString().toUpperCase().contains(p0.trim().toUpperCase()) ||
+                  c.coutLivraison.toString().toUpperCase().contains(p0.trim().toUpperCase())))
+              .toList();
+        },
+        inputDecoration: const InputDecoration(
+          hintText: "Rechercher...",
+          floatingLabelBehavior: FloatingLabelBehavior.never,
+          prefixIcon: Icon(Icons.search, size: 20),
         ),
       ),
     );

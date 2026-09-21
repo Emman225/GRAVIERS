@@ -224,8 +224,20 @@ class ModelsStructureTest extends TestCase
 
         // On essaie le premier fillable ; si ça échoue à cause d'un cast date
         // nécessitant DB::connection(), on essaie les suivants.
+        //
+        // Les champs PORTANT UN CAST sont écartés d'office : un cast en float,
+        // en booléen ou en tableau transforme la valeur — c'est son rôle — et
+        // comparer la sortie à la chaîne d'entrée n'aurait aucun sens. Le test
+        // vérifie que l'affectation de masse fonctionne, pas qu'aucun champ
+        // n'est converti.
+        $casts = method_exists($instance, 'getCasts') ? $instance->getCasts() : [];
+
         $lastError = null;
         foreach ($fillable as $field) {
+            if (array_key_exists($field, $casts)) {
+                continue;
+            }
+
             try {
                 $instance->fill([$field => 'test_value']);
                 $value = $instance->getAttribute($field);

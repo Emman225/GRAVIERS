@@ -3,12 +3,12 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:mon_gravier_com/screens/choix_adresse/choix_adresse_screen.dart';
 import 'package:http/http.dart' as http;
 import 'package:mon_gravier_com/screens/resume_commande/resume_commande_screen.dart';
 
+import '../../../constants.dart';
 import '../../../globale.dart';
 import '../../../models/ConfigModel.dart';
 import '../../../models/adresse_de_livraison.dart';
@@ -36,9 +36,20 @@ class _CheckoutCardState extends State<CheckoutCard> {
     }
     total = getTotalAmount();
     super.initState();
+    // Le total est relu chaque seconde : c'est le mécanisme d'origine, et le
+    // remplacer supposerait de toucher à la gestion d'état du panier. Mais il
+    // appelait `setState` à CHAQUE battement, que le total ait changé ou non —
+    // la barre de commande se reconstruisait donc soixante fois par minute, en
+    // permanence. On ne redessine plus que sur un vrai changement.
     timer = Timer.periodic(const Duration(seconds: 1), (Timer t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      final nouveau = getTotalAmount();
+      if (nouveau == total) return;
       setState(() {
-        total = getTotalAmount();
+        total = nouveau;
       });
     });
   }
@@ -52,52 +63,54 @@ class _CheckoutCardState extends State<CheckoutCard> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        vertical: 16,
-        horizontal: 20,
-      ),
-      // height: 174,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(30),
-          topRight: Radius.circular(30),
-        ),
-        boxShadow: [
-          BoxShadow(
-            offset: const Offset(0, -15),
-            blurRadius: 20,
-            color: const Color(0xFFDADADA).withOpacity(0.15),
-          )
-        ],
+      decoration: const BoxDecoration(
+        color: kSurfaceColor,
+        border: Border(top: BorderSide(color: kBorderColor)),
       ),
       child: SafeArea(
+        top: false,
+        minimum:
+            const EdgeInsets.fromLTRB(kSpaceXl, kSpaceMd, kSpaceXl, kSpaceMd),
         child: Row(
           children: [
+            // « Tot.: 28 813 F » tenait sur une seule ligne, dans la taille du
+            // corps de texte : le montant que le client s'apprête à engager
+            // avait exactement le même poids visuel que le mot qui le
+            // précédait.
             Expanded(
-              child: Text.rich(
-                TextSpan(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text("Total à payer", style: kLegendeStyle),
+                  const SizedBox(height: 2),
+                  Text(
+                    formaterMontant(total),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: kMontantFortStyle.copyWith(fontSize: 20),
+                  ),
                   // getTotalAmount() déduit DÉJÀ la remise : l'ancien
                   // « total - coutReduction » la retirait une seconde fois et
                   // affichait un total inférieur à celui réellement facturé.
-                  // Le prix barré doit lui montrer le montant AVANT remise.
-                  text: "Tot.: ${formaterMontant(total)}",
-                  children: [
-                    if (coutReduction > 0) ...[
-                      TextSpan(
-                        text: "\n${formaterMontant(total + coutReduction)}",
-                        style: const TextStyle(
-                          fontSize: 16,
-                          color: Colors.red,
-                          decoration: TextDecoration.lineThrough,
-                        ),
+                  // Le prix barré montre le montant AVANT remise.
+                  if (coutReduction > 0)
+                    Text(
+                      formaterMontant(total + coutReduction),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: kTextMutedColor,
+                        decoration: TextDecoration.lineThrough,
+                        decorationColor: kTextMutedColor,
+                        fontFeatures: [FontFeature.tabularFigures()],
                       ),
-                    ]
-                  ],
-                ),
+                    ),
+                ],
               ),
             ),
-            Expanded(
+            const SizedBox(width: kSpaceLg),
+            SizedBox(
+              width: 150,
               child: ElevatedButton(
                 onPressed: () async {
                   switch (widget.niveau) {
@@ -230,7 +243,7 @@ class _CheckoutCardState extends State<CheckoutCard> {
                 //     : (widget.niveau == 2 && user.clientATerme == true)
                 //         ? "Valider commande "
                 //         : "Paiement"),
-                child: Text(widget.niveau == 1 ? "Suivant" : "Resumé"),
+                child: Text(widget.niveau == 1 ? "Continuer" : "Résumé"),
               ),
             ),
           ],
@@ -253,21 +266,18 @@ class _CheckoutCardState extends State<CheckoutCard> {
   // _dateOp,
   // _vir,
 
-  /// Bon de commande : exigé d'une ENTREPRISE, et seulement pour une VENTE.
-  ///
-  /// Il était réclamé aussi pour une LOCATION, alors que ses deux champs ne
-  /// sont affichés que sur une vente (choix_adresse_screen). L'entreprise
-  /// louant du matériel se heurtait donc à « Veuillez charger le BC » sans
-  /// qu'aucun champ de ce nom n'existe à l'écran : sa location ne pouvait pas
-  /// aboutir. Le serveur, lui, ne lit aucun bon de commande pour une location.
+  /// Bon de commande : exigé d'une ENTREPRISE, pour une VENTE comme pour une
+  /// LOCATION (09/09/2026). Les deux champs sont affichés pour l'entreprise sur
+  /// l'écran d'adresse (choix_adresse_screen), et le serveur exige le numéro
+  /// sur les deux points d'entrée (enregistrer-commande, enregistrer-location).
   bool _validationBonDeCommande() {
-    final bool venteEntreprise = paniers.isNotEmpty &&
-        paniers.first.product.type_affaire == VENTE &&
-        user.code_parrain == ENTREPRISE;
-    if (!venteEntreprise) return true;
+    final bool entreprise = paniers.isNotEmpty && user.code_parrain == ENTREPRISE;
+    if (!entreprise) return true;
 
-    if (widget.data[5] == null) {
-      msgErr = "Veuillez sélectionner le N° du BC";
+    // Un champ vide passait : « null » n'était testé que sur l'absence, pas
+    // sur le vide (09/09/2026). Le serveur refuse aussi, celui-ci fait foi.
+    if (widget.data[5] == null || widget.data[5].toString().trim().isEmpty) {
+      msgErr = "Veuillez saisir le N° de bon de commande interne";
       return false;
     }
     if (widget.data[6] == null) {

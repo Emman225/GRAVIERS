@@ -28,7 +28,7 @@
             <div class="dash-welcome-actions d-none d-md-flex">
                 <div class="dash-time-pill">
                     <i class="material-icons md-access_time"></i>
-                    <span id="dashLiveClock">{{ now()->format('H:i') }}</span>
+                    <span id="dashLiveClock">{{ now()->format('H:i:s') }}</span>
                 </div>
             </div>
         </div>
@@ -198,7 +198,7 @@
                         </div>
                     </div>
                     <div class="dash-counter">
-                        <div class="dash-counter-icon dash-counter-icon-success"><i class="material-icons md-handshake"></i></div>
+                        <div class="dash-counter-icon dash-counter-icon-success"><i class="material-icons md-people"></i></div>
                         <div class="flex-grow-1">
                             <div class="dash-counter-label">Apporteurs d'affaires</div>
                             <div class="dash-counter-value">{{ $totalApporteurs }}</div>
@@ -246,7 +246,10 @@
                         Voir tout <i class="material-icons md-arrow_forward"></i>
                     </a>
                 </div>
-                <div class="card-body p-0">
+                <div class="card-body">
+                    <x-export-buttons table-id="lastOrdersTable"
+                                      filename="dernieres-commandes"
+                                      title="Dernières commandes" />
                     <div class="table-responsive">
                         <table class="table table-striped mb-0" id="lastOrdersTable">
                             <thead>
@@ -272,13 +275,13 @@
                                     <tr>
                                         <td><strong class="text-primary">{{ $commande->numero }}</strong></td>
                                         <td>{{ $commande->client?->display_name }}</td>
-                                        <td>{{ $commande->created_at?->format('d/m/Y') }}</td>
+                                        <td>{{ \Help::dateHeure($commande->created_at) }}</td>
                                         <td class="text-end fw-bold">{{ number_format($commande->montantAPayer(), 0, ',', ' ') }} FCFA</td>
                                         <td class="text-center">
                                             <span class="badge {{ $etatBadge }}">{{ $commande->etat_commande }}</span>
                                         </td>
-                                        <td class="text-center">
-                                            <a href="{{ route('orders.details', $commande->numero) }}" class="btn btn-sm btn-light">
+                                        <td class="text-nowrap text-center">
+                                            <a href="{{ route('orders.details', $commande->numero) }}" class="btn btn-sm btn-info" title="Voir le détail de la commande">
                                                 <i class="material-icons md-visibility"></i>
                                             </a>
                                         </td>
@@ -299,7 +302,36 @@
     </div>
 @endsection
 
+@section('cssParts')
+    <link rel="stylesheet" href="{{ asset('backend/plugins/DataTables/datatables.min.css') }}">
+@endsection
+
 @section('jsParts')
+    <script src="{{ asset('backend/plugins/DataTables/datatables.min.js') }}"></script>
+    <script type="text/javascript">
+        $(function () {
+            // RECHERCHE ET PAGINATION SUR LES DERNIÈRES COMMANDES.
+            //
+            // Même garde-fou que partout ailleurs : une liste vide dont la
+            // seule ligne porte un « colspan » fait lever « Requested unknown
+            // parameter », et le tableau reste alors brut.
+            var $table = $('#lastOrdersTable');
+
+            if ($table.find('tbody tr').length > 0 &&
+                $table.find('tbody tr td[colspan]').length === 0) {
+                $table.DataTable({
+                    columnDefs: [
+                        { targets: '_all', defaultContent: '-' },
+                        // La colonne d'action ne se trie pas et ne se cherche pas.
+                        { targets: -1, orderable: false, searchable: false },
+                    ],
+                    language: { url: '{{ asset('backend/plugins/DataTables/i18n/fr-FR.json') }}' },
+                    order: [],
+                    pageLength: 10,
+                });
+            }
+        });
+    </script>
     <script>
         // Horloge live dans le bandeau de bienvenue
         (function () {

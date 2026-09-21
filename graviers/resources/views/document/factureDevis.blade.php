@@ -28,6 +28,12 @@
         <tbody>
             @php
                 $totalHT = 0;
+                // Le transport est une ligne du tableau (09/09/2026), taxée quand
+                // le paramétrage l'avait décidé au moment du devis.
+                $coutLivraison = \Help::arrondiFranc((float) ($devis->cout_livraison ?? 0));
+                $tvaTransport  = \Help::arrondiFranc((float) ($devis->tva_transport ?? 0));
+                // Le numéro de bon de commande interne en colonne Réf, « 01 - N° » (13/09/2026).
+                $refBon = \Help::referenceBonDeCommande($devis->numero_bon_commande ?? null);
             @endphp
 
             @foreach ($devis->detailDevis as $index => $detail)
@@ -38,7 +44,7 @@
                         $totalHT += $montantLigne;
                     @endphp
                     <tr>
-                        <td class="col-ref">{{ str_pad($index + 1, 2, '0', STR_PAD_LEFT) }}</td>
+                        <td class="col-ref">{{ \Help::referenceLigne($index + 1, $refBon) }}</td>
                         <td class="col-designation">{{ $detail->produit?->nom }}</td>
                         <td class="col-pu">{{ number_format($prixUnitaire, 0, '', ' ') }}</td>
                         <td class="col-qte">{{ $detail->qte }}</td>
@@ -49,23 +55,35 @@
                     </tr>
                 @endif
             @endforeach
+
+            @include('document.partials._ligne_transport', ['adresse' => ($devis->adresse_livraison_id && $devis->adresseLivraison) ? $devis->adresseLivraison->affichage : null])
         </tbody>
     </table>
 @endsection
 
 @section('totaux')
     @php
-        $montantTVA = $devis->tva ?? 0;
-        $coutLivraison = $devis->cout_livraison ?? 0;
-        $coutReduction = $devis->cout_reduction ?? 0;
-        $totalTTC = $totalHT + $montantTVA;
-        $totalAPayer = ($devis->montant + $montantTVA + $coutLivraison) - $coutReduction;
+        // LE DEVIS S'ADDITIONNE, TRANSPORT COMPRIS (points 5 et 7, 07/09/2026).
+        //
+        // Le transport figurait sous le TOTAL TTC, qui ne le comptait pas :
+        // le client lisait un TTC puis un « total à payer » plus grand, sans
+        // ligne pour expliquer l'écart. Il entre désormais dans le TTC, avec
+        // sa TVA quand elle s'applique, et le total à payer EST le TTC moins
+        // la remise — la même présentation que la facture.
+        $montantTVA    = \Help::arrondiFranc((float) ($devis->tva ?? 0));
+        // $coutLivraison et $tvaTransport sont établis en tête du tableau.
+        $coutReduction = \Help::arrondiFranc((float) ($devis->cout_reduction ?? 0));
+        $totalTTC      = max(0, $totalHT - $coutReduction) + $montantTVA + $coutLivraison + $tvaTransport;
+        $airsi         = \Help::arrondiFranc((float) ($devis->airsi ?? 0));
+        $totalAPayer   = $totalTTC + $airsi;
     @endphp
 
     <table class="fne-totaux-outer"><tr><td class="fne-totaux-spacer"></td><td class="fne-totaux-content"><table class="fne-totaux">
+        {{-- TOTAL HT = la somme du tableau, transport compris ; TVA = celle des
+             articles plus celle du transport quand il est taxé (09/09/2026). --}}
         <tr>
             <td class="label">TOTAL HT</td>
-            <td class="valeur">{{ number_format($totalHT, 0, '', ' ') }}</td>
+            <td class="valeur">{{ number_format($totalHT + ($tvaTransport > 0 ? $coutLivraison : 0), 0, '', ' ') }}</td>
         </tr>
         @if($coutReduction > 0)
         <tr>
@@ -75,22 +93,20 @@
         @endif
         <tr>
             <td class="label">TVA ({{ $config->tva ?? 0 }}%)</td>
-            <td class="valeur">{{ number_format($montantTVA, 0, '', ' ') }}</td>
+            <td class="valeur">{{ number_format($montantTVA + $tvaTransport, 0, '', ' ') }}</td>
         </tr>
+        {{-- Transport NON taxé : présentation d'avant, sous les totaux. --}}
+        @if($coutLivraison > 0 && $tvaTransport <= 0)
         <tr>
-            <td class="label">TOTAL TTC</td>
-            <td class="valeur">{{ number_format($totalTTC, 0, '', ' ') }}</td>
-        </tr>
-        @if($coutLivraison > 0)
-        <tr>
-            <td class="label">Coût de livraison</td>
+            <td class="label">Transport (HT)</td>
             <td class="valeur">{{ number_format($coutLivraison, 0, '', ' ') }}</td>
         </tr>
         @endif
         <tr>
-            <td class="label">AUTRES TAXES</td>
-            <td class="valeur">0</td>
+            <td class="label">TOTAL TTC</td>
+            <td class="valeur">{{ number_format($totalTTC, 0, '', ' ') }}</td>
         </tr>
+        @include('document.partials._ligne_airsi', ['airsi' => $airsi ?? 0])
         <tr>
             <td class="label" style="font-size:10pt;">TOTAL A PAYER</td>
             <td class="valeur" style="font-size:10pt; font-weight:bold;">{{ number_format($totalAPayer, 0, '', ' ') }}</td>
@@ -110,21 +126,7 @@
             </tr>
         </thead>
         <tbody>
-            @if(($config->tva ?? 0) > 0)
-                <tr>
-                    <td>TVA {{ $config->tva }}% sur HT</td>
-                    <td class="text-right">{{ number_format($totalHT, 0, '', ' ') }}</td>
-                    <td class="text-center">{{ $config->tva }}%</td>
-                    <td class="text-right">{{ number_format($montantTVA, 0, '', ' ') }}</td>
-                </tr>
-            @else
-                <tr>
-                    <td>TVA exo.lég - Pas de TVA sur HT 00,00% - D</td>
-                    <td class="text-right">{{ number_format($totalHT, 0, '', ' ') }}</td>
-                    <td class="text-center">0%</td>
-                    <td class="text-right">0</td>
-                </tr>
-            @endif
+            @include('document.partials._resume_fiscal_ligne', ['baseArticles' => $totalHT, 'tvaArticles' => $montantTVA])
         </tbody>
     </table></td></tr></table>
 @endsection

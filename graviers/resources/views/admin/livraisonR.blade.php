@@ -19,6 +19,9 @@
         </div>
     </header>
     <div class="card-body">
+        <x-export-buttons table-id="reappro"
+                          filename="produits-a-reapprovisionner"
+                          title="Produits à réapprovisionner" />
         <div class="table-responsive">
             <table class="table table-sm table-striped align-middle" id="reappro">
                 <thead>
@@ -75,6 +78,9 @@
     </header>
     <!-- card-header end// -->
     <div class="card-body">
+        <x-export-buttons table-id="liste"
+                          filename="etat-de-livraison"
+                          title="État de livraison" />
         <div class="table-responsive">
 
             <table class="table table-striped" id="liste">
@@ -105,7 +111,8 @@
                                 </div>
                             </td>
                             <td class="text-center"><span>{{$enlevement->livraison?->detailCommande?->commande?->numero}}</span></td>
-                            <td class="text-center">{{$enlevement->code_enleve}}</td>
+                            {{-- N° public du bon ; le code d'enlèvement n'est montré qu'au client et au fournisseur (14/18). --}}
+                            <td class="text-center">{{ $enlevement->id }}</td>
                             <td class="text-center">
                                 {{$enlevement->livraison?->client?->display_name}}
                             </td>

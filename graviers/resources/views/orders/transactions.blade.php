@@ -25,8 +25,11 @@
                                     </div>
                                 </header>
                                 <!-- card-header end// -->
+                                <x-export-buttons table-id="listeTransactions"
+                                                  filename="liste-des-transactions"
+                                                  title="Liste des transactions" />
                                 <div class="table-responsive">
-                                    <table class="table table-striped">
+                                    <table id="listeTransactions" class="table table-striped">
                                         <thead>
                                             <tr>
                                                 <th>Transaction ID</th>

@@ -2,19 +2,18 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:mon_gravier_com/globale.dart';
 import 'package:mon_gravier_com/models/adresse_de_livraison.dart';
 import 'package:http/http.dart' as http;
-import 'package:mon_gravier_com/screens/cart/cart_screen.dart';
 import 'package:mon_gravier_com/screens/init_screen.dart';
 
+import '../../components/bouton_retour.dart';
+import '../../constants.dart';
 import '../../components/empty_user_widget.dart';
 import '../../helper/constants.dart';
 import '../../models/ConfigModel.dart';
 import '../../models/code_promo.dart';
-import '../cart/components/cart_card.dart';
 import '../commande_success/commande_success_screen.dart';
 import 'components/fne_preview_widget.dart';
 import '../../impression/fne_template.dart';
@@ -145,6 +144,18 @@ class _ResumeCommandeScreenState extends State<ResumeCommandeScreen> {
             coutLivraison =
                 double.tryParse(datas['data']['livraison'].toString()) ??
                     coutLivraison;
+            // TVA sur le transport (point 5), déjà comprise dans `total`.
+            montantTvaTransport = double.tryParse(
+                    datas['data']['montant_tva_transport']?.toString() ?? '0') ??
+                0;
+            // L'AIRSI du serveur (lot 97, 16/09/2026) : il porte aussi sur le
+            // transport, comme la DGI ; la ligne « autres taxes » le reprend
+            // pour que le récapitulatif s'additionne jusqu'au total serveur.
+            final airsiServeur = double.tryParse(
+                datas['data']['montant_airsi']?.toString() ?? '');
+            if (airsiServeur != null) {
+              montantAirsi = airsiServeur;
+            }
           });
         }
       }
@@ -167,41 +178,14 @@ class _ResumeCommandeScreenState extends State<ResumeCommandeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          "Votre Resumé",
-          style: TextStyle(color: Colors.black),
+          "Votre résumé",
         ),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       body: Container(
         width: double.infinity,
         height: heightOfScreen(context),
-        decoration: const BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage("assets/images/bg.jpg"),
-            fit: BoxFit.cover,
-            opacity: 0.1,
-          ),
-        ),
         child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 5),
             child: ConstrainedBox(
@@ -227,11 +211,17 @@ class _ResumeCommandeScreenState extends State<ResumeCommandeScreen> {
                         );
                         
                         List<FneArticle> articles = [];
+                        // Le numéro de bon interne en colonne Réf, « 01 - N° » (13/09/2026).
+                        final String? numeroBon = data[5]?.toString();
+                        // Transport TAXÉ : ligne du tableau ; NON taxé : présentation
+                        // d'avant, sous les totaux (décision du client, 09/09/2026,
+                        // la même que sur le site).
+                        final bool transportEnLigne = montantTvaTransport > 0 || (tvaTransport == 1 && tva > 0);
                         for (int i = 0; i < paniers.length; i++) {
                            final p = paniers[i];
                            double montant = p.product.prixEffectif.toDouble() * p.numOfItem * (p.nbreJours ?? 1);
                            articles.add(FneArticle(
-                              ref: (i + 1).toString().padLeft(2, '0'),
+                              ref: referenceLigne(numeroBon, i + 1),
                               designation: p.product.nom ?? '',
                               puHt: p.product.prixEffectif.toDouble(),
                               qte: p.numOfItem.toDouble() * (p.nbreJours ?? 1),
@@ -241,26 +231,29 @@ class _ResumeCommandeScreenState extends State<ResumeCommandeScreen> {
                               montantHt: montant,
                            ));
                         }
-                        if (coutLivraison > 0) {
+                        if (coutLivraison > 0 && transportEnLigne) {
                            articles.add(FneArticle(
                               ref: '',
                               designation: 'Coût de livraison (${addr.complementAdresse ?? ""})',
                               puHt: coutLivraison,
                               qte: 1,
                               unite: 'Forfait',
-                              taxes: '0',
+                              // Taxé seulement si le paramétrage l'a décidé (point 5).
+                              taxes: (montantTvaTransport > 0 || (tvaTransport == 1 && tva > 0)) ? 'TVA ($tva%)' : '0',
                               remise: 0,
                               montantHt: coutLivraison,
                            ));
                         }
                         
                         List<FneResumeFiscal> resumeFiscal = [];
+                        // Résumé fiscal : UNE catégorie, dont l'assiette compte le
+                        // transport lorsqu'il est taxé (09/09/2026, comme le site).
                         if (tva > 0) {
                           resumeFiscal.add(FneResumeFiscal(
                             categorie: 'TVA $tva% sur HT',
-                            sousTotal: montantHt,
+                            sousTotal: montantHt + (montantTvaTransport > 0 ? coutLivraison : 0),
                             taux: '$tva%',
-                            totalTaxes: montantTva,
+                            totalTaxes: montantTva + montantTvaTransport,
                           ));
                         } else {
                           resumeFiscal.add(FneResumeFiscal(
@@ -270,7 +263,6 @@ class _ResumeCommandeScreenState extends State<ResumeCommandeScreen> {
                             totalTaxes: 0,
                           ));
                         }
-                        
                         // Remise réellement appliquée (code promo ET points de
                         // fidélité) : total = HT + TVA - remise, cf. getTotalAmount().
                         // Calculée depuis les montants plutôt que depuis la globale
@@ -286,13 +278,16 @@ class _ResumeCommandeScreenState extends State<ResumeCommandeScreen> {
                           config: snapshot.data!,
                           client: clientFne,
                           articles: articles,
-                          totalHt: montantHt + coutLivraison,
+                          totalHt: montantHt + (transportEnLigne ? coutLivraison : 0),
                           totalTva: montantTva,
-                          totalTtc: montantHt + coutLivraison + montantTva,
-                          autresTaxes: 0,
+                          tvaTransport: montantTvaTransport,
+                          livraisonHorsTableau: transportEnLigne ? 0 : coutLivraison,
+                          totalTtc: montantHt + montantTva + (transportEnLigne ? coutLivraison + montantTvaTransport : 0),
+                          // AIRSI (10/09/2026) : la case « autres taxes ».
+                          autresTaxes: montantAirsi,
                           // Montant du serveur dès qu'il est connu : c'est celui
                           // qui sera réellement prélevé.
-                          totalAPayer: totalServeur ?? (total + coutLivraison),
+                          totalAPayer: totalServeur ?? (total + coutLivraison + montantTvaTransport),
                           remise: remiseAffichee,
                           resumeFiscal: resumeFiscal,
                           date: DateFormat('dd/MM/yyyy HH:mm:ss').format(DateTime.now()),
@@ -308,10 +303,15 @@ class _ResumeCommandeScreenState extends State<ResumeCommandeScreen> {
                     ]else ...[
                       Padding(
                         padding: const EdgeInsets.all(8.0),
+                        // VERT, à la demande : c'est le bouton qui engage
+                        // la commande, et le vert le distingue de toutes les
+                        // autres actions de l'application. C'est le seul
+                        // endroit où cette couleur sert d'action.
                         child: ElevatedButton(
-                          style: const ButtonStyle(
-                              backgroundColor:
-                              MaterialStatePropertyAll(greenColor)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: greenColor,
+                            foregroundColor: whiteColor,
+                          ),
                           onPressed: () => _validerCommande(),
                           // Le libellé suit le MODE choisi, plus le statut du client :
                           // un client à terme qui a choisi « En ligne » lisait
@@ -363,7 +363,7 @@ class _ResumeCommandeScreenState extends State<ResumeCommandeScreen> {
                     maxLength: 50,
                     maxLines: 2,
                     decoration: const InputDecoration(
-                      labelText: "Libellé",
+                      labelText: "Libellé *",
                       hintText: "Saisir le libellé ici...",
                     ),
                   ),
@@ -376,8 +376,8 @@ class _ResumeCommandeScreenState extends State<ResumeCommandeScreen> {
                     Get.back();
                   },
                   child: const Text(
-                    "Fermer",
-                    style: TextStyle(fontSize: 14, color: redColor),
+                    "Annuler",
+                    style: TextStyle(fontSize: 14, color: kTextSecondaryColor),
                   )),
               TextButton(
                   onPressed: () async {
@@ -386,7 +386,10 @@ class _ResumeCommandeScreenState extends State<ResumeCommandeScreen> {
                   },
                   child: const Text(
                     "Enregistrer",
-                    style: TextStyle(fontSize: 14, color: greenColor),
+                    style: TextStyle(
+                        fontSize: 14,
+                        color: kPrimaryColor,
+                        fontWeight: FontWeight.w700),
                   ))
             ],
           );
@@ -427,6 +430,8 @@ class _ResumeCommandeScreenState extends State<ResumeCommandeScreen> {
           "adresseLivraison": addr.id,
           "dateLivraison": data[3],
           "note": data[2],
+          // Le numéro de bon interne est figé sur le devis (09/09/2026).
+          "numero_bc": data[5],
           "service": paniers.first.product.type_affaire,
           "long": position?.longitude,
           "lat": position?.latitude,

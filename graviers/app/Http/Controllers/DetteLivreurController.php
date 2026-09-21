@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 class DetteLivreurController extends Controller
 {
     use DoubleValidationPaiement;
+    use \App\Traits\PreuveDeReglementPartenaire;
 
     /**
      * Liste des livraisons avec calcul du total dû livreur, du montant payé,
@@ -64,6 +65,11 @@ class DetteLivreurController extends Controller
                 'quantite_livree'  => $l->qte ? (rtrim(rtrim(number_format($l->qte, 2, ',', ' '), '0'), ',') . ' ' . ($produit?->unite ?? '')) : '-',
                 'forfait_base'     => $forfait,
                 'frais_km'         => $fraisKm,
+                // D'où vient la rémunération : la grille du livreur, ou le repli
+                // sur son mode de tarification. Enregistré au calcul, pas
+                // recalculé — une tranche ajoutée depuis ferait mentir l'historique.
+                'source_tarif'     => $l->libelleSourceTarif(),
+                'vient_grille'     => $l->tarifVientDeLaGrille(),
                 'total_du'         => $totalDu,
                 'montant_paye'     => $montantPaye,
                 'reste_a_payer'    => $reste,
@@ -180,6 +186,16 @@ class DetteLivreurController extends Controller
                     'notes'         => $p->notes,
                     'en_attente'    => $enAttente,
                     'peut_valider'  => $peutValider,
+                    // Point 20 (09/09/2026) : « À payer » après la 2e validation, preuve, « Effectuée ».
+                    // Le TROISIÈME administrateur : celui qui a finalisé, sinon celui qui a joint la preuve.
+                    'troisieme_par'    => \Help::compteAvecIdentifiant($p->agentEffectuee ?? $p->agentPreuve),
+                    'etat_reglement'   => $p->etat_reglement,
+                    'libelle_etat'     => $p->libelleReglement(),
+                    'a_preuve'         => !empty($p->preuve_paiement),
+                    'peut_joindre'     => $p->peutJoindrePreuve() && $p->troisiemeAdministrateur(Auth::user()),
+                    'peut_finaliser'   => $p->peutFinaliser() && $p->troisiemeAdministrateur(Auth::user()),
+                    // Sécurité : un TROISIÈME administrateur téléverse et finalise ; les validateurs voient pourquoi ils ne peuvent pas.
+                    'attend_troisieme' => ($p->peutJoindrePreuve() || $p->peutFinaliser()) && !$p->troisiemeAdministrateur(Auth::user()),
                     // Un reglement issu d'une demande n'a pas ete saisi ici :
                     // le dire evite de le prendre pour une double saisie.
                     'vient_demande' => !is_null($p->demande_paiement_id),
@@ -201,6 +217,8 @@ class DetteLivreurController extends Controller
                     'livreur_id'   => $l->livreur_id,
                     'livreur_nom'  => $l->livreur?->user?->nom_prenoms ?? '-',
                     'code_livreur' => $codeLvr,
+                    // Courriel : la liste du formulaire se cherche aussi dessus (08/09/2026).
+                    'livreur_email' => $l->livreur?->user?->email ?? '',
                     'numero_liv'   => $l->numero ?? ('LIV-' . str_pad($l->id, 4, '0', STR_PAD_LEFT)),
                     'date'         => $l->date_livraison,
                     'total_du'     => $l->totalDuLivreur(),
@@ -397,7 +415,8 @@ class DetteLivreurController extends Controller
             return back()->with('error', $result['message']);
         }
 
-        $p->update(['statut' => 1]);
+        // Validé deux fois : le virement reste à faire (point 20, 09/09/2026).
+        $p->update(['statut' => 1, 'etat_reglement' => \App\Models\DemandePaiement::A_PAYER]);
 
         $l = Livraison::find($p->livraison_id);
         if ($l && $l->resteAPayerLivreur() <= 0.01) {
@@ -432,6 +451,12 @@ class DetteLivreurController extends Controller
                 'defaultFont' => 'DejaVu Sans',
             ]);
         return $pdf->download('recu-livreur-' . str_pad($p->id, 4, '0', STR_PAD_LEFT) . '.pdf');
+    }
+
+    /** Les données du reçu, pour son envoi par courriel (App\Services\RecuDeReglement). */
+    public function donneesDuRecu($paiement): array
+    {
+        return $this->buildRecuData($paiement);
     }
 
     private function buildRecuData(PaiementLivreur $p): array
@@ -559,5 +584,21 @@ class DetteLivreurController extends Controller
             'dettesParLivreur'    => $dettesParLivreur,
             'config'              => $config,
         ]);
+    }
+
+    // Point 20 (09/09/2026) : preuve du versement, puis « Effectuée ».
+    public function preuve($id, \Illuminate\Http\Request $request)
+    {
+        return $this->joindrePreuveReglement(PaiementLivreur::find($id), $request);
+    }
+
+    public function voirPreuve($id)
+    {
+        return $this->voirPreuveReglement(PaiementLivreur::find($id));
+    }
+
+    public function effectuer($id)
+    {
+        return $this->effectuerReglement(PaiementLivreur::find($id));
     }
 }

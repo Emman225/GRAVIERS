@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:date_field/date_field.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
@@ -15,6 +14,7 @@ import 'package:mon_gravier_com/models/demande_livraison.dart';
 import 'package:mon_gravier_com/screens/details_demande_livraison/details_demande_livraison_screen.dart';
 import 'package:select_searchable_list/select_searchable_list.dart';
 
+import '../../components/bouton_retour.dart';
 import '../../components/custom_surfix_icon.dart';
 import '../../models/ConfigModel.dart';
 import '../edition_adresse/edition_adresse_screen.dart';
@@ -105,7 +105,17 @@ class _DemandeLivraisonScreenState extends State<DemandeLivraisonScreen> {
     modePaiementController = TextEditingController();
     noteController = TextEditingController();
     typeLivraisonController = TextEditingController();
-    _listModePaiement = user.configs?.modePaiements ?? [];
+    // Le reglement au guichet doit etre offert ici comme il l'est sur le
+    // site : ce champ est le SEUL choix de paiement de la demande, alors que
+    // l'ecran de commande en a deux. Sans lui, la seule facon de commander un
+    // transport etait de payer immediatement par mobile money.
+    //
+    // Repli sur l'ancienne liste si le serveur ne sert pas encore la
+    // nouvelle : l'ecran continue de fonctionner, sans le guichet.
+    final modesLivraison = user.configs?.modePaiementsLivraison;
+    _listModePaiement = (modesLivraison != null && modesLivraison.isNotEmpty)
+        ? modesLivraison
+        : (user.configs?.modePaiements ?? []);
     _listTypeLivraison = user.configs?.typeLivraisons ?? [];
     demandeLivraison = DemandeLivraison();
     super.initState();
@@ -130,29 +140,9 @@ class _DemandeLivraisonScreenState extends State<DemandeLivraisonScreen> {
       appBar: AppBar(
         title: const Text(
           "Demande de livraison",
-          style: TextStyle(color: Colors.black),
         ),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: const Color(0xff03dac6),
@@ -202,7 +192,7 @@ class _DemandeLivraisonScreenState extends State<DemandeLivraisonScreen> {
             padding: const EdgeInsets.all(8.0),
             child: DropDownTextField(
               textEditingController: typeLivraisonController,
-              title: 'Type de livraison',
+              title: 'Type de livraison *',
               hint: 'Choisir votre type de livraison',
               options: {
                 for (var p in _listTypeLivraison)
@@ -223,7 +213,7 @@ class _DemandeLivraisonScreenState extends State<DemandeLivraisonScreen> {
             padding: const EdgeInsets.all(8.0),
             child: DropDownTextField(
               textEditingController: adresseControllerDep,
-              title: 'Adresse départ',
+              title: 'Adresse départ *',
               hint: 'Choisir votre adresse',
               options: {
                 for (var p in _listAdresse) p.id ?? 0: p.affichage.toString()
@@ -241,7 +231,7 @@ class _DemandeLivraisonScreenState extends State<DemandeLivraisonScreen> {
             padding: const EdgeInsets.all(8.0),
             child: DropDownTextField(
               textEditingController: adresseControllerArr,
-              title: 'Adresse destination',
+              title: 'Adresse destination *',
               hint: 'Choisir votre adresse',
               options: {
                 for (var p in _listAdresse) p.id ?? 0: p.affichage.toString()
@@ -259,7 +249,7 @@ class _DemandeLivraisonScreenState extends State<DemandeLivraisonScreen> {
             padding: const EdgeInsets.all(8.0),
             child: DropDownTextField(
               textEditingController: modePaiementController,
-              title: 'Mode de paiement',
+              title: 'Mode de paiement *',
               hint: 'Choisir un mode de paiement',
               options: {
                 for (var p in _listModePaiement)
@@ -282,7 +272,10 @@ class _DemandeLivraisonScreenState extends State<DemandeLivraisonScreen> {
                 errorStyle: TextStyle(color: Colors.redAccent),
                 border: OutlineInputBorder(),
                 suffixIcon: Icon(Icons.event_note),
-                labelText: 'Date de livraison',
+                labelText: 'Date de livraison *',
+                // Le délai toléré (lot 81, 15/09/2026), lu en choisissant la date.
+                helperText: kMentionDelaiLivraison,
+                helperMaxLines: 3,
               ),
               initialValue: DateTime.parse(_date),
               use24hFormat: true,

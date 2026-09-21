@@ -126,34 +126,30 @@
                                         <span class="badge bg-secondary">Désactivé</span>
                                     @endif
                                 </td>
-                                <td class="text-end">
-                                    <div class="dropdown">
-                                        <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm">
-                                            <i class="material-icons md-more_horiz"></i> Actions
-                                        </a>
-                                        <div class="dropdown-menu">
-                                            <a href="{{ route('show.statutMetier.edit', $s) }}" class="dropdown-item">
-                                                <i class="material-icons md-edit"></i> Modifier
+                                <td class="text-nowrap text-end">
+                                            <a href="{{ route('show.statutMetier.edit', $s) }}"
+                                               class="btn btn-sm btn-primary rounded" title="Modifier le statut">
+                                                <i class="material-icons md-edit"></i>
                                             </a>
-                                            <a href="{{ route('show.statutMetier.toggle', $s) }}" class="dropdown-item">
+                                            <a href="{{ route('show.statutMetier.toggle', $s) }}"
+                                               class="btn btn-sm rounded {{ $s->statut ? 'btn-warning' : 'btn-success' }}"
+                                               title="{{ $s->statut ? 'Désactiver le statut' : 'Activer le statut' }}">
                                                 @if ($s->statut)
-                                                    <i class="material-icons md-block"></i> Désactiver
+                                                    <i class="material-icons md-block"></i>
                                                 @else
-                                                    <i class="material-icons md-check_circle"></i> Activer
+                                                    <i class="material-icons md-check_circle"></i>
                                                 @endif
                                             </a>
                                             <form action="{{ route('show.statutMetier.destroy', $s) }}" method="POST"
-                                                  class="js-delete-form"
+                                                  class="d-inline js-delete-form"
                                                   data-item-name="{{ $s->libelle }} ({{ $domaines[$s->domaine] ?? $s->domaine }})"
                                                   data-confirm-text="Si ce statut est encore utilisé dans des factures ou commandes, les badges associés afficheront la couleur par défaut.">
                                                 @csrf
                                                 @method('DELETE')
-                                                <button type="submit" class="dropdown-item text-danger">
-                                                    <i class="material-icons md-delete"></i> Supprimer
+                                                <button type="submit" class="btn btn-sm btn-danger rounded" title="Supprimer le statut">
+                                                    <i class="material-icons md-delete"></i>
                                                 </button>
                                             </form>
-                                        </div>
-                                    </div>
                                 </td>
                             </tr>
                         @empty

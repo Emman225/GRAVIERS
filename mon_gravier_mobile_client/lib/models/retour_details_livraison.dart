@@ -1,3 +1,5 @@
+import 'InformationsCommande.dart';
+
 class RetourDetailsLivraison {
   int? code;
   String? message;
@@ -58,6 +60,10 @@ class DataRetourDetailsLivraison {
   String? complementAdresseDest;
   String? longitudeDest;
   String? latitudeDest;
+
+  /// Codes de livraison des courses acceptées de la ligne (10/09/2026),
+  /// comme sur le détail d'une commande. Pas de bon d'enlèvement ici.
+  List<CodesLigne> codes = [];
 
   DataRetourDetailsLivraison(
       {this.id,
@@ -122,6 +128,12 @@ class DataRetourDetailsLivraison {
     complementAdresseDest = json['complement_adresse_dest'];
     longitudeDest = json['longitude_dest'];
     latitudeDest = json['latitude_dest'];
+    if (json['codes'] != null) {
+      codes = <CodesLigne>[];
+      json['codes'].forEach((v) {
+        codes.add(CodesLigne.fromJson(v));
+      });
+    }
   }
 
   Map<String, dynamic> toJson() {

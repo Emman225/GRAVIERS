@@ -1,7 +1,8 @@
 @include('layout.head')
-@section('title', 'Connexion Fournisseur')
+@section('title', 'Connexion fournisseur')
 
 <main class="auth-page-wrap">
+    @include('layout._retourSitePublic')
     <div class="auth-bg-shape auth-bg-shape-1"></div>
     <div class="auth-bg-shape auth-bg-shape-2"></div>
     <div class="auth-bg-shape auth-bg-shape-3"></div>
@@ -14,7 +15,7 @@
                         <div class="col-lg-6 d-none d-lg-flex auth-side-visual variant-fournisseur">
                             <div class="auth-side-content">
                                 <div class="auth-brand">
-                                    <img src="{{ asset(config('constantes.logo')) }}" alt="GRAVIER.COM" class="auth-brand-logo">
+                                    <img src="{{ asset(config('constantes.logo')) }}" alt="Mon Gravier" class="auth-brand-logo">
                                 </div>
                                 <h2 class="auth-side-title">
                                     Espace<br>
@@ -25,7 +26,7 @@
                                 </p>
                                 <div class="auth-features">
                                     <div class="auth-feature">
-                                        <span class="auth-feature-icon"><i class="material-icons md-inventory"></i></span>
+                                        <span class="auth-feature-icon"><i class="material-icons md-assignment"></i></span>
                                         <div><h6>Stocks</h6><p>Gestion en temps réel</p></div>
                                     </div>
                                     <div class="auth-feature">
@@ -44,7 +45,7 @@
                         <div class="col-lg-6">
                             <div class="auth-form-wrap">
                                 <div class="auth-mobile-brand d-lg-none mb-4 text-center">
-                                    <img src="{{ asset(config('constantes.logo')) }}" alt="GRAVIER.COM">
+                                    <img src="{{ asset(config('constantes.logo')) }}" alt="Mon Gravier">
                                 </div>
 
                                 <div class="auth-form-header">

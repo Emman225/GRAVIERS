@@ -64,16 +64,26 @@ class CAParFamilleTest extends TestCase
     }
 
     /** Un bon servi, dont on maîtrise la date, le produit et le montant. */
+    /**
+     * UN BON QUI COMPTE VRAIMENT DANS LES TOTAUX.
+     *
+     * La première version prenait le premier bon servi venu. En base d'essai
+     * c'est un bon dont la course ne porte aucune ligne de commande : depuis
+     * que cet écran cesse de lui inventer un prix de vente, il est mis de
+     * côté et annoncé à part. Le modifier ne bougeait plus aucun total, et
+     * l'essai mesurait le vide.
+     */
     private function unBonServi(): Enlevement
     {
         $bon = Enlevement::whereNotNull('fournisseur_validation')
             ->where('statut', \Help::$STATUT_ACTIF)
             ->whereNotNull('produit_id')
             ->whereNull('deleted_at')
-            ->first();
+            ->get()
+            ->first(fn ($b) => \App\Support\BonsDeVente::prixFacture($b) !== null);
 
         if (!$bon) {
-            $this->markTestSkipped('Aucun bon servi rattaché à un produit.');
+            $this->markTestSkipped('Aucun bon servi rattaché à sa ligne de commande.');
         }
 
         return $bon;

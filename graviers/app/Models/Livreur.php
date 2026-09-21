@@ -32,6 +32,7 @@ class Livreur extends Model
         'zone_intervention',
         'tarif_km',
         'tarif_forfait_base',
+        'part_grille',
         'mode_tarification',
     ];
 
@@ -199,13 +200,47 @@ class Livreur extends Model
      * voyage et demi au lieu de trois. Cette moyenne ne sert plus que de repli
      * quand aucun véhicule n'est connu.
      */
-    public static function nombreDeVoyages(float $quantite, ?float $capacite, ?float $capaciteParDefaut = null): int
-    {
+    public static function nombreDeVoyages(
+        float $quantite,
+        ?float $capacite,
+        ?float $capaciteParDefaut = null,
+        ?int $uniteProduitId = null
+    ): int {
         $ref = ($capacite && $capacite > 0)
             ? $capacite
             : (($capaciteParDefaut && $capaciteParDefaut > 0) ? $capaciteParDefaut : 0.0);
 
         if ($ref <= 0 || $quantite <= 0) {
+            return 1;
+        }
+
+        // ON NE DIVISE QUE CE QUI SE DIVISE.
+        //
+        // La capacité d'un camion est en TONNES. La quantité, elle, est dans
+        // l'unité du produit : des sacs, des barres, des mètres cubes, des
+        // jours de location. Diviser les unes par les autres ne donne pas un
+        // nombre de voyages, cela donne un nombre sans signification — et il
+        // multipliait la paie du livreur.
+        //
+        // Une commande de 11 400 barres devenait ainsi 285 voyages : 715 000 F
+        // de rémunération pour un transport facturé 100 000 F au client. Sur
+        // 96 tranches tarifaires, 32 partaient à perte pour cette seule raison.
+        //
+        // Quand l'unité ne se ramène pas à des tonnes, on compte UN voyage. Le
+        // tarif juste de ces courses-là vient de la grille du livreur, qui est
+        // indexée sur l'unité et sur la quantité, et n'a donc pas besoin de
+        // rotations.
+        if ($uniteProduitId !== null) {
+            $enTonnes = UniteProduit::enTonnes($uniteProduitId, $quantite);
+
+            if ($enTonnes === null) {
+                return 1;
+            }
+
+            $quantite = $enTonnes;
+        }
+
+        if ($quantite <= 0) {
             return 1;
         }
 
@@ -219,6 +254,55 @@ class Livreur extends Model
      *                       multiplier que la part fixe laisserait le livreur
      *                       payer le carburant des voyages supplémentaires.
      */
+    /**
+     * LE TARIF D'UNE COURSE — grille d'abord, réglage actuel ensuite.
+     *
+     * C'est le seul point d'entrée à utiliser depuis les contrôleurs. Il essaie
+     * la grille du livreur, qui répond exactement comme celle du client, et ne
+     * retombe sur son ancien réglage que si aucune tranche ne couvre le cas.
+     *
+     * Cet ordre est ce qui rend le déploiement sans risque : tant qu'aucune
+     * grille n'est renseignée, chaque livreur continue d'être payé exactement
+     * comme avant.
+     *
+     * PAS DE MULTIPLICATION PAR LES ROTATIONS quand la grille répond : la
+     * tranche est déjà indexée sur la quantité — celle de 20-60 t vaut trois
+     * fois celle de 0-20 t — et multiplier en plus compterait le volume deux
+     * fois. Le repli, lui, garde le comportement d'origine.
+     */
+    public function tarifLivraison(
+        ?int $uniteProduitId,
+        float $quantite,
+        float $distance,
+        float $coutGlobal = 0,
+        float $voyages = 1
+    ): array {
+        $tranche = CoutLivraisonLivreur::lireSurCle($this->id, $uniteProduitId, $quantite, $distance);
+
+        if ($tranche) {
+            $prix = (float) $tranche->prix;
+
+            return [
+                'forfait_base' => $prix,
+                'frais_km'     => 0.0,
+                'total'        => $prix,
+                'source'       => 'grille',
+            ];
+        }
+
+        return $this->tarificationLivraison($distance, $coutGlobal, $voyages) + ['source' => 'tarif'];
+    }
+
+    /** Combien de tranches la grille de ce livreur couvre-t-elle ? */
+    public function tranchesRenseignees(): int
+    {
+        if (!CoutLivraisonLivreur::tableExiste()) {
+            return 0;
+        }
+
+        return CoutLivraisonLivreur::where('livreur_id', $this->id)->whereNull('deleted_at')->count();
+    }
+
     public function tarificationLivraison(float $distance, float $coutGlobal = 0, float $voyages = 1): array
     {
         $voyages = max(1.0, (float) $voyages);

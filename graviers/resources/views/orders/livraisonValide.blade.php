@@ -12,10 +12,14 @@
 @section('type_document', 'Bon de livraison')
 
 @section('articles')
-    <div style="background:#d4edda; padding:8px; text-align:center; margin-bottom:10px; font-weight:bold; color:#155724;">Demande de livraison Validée</div>
+    <div style="background:#d4edda; padding:8px; text-align:center; margin-bottom:10px; font-weight:bold; color:#155724;">Demande de livraison validée</div>
+    @if (session('avance_imputee'))
+        {{-- Avance du client imputée sur la demande (10/09/2026). --}}
+        <div class="js-avance-imputee" style="background:#fff3cd; padding:8px; text-align:center; margin-bottom:10px; font-weight:bold; color:#856404;">{{ session('avance_imputee') }}</div>
+    @endif
 
     <div style="margin-bottom:10px;">
-        <p style="font-size:9pt;"><strong>Date de demande :</strong> {{ ucfirst($livraison->created_at->dayName) . ' ' . $livraison->created_at->isoFormat('LL') }} à {{ Carbon::parse($livraison->created_at)->format('H:i') }}</p>
+        <p style="font-size:9pt;"><strong>Date de demande :</strong> {{ ucfirst($livraison->created_at->dayName) . ' ' . $livraison->created_at->isoFormat('LL') }} à {{ Carbon::parse($livraison->created_at)->format('H:i:s') }}</p>
         <p style="font-size:9pt;"><strong>Numéro :</strong> {{ $livraison->numero }}</p>
     </div>
 
@@ -53,7 +57,9 @@
         <tr><td class="label">Destination</td><td class="valeur">{{ $livraison->destination->affichage ?? '' }}</td></tr>
         <tr><td class="label">Type de livraison</td><td class="valeur">{{ $livraison->TypeLivraison->libelle ?? '' }}</td></tr>
         <tr><td class="label">Mode de paiement</td><td class="valeur">{{ $livraison->ModeDePaiement?->description ?? '' }}</td></tr>
-        <tr><td class="label" style="font-size:10pt;">TOTAL A PAYER</td><td class="valeur" style="font-size:10pt; font-weight:bold;">{{ number_format($livraison->montantTotal, 0, '', ' ') }}</td></tr>
+        @include('document.partials._ligne_airsi', ['airsi' => $livraison->airsi ?? 0])
+        {{-- Le net à payer de la demande : transport + TVA + AIRSI (10/09/2026). --}}
+        <tr><td class="label" style="font-size:10pt;">TOTAL A PAYER</td><td class="valeur" style="font-size:10pt; font-weight:bold;">{{ number_format($livraison->montantAPayer(), 0, '', ' ') }}</td></tr>
     </table></td></tr></table>
 @endsection
 

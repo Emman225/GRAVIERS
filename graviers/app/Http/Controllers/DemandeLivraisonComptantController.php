@@ -30,6 +30,7 @@ use Illuminate\Support\Facades\DB;
 class DemandeLivraisonComptantController extends Controller
 {
     use DoubleValidationPaiement;
+    use \App\Traits\PreuveDeReglementPartenaire;
 
     public function encaissements(Request $request)
     {
@@ -71,8 +72,20 @@ class DemandeLivraisonComptantController extends Controller
                 'mode_paiement'     => $mode ?: '-',
                 'caissier'          => $p->caissier?->nom_prenoms ?? '-',
                 'numero_recu'       => $p->numero_recu ?? $p->code,
+                // Le champ « Notes / Observations » du formulaire (libellé du règlement).
+                'observations'      => $p->libelle,
                 'en_attente'        => $enAttente,
                 'peut_valider'      => $peutValider,
+                // Point 20 (09/09/2026, étendu le 10/09/2026) : « À payer » après la
+                // 2e validation, preuve, « Effectuée ». Le TROISIÈME administrateur :
+                // celui qui a finalisé, sinon celui qui a joint la preuve.
+                'troisieme_par'     => \Help::compteAvecIdentifiant($p->agentEffectuee ?? $p->agentPreuve),
+                'etat_reglement'    => $p->etat_reglement,
+                'libelle_etat'      => $p->libelleReglement(),
+                'a_preuve'          => !empty($p->preuve_paiement),
+                'peut_joindre'      => $p->peutJoindrePreuve() && $p->troisiemeAdministrateur(Auth::user()),
+                'peut_finaliser'    => $p->peutFinaliser() && $p->troisiemeAdministrateur(Auth::user()),
+                'attend_troisieme'  => ($p->peutJoindrePreuve() || $p->peutFinaliser()) && !$p->troisiemeAdministrateur(Auth::user()),
             ];
         });
 
@@ -97,10 +110,13 @@ class DemandeLivraisonComptantController extends Controller
             ->orderByDesc('created_at')
             ->limit(200)
             ->get()
-            ->filter(fn (DemandeLivraison $d) => $d->reglementEnAgence() && $d->montantEncaissable() > 0)
+            ->filter(fn (DemandeLivraison $d) => $d->encaissableAuGuichet() && $d->montantEncaissable() > 0)
             ->map(function (DemandeLivraison $d) {
                 return (object) [
+                    'id'            => $d->id,
                     'numero'        => $d->numero,
+                    'client_id'     => $d->client_id,
+                    'date'          => $d->created_at,
                     'client_nom'    => $d->client?->display_name ?? '-',
                     'client_aterme' => (int) ($d->client?->client_a_terme ?? 0) === 1,
                     'trajet'        => trim(($d->priseEnCharge?->affichage ?? '—') . ' → ' . ($d->destination?->affichage ?? '—')),
@@ -118,57 +134,79 @@ class DemandeLivraisonComptantController extends Controller
             'monAgence'          => Auth::user()?->agence,
             'modesPaiement'      => ModePaiement::listePourAgent(),
             'demandesNonSoldees' => $demandesNonSoldees,
+            // Filtre du guichet : clients ordinaires ET à terme (tous deux encaissés ici).
+            'clientsPourFiltre'  => LocationComptantController::clientsDuGuichet(),
         ]);
     }
 
     public function storeEncaissement(Request $request)
     {
         $validated = $request->validate([
-            'numero_demande'    => 'required|string|exists:demande_livraison,numero',
+            // UNE OU PLUSIEURS demandes du même client (10/09/2026), comme au
+            // guichet des ventes : le montant s'impute de la plus ancienne à la
+            // plus récente. `numero_demande` (une seule) reste accepté.
+            'numeros_demande'   => 'nullable|array',
+            'numeros_demande.*' => 'string|exists:demande_livraison,numero',
+            'numero_demande'    => 'nullable|string|exists:demande_livraison,numero',
             'mode_paiement_id'  => 'required|integer|exists:mode_paiement,id',
             'montant'           => 'required|numeric|min:1',
             'date_encaissement' => 'nullable|date',
             'reference'         => 'nullable|string|max:80',
-            'notes'             => 'nullable|string|max:500',
+            'notes'             => 'required|string|max:500',
+            'surplus_en_avance' => 'nullable|boolean',
         ], [
-            'numero_demande.required' => 'Veuillez choisir la demande de livraison à encaisser.',
-            'montant.min'             => 'Le montant encaissé doit être supérieur à zéro.',
+            'montant.min'    => 'Le montant encaissé doit être supérieur à zéro.',
+            'notes.required' => 'Le champ Notes / Observations est obligatoire : il est repris dans la colonne « Notes » du journal.',
         ]);
 
-        // L'agence vient de la personne connectée, jamais du formulaire.
         $agenceId = Auth::user()?->agence_id;
         if (!$agenceId) {
             return back()->withInput()->with('erreur_caisse',
                 "Vous n'êtes rattaché à aucune agence : un administrateur doit vous affecter à un guichet avant que vous puissiez encaisser.");
         }
 
-        $demande = DemandeLivraison::where('numero', $validated['numero_demande'])->firstOrFail();
-
-        if (!$demande->reglementEnAgence()) {
-            return back()->withInput()->with('erreur_caisse',
-                "Cette demande est réglée en ligne : elle ne s'encaisse pas au guichet.");
+        $numeros = array_values(array_unique(array_filter(array_merge(
+            (array) ($validated['numeros_demande'] ?? []),
+            [$validated['numero_demande'] ?? null]
+        ))));
+        if (empty($numeros)) {
+            return back()->withInput()->with('erreur_caisse', 'Cochez au moins une demande de livraison à encaisser.');
         }
 
-        // Pas de refus pour les clients à terme : voir le commentaire de
-        // encaissements(). Les demandes de livraison n'ont pas d'écran de créance.
+        $demandes = DemandeLivraison::whereIn('numero', $numeros)->get()
+            ->sortBy(fn (DemandeLivraison $d) => $d->created_at . '-' . $d->id)
+            ->values();
 
-        // Plafond calculé sur l'ENCAISSABLE, pas sur le reste dû : un
-        // encaissement déjà saisi mais pas encore validé occupe la place, sinon
-        // le guichet pourrait enregistrer deux fois le montant total.
-        $reste = $demande->montantEncaissable();
-
-        if ($reste <= 0) {
-            $enAttente = $demande->montantEnAttenteValidation();
-
-            return back()->withInput()->with('erreur_caisse', $enAttente > 0
-                ? "Cette demande est intégralement couverte par des encaissements en attente de validation ("
-                  . number_format($enAttente, 0, ',', ' ') . " FCFA). Faites-les valider par un second administrateur."
-                : "Cette demande est déjà soldée.");
+        if ($demandes->pluck('client_id')->unique()->count() > 1) {
+            return back()->withInput()->with('erreur_caisse',
+                "Les demandes cochées appartiennent à des clients différents : un encaissement se fait pour un seul client à la fois.");
         }
 
-        if ($validated['montant'] > $reste + 0.01) {
+        foreach ($demandes as $demande) {
+            if (!$demande->encaissableAuGuichet()) {
+                return back()->withInput()->with('erreur_caisse',
+                    "La demande {$demande->numero} est réglée en ligne : elle ne s'encaisse pas au guichet.");
+            }
+            if ($demande->montantEncaissable() <= 0) {
+                $enAttente = $demande->montantEnAttenteValidation();
+
+                return back()->withInput()->with('erreur_caisse', $enAttente > 0
+                    ? "La demande {$demande->numero} est intégralement couverte par des encaissements en attente de validation ("
+                      . number_format($enAttente, 0, ',', ' ') . " FCFA). Faites-les valider par un second administrateur."
+                    : "La demande {$demande->numero} est déjà soldée.");
+            }
+        }
+
+        $restes  = $demandes->mapWithKeys(fn (DemandeLivraison $d) => [$d->id => Help::arrondiFranc($d->montantEncaissable())]);
+        $plafond = $restes->sum();
+
+        // SURPLUS → AVANCE (10/09/2026), comme au guichet des ventes : l'excédent
+        // devient une avance du client, si le caissier l'a dit ; sinon refus.
+        $surplus = Help::arrondiFranc(max(0, (float) $validated['montant'] - $plafond));
+        if ($surplus >= 1 && !$request->boolean('surplus_en_avance')) {
             return back()->withInput()->with('erreur_caisse',
-                "Le montant saisi ({$validated['montant']}) dépasse le reste à payer ({$reste}).");
+                "Le montant saisi ({$validated['montant']}) dépasse le reste à payer ({$plafond}). "
+                . "Pour enregistrer l'excédent de {$surplus} FCFA comme avance du client, cochez « Enregistrer le surplus comme avance ».");
         }
 
         $modePaiement = ModePaiement::find($validated['mode_paiement_id']);
@@ -176,46 +214,70 @@ class DemandeLivraisonComptantController extends Controller
 
         DB::beginTransaction();
         try {
-            // Numéro de reçu partagé avec les ventes : une seule série RC-YYYY-XXX
-            // pour toute la caisse, sinon deux encaissements du même jour
-            // porteraient le même numéro.
-            $year = date('Y');
-            $lastNum = (int) Paiement::where('numero_recu', 'like', "RC-{$year}-%")
-                ->selectRaw('MAX(CAST(SUBSTRING(numero_recu, 9) AS UNSIGNED)) AS n')
-                ->value('n');
-            $numeroRecu = sprintf('RC-%s-%03d', $year, $lastNum + 1);
+            $restant = (float) $validated['montant'];
+            $recus   = [];
+            foreach ($demandes as $demande) {
+                $part = min((float) $restes[$demande->id], $restant);
+                if ($part <= 0) {
+                    continue;
+                }
 
-            $paiement = Paiement::create(array_merge([
-                'client_id'       => $demande->client_id,
-                'code'            => 'PAY-' . strtoupper(substr(md5(uniqid()), 0, 8)),
-                'libelle'         => $validated['notes'] ?? ('Encaissement agence - demande de livraison ' . $demande->numero),
-                'montant_total'   => $validated['montant'],
-                'montant_restant' => 0,
-                'statut'          => 2, // en attente de la seconde validation
-                'service'         => Help::$LIVRAISON,
-                'service_id'      => $demande->id,
-                'agence_id'       => $agenceId,
-                'caissier_id'     => $caissier?->id,
-                'numero_recu'     => $numeroRecu,
-                'created_at'      => $validated['date_encaissement'] ?? now(),
-                'updated_at'      => now(),
-            ], $this->initierValidation()));
+                $year = date('Y');
+                $lastNum = (int) Paiement::where('numero_recu', 'like', "RC-{$year}-%")
+                    ->selectRaw('MAX(CAST(SUBSTRING(numero_recu, 9) AS UNSIGNED)) AS n')
+                    ->value('n');
+                $numeroRecu = sprintf('RC-%s-%03d', $year, $lastNum + 1);
 
-            LignePaiement::create([
-                'paiement_id'      => $paiement->id,
-                'mode_paiement_id' => $validated['mode_paiement_id'],
-                'reference'        => $validated['reference'] ?? null,
-                'moyen_paiement'   => $modePaiement?->libelle,
-                'date_paiement'    => $validated['date_encaissement'] ?? now(),
-                'montant'          => $validated['montant'],
-                'statut'           => 2, // aligné sur le paiement parent
-                'user_id'          => $caissier?->id,
-                'code_paiement'    => $paiement->code,
-                'service'          => Help::$LIVRAISON,
-                'service_id'       => $demande->id,
-                'created_at'       => $validated['date_encaissement'] ?? now(),
-                'updated_at'       => now(),
-            ]);
+                $paiement = Paiement::create(array_merge([
+                    'client_id'       => $demande->client_id,
+                    'code'            => 'PAY-' . strtoupper(substr(md5(uniqid()), 0, 8)),
+                    'libelle'         => $validated['notes'] ?? ('Encaissement agence - demande de livraison ' . $demande->numero),
+                    'montant_total'   => $part,
+                    'montant_restant' => 0,
+                    'statut'          => 2, // en attente de la seconde validation
+                    'service'         => Help::$LIVRAISON,
+                    'service_id'      => $demande->id,
+                    'agence_id'       => $agenceId,
+                    'caissier_id'     => $caissier?->id,
+                    'numero_recu'     => $numeroRecu,
+                    'created_at'      => $validated['date_encaissement'] ?? now(),
+                    'updated_at'      => now(),
+                ], $this->initierValidation()));
+
+                LignePaiement::create([
+                    'paiement_id'      => $paiement->id,
+                    'mode_paiement_id' => $validated['mode_paiement_id'],
+                    'reference'        => $validated['reference'] ?? null,
+                    'moyen_paiement'   => $modePaiement?->libelle,
+                    'date_paiement'    => $validated['date_encaissement'] ?? now(),
+                    'montant'          => $part,
+                    'statut'           => 2, // aligné sur le paiement parent
+                    'user_id'          => $caissier?->id,
+                    'code_paiement'    => $paiement->code,
+                    'service'          => Help::$LIVRAISON,
+                    'service_id'       => $demande->id,
+                    'created_at'       => $validated['date_encaissement'] ?? now(),
+                    'updated_at'       => now(),
+                ]);
+
+                $restant -= $part;
+                $recus[]  = $numeroRecu;
+            }
+
+            if ($surplus >= 1) {
+                $clientSurplus = \App\Models\Client::find($demandes->first()->client_id);
+                if ($clientSurplus) {
+                    $avance = \App\Services\Avances::deposer($clientSurplus, $surplus, array_merge([
+                        'mode_paiement_id' => $validated['mode_paiement_id'],
+                        'reference'        => $validated['reference'] ?? null,
+                        'libelle'          => 'Surplus de l\'encaissement ' . implode(', ', $recus),
+                        'date_depot'       => $validated['date_encaissement'] ?? now(),
+                        'origine'          => 'SURPLUS',
+                        'origine_recu'     => implode(', ', $recus),
+                    ], $this->initierValidation()), $caissier, $agenceId);
+                    $recus[] = $avance->numero_recu . ' (avance)';
+                }
+            }
 
             DB::commit();
         } catch (\Throwable $e) {
@@ -225,7 +287,8 @@ class DemandeLivraisonComptantController extends Controller
 
         return redirect()
             ->route('show.comptant.livraisons.encaissements')
-            ->with('success', "Encaissement {$numeroRecu} créé. En attente de validation par un autre administrateur.");
+            ->with('success', (count($recus) > 1 ? 'Encaissements ' : 'Encaissement ') . implode(', ', $recus)
+                . (count($recus) > 1 ? ' créés' : ' créé') . '. En attente de validation par un autre administrateur.');
     }
 
     /**
@@ -243,8 +306,25 @@ class DemandeLivraisonComptantController extends Controller
         }
 
         LignePaiement::where('paiement_id', $paiement->id)->update(['statut' => 1]);
-        $paiement->update(['statut' => 1]);
+        // Validé deux fois : la preuve du versement reste à joindre, puis un
+        // troisième administrateur finalise (point 20, 09/09/2026).
+        $paiement->update(['statut' => 1, 'etat_reglement' => \App\Models\DemandePaiement::A_PAYER]);
 
-        return back()->with('success', "Encaissement {$paiement->numero_recu} validé. Le reçu est maintenant disponible.");
+        return back()->with('success', "Encaissement {$paiement->numero_recu} validé. Joignez la preuve du versement, puis finalisez.");
+    }
+
+    public function preuve($paiementId, Request $request)
+    {
+        return $this->joindrePreuveReglement(Paiement::find($paiementId), $request);
+    }
+
+    public function voirPreuve($paiementId)
+    {
+        return $this->voirPreuveReglement(Paiement::find($paiementId));
+    }
+
+    public function effectuer($paiementId)
+    {
+        return $this->effectuerReglement(Paiement::find($paiementId));
     }
 }

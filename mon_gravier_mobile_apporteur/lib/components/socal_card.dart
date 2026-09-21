@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import '../../constants.dart';
 
 class SocalCard extends StatelessWidget {
   const SocalCard({
@@ -21,7 +22,7 @@ class SocalCard extends StatelessWidget {
         height: 40,
         width: 40,
         decoration: const BoxDecoration(
-          color: Color(0xFFF5F6F9),
+          color: kSurfaceMutedColor,
           shape: BoxShape.circle,
         ),
         child: SvgPicture.asset(icon!),

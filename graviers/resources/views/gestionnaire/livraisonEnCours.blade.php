@@ -29,8 +29,11 @@
 
                 <!-- card-header end// -->
                 <div class="card-body">
+                    <x-export-buttons table-id="listeLivraisonsEnCours"
+                                      filename="livraisons-en-cours"
+                                      title="Livraisons en cours" />
                     <div class="table-responsive">
-                        <table class="table table-hover table-bordered">
+                        <table id="listeLivraisonsEnCours" class="table table-hover table-bordered">
                             <thead>
                                 <tr>
 
@@ -114,9 +117,9 @@
                                                 </select>
                                                 @endif
                                             </td>
-                                            <td>
+                                            <td class="text-nowrap">
                                                 @if ($livraison->accepte == 3)
-                                                    <button class="btn btn-success" type="submit">Valider</button>
+                                                    <button class="btn btn-success" type="submit" title="Valider"><i class="material-icons md-check_circle"></i></button>
                                                 @endif
                                             </td>
                                         </form>

@@ -34,8 +34,11 @@
 
                 <!-- card-header end// -->
                 <div class="card-body">
+                    <x-export-buttons table-id="listeDetailClientOrdinaire"
+                                      filename="grand-livre-detail-client"
+                                      title="Grand livre — détail du client" />
                     <div class="table-responsive">
-                        <table class="table table-hover table-bordered tablee">
+                        <table id="listeDetailClientOrdinaire" class="table table-hover table-bordered tablee">
                             <thead>
                                 <tr>
                                     <th class="text-center" style="background-color: #1c57a3; color: white; border-top-left-radius:5px">N°</th>
@@ -64,13 +67,13 @@
                                             <td><span
                                                     class="badge rounded-pill text-warning">{{ $commande->etat_commande }}</span>
                                             </td>
-                                            <td class="texte-center">{{ Carbon::parse($commande->created_at)->format('d-m-Y à H:i') }}</td>
+                                            <td class="texte-center">{{ Carbon::parse($commande->created_at)->format('d/m/Y à H:i:s') }}</td>
                                          
-                                            <!-- <td class="text-end">
-                                                <a  href="{{ route('orders.reduction', $commande) }}"  class="btn btn-md rounded font-sm">Faire une réduction</a>
+                                            <!-- <td class="text-nowrap text-end">
+                                                <a  href="{{ route('orders.reduction', $commande) }}"  class="btn btn-md rounded font-sm" title="Faire une réduction"><i class="material-icons md-more_horiz"></i></a>
                                             </td> -->
-                                            <td class="text-end">
-                                                <a  href="{{ route('orders.BECommande', $commande->numero) }}"  class="btn btn-md rounded font-sm">Les enlevements</a>
+                                            <td class="text-nowrap text-end">
+                                                <a  href="{{ route('orders.BECommande', $commande->numero) }}"  class="btn btn-info btn-md rounded font-sm" title="Les enlevements"><i class="material-icons md-local_shipping"></i></a>
                                             </td>
                                         </tr>
                           

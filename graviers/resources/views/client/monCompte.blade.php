@@ -28,9 +28,11 @@
 
     $commandesEnCours = $commandes->reject(fn ($c) => in_array($c->etat_commande, $etatsNonConfirmes, true));
 
+    // La marchandise HT non retirée, rien d'autre (Commande::resteAEnlever) :
+    // « montantAPayer − totalEnleve » y laissait la TVA du transport et l'AIRSI.
     $resteAEnlever = $commandes
         ->reject(fn ($c) => in_array($c->etat_commande, ['ANNULEE', Help::$COMMANDE_EN_ATTENTE_PAIEMENT], true))
-        ->sum(fn ($c) => max(0, $c->montantAPayer() - Help::totalEnleveSurCommande($c)));
+        ->sum(fn ($c) => $c->resteAEnlever());
 
     // Les devis encore ouverts d'un côté, ceux déjà transformés de l'autre :
     // l'onglet « Mes devis » les présente en deux tableaux distincts.
@@ -42,7 +44,13 @@
     // figure pas, l'historique affiche alors un tiret.
     $commandesParDevis = $commandes->whereNotNull('devis_id')->pluck('numero', 'devis_id');
     $livraisonsEnCours  = $demandeLivraions->reject(fn ($d) => in_array($d->etat_commande, $etatsClos, true));
-    $locationsEnCours   = $locations->reject(fn ($l) => in_array($l->etat_commande, $etatsClos, true));
+    // UNE LOCATION N'A PAS D'`etat_commande` : sa colonne est
+    // `etat_location`, et ses etats se disent « TERMINE » (sans E final)
+    // et « ANNULEE ». Le filtre ne rejetait donc RIEN, et le tableau de
+    // bord annoncait des locations en cours qui etaient closes.
+    $etatsClosLocation  = ['TERMINE', 'TERMINEE', 'ANNULEE'];
+    $locationsEnCours   = $locations->reject(
+        fn ($l) => in_array($l->etatLibelle(), $etatsClosLocation, true));
 
     $dernieresCommandes = $commandes->take(5);
 
@@ -52,14 +60,16 @@
     $nbPoints = (int) ($client->point ?? 0);
 
     // Solde en valeur brute, pour pouvoir tester son signe et choisir le libellé.
-    // false : lecture CÔTÉ CLIENT (paiements − factures), et non côté gestionnaire.
-    $soldeClient = Help::soldeClientBrut($client, false);
-
-    // Part de l'excédent qui n'attend qu'une facture. Le reste est un
-    // trop-perçu : de l'argent versé au-delà de ce qui a été facturé, que
-    // rien ne viendra résorber. Les deux portaient le même libellé.
-    $enAttenteFacturation = $soldeClient > 0 ? Help::montantEnAttenteDeFacturation($client) : 0.0;
-    $verseEnTrop = max(0, $soldeClient - $enAttenteFacturation);
+    //
+    // RÉGLÉ − DÛ SUR SES AFFAIRES (10/09/2026), et non plus réglé − facturé :
+    // une facture courte de la TVA du transport affichait « Versé en trop
+    // 720 FCFA » à un client qui avait tout réglé et tout enlevé. La facture
+    // est un document interne ; le client, lui, veut savoir s'il a payé ce
+    // qu'il doit. Une affaire payée d'avance vaut donc « À jour » — la
+    // marchandise qui reste à retirer se lit dans la tuile « reste à enlever ».
+    $soldeClient = Help::soldeClientSurAffaires($client);
+    $enAttenteFacturation = 0.0;
+    $verseEnTrop = max(0, $soldeClient);
 
     // Crédit encore disponible d'un client à terme. null si aucun plafond n'est
     // accordé — l'affichage doit alors se taire plutôt qu'annoncer 0.
@@ -109,22 +119,36 @@
                         <div class="col-md-3">
                             <div class="dashboard-menu">
                                 <ul class="nav flex-column" role="tablist">
+                                    {{-- ORDRE VALIDÉ LE 07/09/2026 (point 1) : le quotidien
+                                         d'abord (commandes, devis, livraisons, locations,
+                                         paiements), puis l'après-vente, puis le compte. --}}
                                     <li class="nav-item">
-                                        <a class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" href="#dashboard" role="tab" aria-controls="dashboard" aria-selected="false"><i class="fi-rs-settings-sliders mr-10"></i>Votre tableau de bord</a>
+                                        @php
+                                            // Lot 107 bis : ?onglet=account-detail (menu « Profil » de l'en-tête) ouvre
+                                            // la page directement sur Détails du compte, rendu côté serveur.
+                                            $ongletInitial = request('onglet') === 'account-detail' ? 'account-detail' : 'dashboard';
+                                        @endphp
+                                        <a class="nav-link {{ $ongletInitial === 'dashboard' ? 'active' : '' }}" id="dashboard-tab" data-bs-toggle="tab" href="#dashboard" role="tab" aria-controls="dashboard" aria-selected="false"><i class="fi-rs-settings-sliders mr-10"></i>Votre tableau de bord</a>
                                     </li>
                                     <li class="nav-item">
                                         <a class="nav-link" id="orders-tab" data-bs-toggle="tab" href="#orders" role="tab" aria-controls="orders" aria-selected="false"><i class="fi-rs-shopping-bag mr-10"></i>Mes commandes</a>
                                     </li>
                                     <li class="nav-item">
-                                        <a class="nav-link" id="devis-tab" data-bs-toggle="tab" href="#devis" role="tab" aria-controls="devis" aria-selected="false"><i class="fi-rs-shopping-bag mr-10"></i>Mes devis</a>
+                                        <a class="nav-link" id="devis-tab" data-bs-toggle="tab" href="#devis" role="tab" aria-controls="devis" aria-selected="false"><i class="fi-rs-document mr-10"></i>Mes devis</a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="nav-link" id="delivery-tab" data-bs-toggle="tab" href="#delivery" role="tab" aria-controls="delivery" aria-selected="true"><i class="fi-rs-package mr-10"></i>Demande de livraisons</a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="nav-link" id="location-tab" data-bs-toggle="tab" href="#location" role="tab" aria-controls="location" aria-selected="true"><i class="fi-rs-shopping-cart-check mr-10"></i>Demande de location</a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="nav-link" id="paiements-tab" href="{{ route('client.listePaiementCommande', 'en-attente') }}" > <i class="fi-rs-credit-card mr-10"></i>Mes paiements</a>
                                     </li>
 
-                                    {{-- <li class="nav-item">
-                                        <a class="nav-link" id="" href="{{route('client.gestionVehicule')}}" >Mes vehicules</a>
-                                    </li> --}}
-
+                                    {{-- L'après-vente --}}
                                     <li class="nav-item">
-                                        <a class="nav-link" id="" href="{{route('client.retourProduitPage')}}" > Retour de produits</a>
+                                        <a class="nav-link" id="" href="{{route('client.retourProduitPage')}}" ><i class="fi-rs-refresh mr-10"></i>Retour de produits</a>
                                     </li>
                                     <li class="nav-item">
                                         <a class="nav-link" id="" href="{{ route('client.ticketSAV') }}"><i class="fi-rs-headset mr-10"></i>Service après-vente (SAV)</a>
@@ -132,26 +156,20 @@
                                     <li class="nav-item">
                                         <a class="nav-link" id="" href="{{ route('client.mesTicketsSAV') }}"><i class="fi-rs-time-past mr-10"></i>Mes tickets SAV (suivi)</a>
                                     </li>
-                                    <li class="nav-item">
-                                        <a class="nav-link" id="delivery-tab" data-bs-toggle="tab" href="#delivery" role="tab" aria-controls="delivery" aria-selected="true"><i class="fi-rs-shopping-cart-check mr-10"></i>Demande de livraisons</a>
-                                    </li>
-                                    <li class="nav-item">
-                                        <a class="nav-link" id="location-tab" data-bs-toggle="tab" href="#location" role="tab" aria-controls="location" aria-selected="true"><i class="fi-rs-shopping-cart-check mr-10"></i>Demande de location</a>
-                                    </li>
-                                    <li class="nav-item">
-                                        <a class="nav-link" id="paiements-tab" href="{{ route('client.listePaiementCommande', 'en-attente') }}" > <i class="fi-rs-shopping-cart-check mr-10"></i>Mes paiements</a>
-                                    </li>
-                                    <li class="nav-item">
-                                        <a class="nav-link" id="account-detail-tab" data-bs-toggle="tab" href="#account-detail" role="tab" aria-controls="account-detail" aria-selected="true"><i class="fi-rs-user mr-10"></i>Détail du compte</a>
-                                    </li>
-                                    {{-- Le compte à terme est réservé aux entreprises : inutile de
-                                         proposer à un particulier une démarche qu'il ne peut pas mener
-                                         à son terme, faute de registre de commerce et de bilan. --}}
+
+                                    {{-- Le compte. « Devenir un client à terme » précède « Détail du
+                                         compte » (demande du 08/09/2026). Il est réservé aux
+                                         entreprises : inutile de proposer à un particulier une
+                                         démarche qu'il ne peut pas mener à son terme, faute de
+                                         registre de commerce et de bilan. --}}
                                     @if ($client->type_client === 'ENTREPRISE')
                                         <li class="nav-item">
-                                            <a class="nav-link" id="" href="{{route('client.demandeClientATermePage')}}" > Devenir un client à terme</a>
+                                            <a class="nav-link" id="" href="{{route('client.demandeClientATermePage')}}" ><i class="fi-rs-briefcase mr-10"></i>Devenir un client à terme</a>
                                         </li>
                                     @endif
+                                    <li class="nav-item">
+                                        <a class="nav-link {{ $ongletInitial === 'account-detail' ? 'active' : '' }}" id="account-detail-tab" data-bs-toggle="tab" href="#account-detail" role="tab" aria-controls="account-detail" aria-selected="true"><i class="fi-rs-user mr-10"></i>Détail du compte</a>
+                                    </li>
 
                                 </ul>
                                 {{-- <li class=""> --}}
@@ -168,11 +186,22 @@
                             <div class="tab-content account dashboard-content pl-10">
 
                                 {{-- TABLEAU DE BORD --}}
-                                <div class="tab-pane fade active show" id="dashboard" role="tabpanel" aria-labelledby="dashboard-tab">
+                                <div class="tab-pane fade {{ $ongletInitial === 'dashboard' ? 'active show' : '' }}" id="dashboard" role="tabpanel" aria-labelledby="dashboard-tab">
 
                                     {{-- ===== Carte d'accueil ===== --}}
                                     <div class="tb-accueil">
                                         <div class="tb-accueil__haut">
+                                            @php $photoProfil = \Help::photoDeProfil($client->user); @endphp
+                                            <div style="display:flex; align-items:center; gap:14px;">
+                                                {{-- La photo de profil, la même que sur le mobile (lot 105, 17/09/2026). --}}
+                                                <a href="#" onclick="document.getElementById('account-detail-tab')?.click(); return false;" title="Modifier ma photo dans Détails du compte"
+                                                   style="flex:0 0 auto; width:64px; height:64px; border-radius:50%; overflow:hidden; border:2px solid #d5dbe3; background:#e7eef9; display:flex; align-items:center; justify-content:center; text-decoration:none;">
+                                                    @if($photoProfil)
+                                                        <img src="{{ $photoProfil }}" alt="Photo de profil" style="width:100%; height:100%; object-fit:cover;">
+                                                    @else
+                                                        <span style="font-size:24px; font-weight:700; color:#1c57a3;">{{ mb_strtoupper(mb_substr(trim((string) $client->display_name), 0, 1)) ?: '?' }}</span>
+                                                    @endif
+                                                </a>
                                             <div>
                                                 <h3 class="tb-accueil__salut">
                                                     {{ (now()->format('H') < 13) ? 'Bonjour' : 'Bonsoir' }} {{ $client->display_name }} 👋
@@ -180,6 +209,7 @@
                                                 <p class="tb-accueil__sous">
                                                     {{ Carbon::now()->locale('fr')->isoFormat('dddd D MMMM YYYY') }}
                                                 </p>
+                                            </div>
                                             </div>
                                             <span class="tb-etiquette">
                                                 <i class="fi-rs-{{ $client->client_a_terme ? 'credit-card' : 'shopping-cart' }}"></i>
@@ -298,6 +328,43 @@
                                             </div>
                                         </a>
 
+                                        {{-- Avance disponible (point 19) : elle se déduit d'elle-même
+                                             des affaires réglées en agence, et ne se rembourse pas.
+                                             Toujours affichée, même à 0 (10/09/2026). --}}
+                                        <a href="#account-detail" data-tb-onglet="account-detail-tab" class="tb-chiffre js-avance-disponible" title="{{ $mentionAvance ?? '' }}">
+                                            <div class="tb-chiffre__icone tb-chiffre__icone--vert"><i class="fi-rs-money"></i></div>
+                                            <div>
+                                                <div class="tb-chiffre__valeur">{{ number_format($soldeAvance ?? 0, 0, ',', ' ') }}</div>
+                                                <div class="tb-chiffre__libelle">FCFA d'avance disponible</div>
+                                            </div>
+                                        </a>
+
+                                        {{-- Ce que le client doit encore régler en agence : commandes,
+                                             locations, demandes de livraison réglées hors ligne (10/09/2026). --}}
+                                        @php
+                                            $credits = is_array($creditsEnAgence ?? null)
+                                                ? $creditsEnAgence
+                                                : ['du' => (float) ($creditsEnAgence ?? 0), 'paye' => 0, 'en_attente' => 0, 'reste' => (float) ($creditsEnAgence ?? 0)];
+                                            $fmt = fn ($n) => number_format((float) $n, 0, ',', ' ');
+                                        @endphp
+                                        <a href="{{ route('client.listePaiementCommande', 'en-attente') }}" class="tb-chiffre js-credits-agence" title="Reste dû de vos commandes, locations et livraisons réglées en agence, suivi à chaque versement">
+                                            <div class="tb-chiffre__icone tb-chiffre__icone--orange"><i class="fi-rs-credit-card"></i></div>
+                                            <div>
+                                                <div class="tb-chiffre__valeur js-credits-reste">{{ $fmt($credits['reste']) }}</div>
+                                                <div class="tb-chiffre__libelle">FCFA à régler en agence</div>
+                                                {{-- Suivi des versements au guichet (10/09/2026) : dû, payé, reste,
+                                                     jusqu'au solde ; un versement saisi mais pas encore validé est dit. --}}
+                                                @if ($credits['du'] >= 1)
+                                                    <div class="tb-chiffre__libelle js-credits-detail" style="text-transform:none; letter-spacing:0;">
+                                                        À régler {{ $fmt($credits['du']) }} · payé {{ $fmt($credits['paye']) }} · reste {{ $fmt($credits['reste']) }}
+                                                        @if ($credits['en_attente'] >= 1)
+                                                            <br>dont {{ $fmt($credits['en_attente']) }} en attente de validation
+                                                        @endif
+                                                    </div>
+                                                @endif
+                                            </div>
+                                        </a>
+
                                         <a href="#devis" data-tb-onglet="devis-tab" class="tb-chiffre">
                                             <div class="tb-chiffre__icone tb-chiffre__icone--gris"><i class="fi-rs-document"></i></div>
                                             <div>
@@ -307,7 +374,7 @@
                                         </a>
 
                                         <a href="#delivery" data-tb-onglet="delivery-tab" class="tb-chiffre">
-                                            <div class="tb-chiffre__icone tb-chiffre__icone--vert"><i class="fi-rs-shipping-fast"></i></div>
+                                            <div class="tb-chiffre__icone tb-chiffre__icone--vert"><i class="fi-rs-package"></i></div>
                                             <div>
                                                 <div class="tb-chiffre__valeur">{{ $livraisonsEnCours->count() }}</div>
                                                 <div class="tb-chiffre__libelle">Livraisons en cours</div>
@@ -416,7 +483,7 @@
                                                     <i class="fi-rs-shopping-cart"></i> Commander
                                                 </a>
                                                 <a href="{{ route('client.demandeLivraison') }}" class="tb-raccourci">
-                                                    <i class="fi-rs-shipping-fast"></i> Demander une livraison
+                                                    <i class="fi-rs-package"></i> Demander une livraison
                                                 </a>
                                                 <a href="{{ route('client.listePaiementCommande', 'en-attente') }}" class="tb-raccourci">
                                                     <i class="fi-rs-credit-card"></i> Mes paiements
@@ -464,6 +531,7 @@
                                                             <th>Numéro</th>
                                                             <th>Date commande</th>
                                                             <th>Statut</th>
+                                                            <th>Codes</th>
 
                                                             <th>Total à payer</th>
                                                             <th>Déjà enlevé</th>
@@ -490,7 +558,7 @@
                                                             </td>
 
                                                             {{-- date --}}
-                                                            <td>{{$commande->created_at->isoFormat('LL') .' à '. $commande->created_at->format('H:i')}}</td>
+                                                            <td>{{$commande->created_at->isoFormat('LL') .' à '. $commande->created_at->format('H:i:s')}}</td>
 
                                                             {{-- statut --}}
                                                             <td>
@@ -511,6 +579,27 @@
 
                                                             </td>
 
+                                                            {{-- Codes de livraison et bons d'enlèvement des courses
+                                                                 acceptées : copiables, partageables par WhatsApp. --}}
+                                                            <td>
+                                                                @php $auMoinsUnCode = false; @endphp
+                                                                @foreach ($commande->detailCommande as $detailPourCodes)
+                                                                    @foreach ($detailPourCodes->livraisons as $livraisonPourCodes)
+                                                                        @if ((int) $livraisonPourCodes->accepte === \App\Models\Livraison::ACCEPTEE)
+                                                                            @php $auMoinsUnCode = true; @endphp
+                                                                            @include('client._codesLivraison', [
+                                                                                'livraison' => $livraisonPourCodes,
+                                                                                'numeroCommande' => $commande->numero,
+                                                                                'queEnlevement' => $commande->est_livrable != 1,
+                                                                            ])
+                                                                        @endif
+                                                                    @endforeach
+                                                                @endforeach
+                                                                @unless ($auMoinsUnCode)
+                                                                    <span class="text-muted">—</span>
+                                                                @endunless
+                                                            </td>
+
                                                             {{-- total (net depuis les lignes : cf. Commande::montantAPayer) --}}
                                                             <td>
                                                                 {{number_format($commande->montantAPayer(),0,'',' ')}} fcfa
@@ -525,7 +614,7 @@
                                                                  + 4 000 de livraison). --}}
                                                             @php
                                                                 $dejaEnleve = Help::marchandiseEnleveeSurCommande($commande);
-                                                                $resteAEnlever = max(0, $commande->montantHT() - $dejaEnleve);
+                                                                $resteAEnlever = $commande->resteAEnlever();
                                                             @endphp
                                                             <td>
                                                                 {{number_format($dejaEnleve,0,'',' ')}} fcfa
@@ -539,7 +628,10 @@
                                                             </td>
 
                                                             <td>
-                                                                <a href="{{route('client.listeFacture',$commande)}}" class="btn-small d-block">Facture</a>
+                                                                {{-- La proforma, ou la facture d'une commande payée en ligne
+                                                                     (lot 81, 15/09/2026) : le document reçu par courriel. --}}
+                                                                <a href="{{ route('client.documentCommandePdf', $commande->numero) }}" target="_blank" class="btn-small d-block">{{ \App\Services\DocumentDeCommande::type($commande) }}</a>
+                                                                <a href="{{route('client.listeFacture',$commande)}}" class="btn-small d-block">Factures DGI</a>
                                                                 @php $demandeAnnul = $commande->derniereDemandeAnnulation; @endphp
                                                                 @if ($commande->etat_commande === 'ANNULEE')
                                                                     <span class="badge bg-danger">Annulée</span>
@@ -604,6 +696,7 @@
                                                             <th></th>
                                                             <th></th>
                                                             <th></th>
+                                                            <th></th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
@@ -620,7 +713,7 @@
                                                                 @endif
                                                             </td>
                                                             <td>
-                                                                {{$unDevis->created_at->isoFormat('LL') .' à '.$unDevis->created_at->format('H:i')}}
+                                                                {{$unDevis->created_at->isoFormat('LL') .' à '.$unDevis->created_at->format('H:i:s')}}
                                                             </td>
                                                             <td>
                                                                 {{number_format($unDevis->montantAPayer(),0,'','.')}} fcfa
@@ -633,6 +726,21 @@
                                                             </td>
                                                             <td>
                                                                 <a href="{{route('devis.editDevis',$unDevis)}}" class="btn-small d-block">Modifier</a>
+                                                            </td>
+                                                            <td>
+                                                                {{-- Suppression d'un devis en attente (10/09/2026) :
+                                                                     confirmation SweetAlert2 (js-delete-form), jamais
+                                                                     d'alerte native. --}}
+                                                                @if ($unDevis->supprimable())
+                                                                    <form method="post" action="{{ route('devis.supprimerDevis', $unDevis) }}"
+                                                                          class="js-delete-form d-inline"
+                                                                          data-item-name="le devis n° {{ $unDevis->numero }}"
+                                                                          data-confirm-text="Le devis sera retiré de votre liste. Cette action est irréversible.">
+                                                                        @csrf
+                                                                        @method('DELETE')
+                                                                        <button type="submit" class="btn-small d-block js-supprimer-devis" style="background:#ef4444;border-color:#ef4444;">Supprimer</button>
+                                                                    </form>
+                                                                @endif
                                                             </td>
                                                         </tr>
                                                         @endforeach
@@ -674,7 +782,7 @@
                                                                 @endif
                                                             </td>
                                                             <td>
-                                                                {{$unDevis->created_at->isoFormat('LL') .' à '.$unDevis->created_at->format('H:i')}}
+                                                                {{$unDevis->created_at->isoFormat('LL') .' à '.$unDevis->created_at->format('H:i:s')}}
                                                             </td>
                                                             <td>
                                                                 {{number_format($unDevis->montantAPayer(),0,'','.')}} fcfa
@@ -777,6 +885,7 @@
                                                             <th>Statut</th>
                                                             {{-- <th>Détail de la livraison</th> --}}
                                                             <th>montant</th>
+                                                            <th>Codes</th>
                                                             <th></th>
                                                         </tr>
                                                     </thead>
@@ -816,7 +925,29 @@
                                                                         {{-- <small class="text-muted"> (Contient {{$commande->produits->count()}} produit{{($commande->produits->count()>1)? 's' : ''}})  </small> --}}
                                                                     </td>
 
-                                                                    <td><a href="{{route('client.detaiDemandeDeLivraison',$demande)}}" class="btn-small d-block">Détails</a></td>
+                                                                    {{-- Code de livraison de chaque course acceptée (10/09/2026),
+                                                                         comme pour les ventes et les locations : copiable,
+                                                                         partageable par WhatsApp. Pas de bon d'enlèvement :
+                                                                         une demande de livraison ne facture que du transport. --}}
+                                                                    <td>
+                                                                        @forelse ($demande->coursesAcceptees() as $courseDemande)
+                                                                            @include('client._codesLivraison', [
+                                                                                'livraison' => $courseDemande,
+                                                                                'numeroCommande' => $demande->numero,
+                                                                                'libelleAffaire' => 'demande de livraison',
+                                                                                'queEnlevement' => false,
+                                                                            ])
+                                                                        @empty
+                                                                            <span class="text-muted">—</span>
+                                                                        @endforelse
+                                                                    </td>
+                                                                    <td>
+                                                                        <a href="{{route('client.detaiDemandeDeLivraison',$demande)}}" class="btn-small d-block">Détails</a>
+                                                                        {{-- Proforma / facture et factures DGI, comme pour les ventes (lot 85, 15/09/2026). --}}
+                                                                        <a href="{{ route('client.documentLivraisonPdf', $demande) }}" target="_blank" class="btn-small d-block">{{ \App\Services\DocumentDAffaire::typeLivraison($demande) }}</a>
+                                                                        <a href="{{ route('client.documentLivraisonPdf', $demande) }}?action=telecharger" class="btn-small d-block"><i class="fi-rs-download"></i> Télécharger</a>
+                                                                        <a href="{{ route('client.listeFactureAffaire', ['service' => 'livraison', 'id' => $demande->id]) }}" class="btn-small d-block">Factures DGI</a>
+                                                                    </td>
                                                                 </tr>
                                                             {{-- @endforeach --}}
                                                         @endforeach
@@ -847,6 +978,7 @@
                                                             <th>Date de demande</th>
                                                             <th>Statut</th>
                                                             <th>montant</th>
+                                                            <th>Codes</th>
                                                             <th></th>
                                                         </tr>
                                                     </thead>
@@ -865,29 +997,71 @@
                                                                         @endforeach
                                                                     </td>
                                                                     <td>{{Carbon::parse($location->created_at)->format('d-m-Y')}}</td>
+                                                                    {{-- L'ETAT D'UNE LOCATION, PAS CELUI D'UNE COMMANDE.
+
+                                                                         Cette colonne restait VIDE pour deux raisons cumulees : elle lisait
+                                                                         `etat_commande`, une colonne qui n'existe pas sur `location`, et ses
+                                                                         cas etaient ceux des commandes (« EN TRAITEMENT », « TERMINEE »)
+                                                                         alors qu'une location vaut « EN ATTENTE », « EN COURS », « TERMINE »
+                                                                         ou « ANNULEE ».
+
+                                                                         `etatLibelle()` sait aussi lire les anciennes valeurs numeriques.
+                                                                         Et un etat inconnu s'affiche tel quel : il doit se voir, pas
+                                                                         disparaitre. --}}
                                                                     <td>
-                                                                        @switch($location->etat_commande)
+                                                                        @php $etatLocation = $location->etatLibelle(); @endphp
+                                                                        @switch($etatLocation)
                                                                             @case('EN ATTENTE')
-                                                                            <span class="badge bg-secondary">{{$location->etat_commande}}</span>
+                                                                                <span class="badge bg-secondary">{{ $etatLocation }}</span>
                                                                                 @break
-                                                                            @case('EN TRAITEMENT')
-                                                                            <span class="badge bg-warning">{{$location->etat_commande}}</span>
+                                                                            @case('EN COURS')
+                                                                                <span class="badge bg-warning">{{ $etatLocation }}</span>
                                                                                 @break
-                                                                            @case('TERMINEE')
-                                                                            <span class="badge bg-success">{{$location->etat_commande}}</span>
+                                                                            @case('TERMINE')
+                                                                                <span class="badge bg-success">{{ $etatLocation }}</span>
                                                                                 @break
-
+                                                                            @case('ANNULEE')
+                                                                                <span class="badge bg-danger">{{ $etatLocation }}</span>
+                                                                                @break
                                                                             @default
-
+                                                                                <span class="badge bg-light text-dark">{{ $etatLocation }}</span>
                                                                         @endswitch
-
+                                                                        {{-- Où en est le matériel (10/09/2026) : la location reste
+                                                                             EN COURS jusqu'au retour, mais le client doit voir que
+                                                                             la livraison est faite. --}}
+                                                                        @php $livraisonLocation = $location->etatLivraison(); @endphp
+                                                                        @if ($livraisonLocation)
+                                                                            <br><span class="badge {{ in_array($livraisonLocation['code'], ['LIVREE', 'RETIREE']) ? 'bg-success' : 'bg-info text-dark' }} mt-1 js-etat-livraison-location">{{ $livraisonLocation['libelle'] }}</span>
+                                                                        @endif
                                                                     </td>
 
                                                                     <td>{{number_format($location->montant_total,0,'',' ')}} fcfa
                                                                         {{-- <small class="text-muted"> (Contient {{$commande->produits->count()}} produit{{($commande->produits->count()>1)? 's' : ''}})  </small> --}}
                                                                     </td>
 
-                                                                    <td><a href="{{route('client.detailDeLocation',$location)}}" class="btn-small d-block">Détails</a></td>
+                                                                    {{-- Codes de la location (10/09/2026), comme pour les ventes :
+                                                                         code de livraison quand un livreur vient, bon d'enlèvement
+                                                                         quand le client retire lui-même chez le fournisseur. --}}
+                                                                    <td>
+                                                                        @php $coursesLocation = $location->coursesAcceptees(); @endphp
+                                                                        @forelse ($coursesLocation as $courseLocation)
+                                                                            @include('client._codesLivraison', [
+                                                                                'livraison' => $courseLocation,
+                                                                                'numeroCommande' => $location->numero,
+                                                                                'libelleAffaire' => 'location',
+                                                                                'queEnlevement' => $location->estRetraitSurPlace(),
+                                                                            ])
+                                                                        @empty
+                                                                            <span class="text-muted">—</span>
+                                                                        @endforelse
+                                                                    </td>
+                                                                    <td>
+                                                                        <a href="{{route('client.detailDeLocation',$location)}}" class="btn-small d-block">Détails</a>
+                                                                        {{-- Proforma / facture et factures DGI, comme pour les ventes (lot 85, 15/09/2026). --}}
+                                                                        <a href="{{ route('client.documentLocationPdf', $location) }}" target="_blank" class="btn-small d-block">{{ \App\Services\DocumentDAffaire::typeLocation($location) }}</a>
+                                                                        <a href="{{ route('client.documentLocationPdf', $location) }}?action=telecharger" class="btn-small d-block"><i class="fi-rs-download"></i> Télécharger</a>
+                                                                        <a href="{{ route('client.listeFactureAffaire', ['service' => 'location', 'id' => $location->id]) }}" class="btn-small d-block">Factures DGI</a>
+                                                                    </td>
                                                                 </tr>
                                                             {{-- @endforeach --}}
                                                         @endforeach
@@ -959,11 +1133,11 @@
                                                                     <td> {{$paiement->code}} </td>
                                                                     <td> {{$paiement->libelle}} </td>
                                                                     <td> {{$paiement->devis?->numero}} </td>
-                                                                    <td> {{$paiement->devis?->created_at->format('d-m-Y à H:i')}} </td>
+                                                                    <td> {{$paiement->devis?->created_at->format('d/m/Y à H:i:s')}} </td>
                                                                     <td></td>
                                                                     <td></td>
                                                                     <td> {{number_format($paiement->montant_total,'0','',' ')}} fcfa </td>
-                                                                    <td> {{($paiement->created_at)->format('d-m-Y à H:i')}} </td>
+                                                                    <td> {{($paiement->created_at)->format('d/m/Y à H:i:s')}} </td>
                                                                     <!-- <td> {{($paiement->statut == 1) ? 'Payé' : 'En attente'}} </td> -->
                                                                 </tr>
                                                             @endforeach
@@ -1014,15 +1188,44 @@
                                 </div> --}}
 
                                 {{-- INFORMATION DU CLIENT  --}}
-                                <div class="tab-pane fade" id="account-detail" role="tabpanel" aria-labelledby="account-detail-tab">
+                                <div class="tab-pane fade {{ $ongletInitial === 'account-detail' ? 'active show' : '' }}" id="account-detail" role="tabpanel" aria-labelledby="account-detail-tab">
+                                    @if (($soldeAvance ?? 0) >= 1)
+                                        <div class="alert alert-success mb-3">
+                                            <strong>Votre avance disponible : {{ number_format($soldeAvance, 0, ',', ' ') }} FCFA.</strong>
+                                            {{ $mentionAvance ?? '' }}
+                                        </div>
+                                    @endif
                                     <div class="card">
                                         <div class="card-header">
                                             <h5>Détails du compte</h5>
                                         </div>
                                         <div class="card-body">
-                                            <form method="post" id="form" action="{{route('client.update')}}">
+                                            <form method="post" id="form" action="{{route('client.update')}}" enctype="multipart/form-data">
                                                 @csrf
                                                 <div class="row">
+                                                    {{-- Photo de profil (lot 105, 17/09/2026) : même fichier que le mobile. --}}
+                                                    <div class="form-group col-md-12">
+                                                        <label>Photo de profil</label>
+                                                        @php $photoActuelle = \Help::photoDeProfil($client->user); @endphp
+                                                        <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+                                                            <div id="apercu-photo-profil" style="width:72px; height:72px; border-radius:50%; overflow:hidden; border:2px solid #d5dbe3; background:#e7eef9; display:flex; align-items:center; justify-content:center;">
+                                                                @if($photoActuelle)
+                                                                    <img id="img-photo-profil" src="{{ $photoActuelle }}" alt="Photo de profil" style="width:100%; height:100%; object-fit:cover;">
+                                                                @else
+                                                                    <img id="img-photo-profil" src="" alt="" style="display:none; width:100%; height:100%; object-fit:cover;">
+                                                                    <span id="initiale-photo-profil" style="font-size:26px; font-weight:700; color:#1c57a3;">{{ mb_strtoupper(mb_substr(trim((string) $client->display_name), 0, 1)) ?: '?' }}</span>
+                                                                @endif
+                                                            </div>
+                                                            <div>
+                                                                <input class="form-control" type="file" name="photo" id="photo" accept="image/png,image/jpeg,image/jpg,image/webp"
+                                                                       onchange="(function(i){ if(!i.files||!i.files[0]) return; var img=document.getElementById('img-photo-profil'); var ini=document.getElementById('initiale-photo-profil'); img.src=URL.createObjectURL(i.files[0]); img.style.display='block'; if(ini) ini.style.display='none'; })(this)">
+                                                                <small class="text-muted">JPG, PNG ou WEBP, 2 Mo au plus. La photo s'affiche aussi sur l'application mobile.</small>
+                                                                @error("photo")
+                                                                <span class="text-danger d-block">{{ $message }}</span>
+                                                                @enderror
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                     @if($client->type_client == "PARTICULIER")
                                                         <div class="form-group col-md-6">
                                                             <label>Nom <span class="required"></span></label>
@@ -1080,13 +1283,33 @@
                                                     </div>
                                                     {{-- ********************* NCC et RCC ***************** --}}
                                                     @if($client->type_client == "ENTREPRISE")
+                                                        {{-- Le client entreprise complet pour la facture normalisée (lot 100, 16/09/2026) :
+                                                             RCCM, NCC (gabarit B2B de la DGI) et régime d'imposition. --}}
                                                         <div class="form-group col-md-12">
-                                                            <span>Registre de commerce</span>
-                                                            <input style="border: solid 1px grey;" type="text" id="rccm" value="{{ $client->rccm_clt }}" name="rccm" required placeholder="RCCM" />
+                                                            <label>Registre de commerce (RCCM) <span class="required">*</span></label>
+                                                            <input class="form-control" type="text" id="rccm" value="{{ $client->rccm_clt }}" name="rccm" required placeholder="RCCM" />
                                                         </div>
                                                         <div class="form-group col-md-12">
-                                                            <span>N° Compte contribuable</span>
-                                                            <input style="border: solid 1px grey;" type="text" id="ncc" value="{{ $client->ncc_clt }}" name="ncc" required placeholder="NCC" />
+                                                            <label>N° de compte contribuable (NCC) <span class="required">*</span></label>
+                                                            <input class="form-control" type="text" id="ncc" value="{{ $client->ncc_clt }}" name="ncc" required placeholder="NCC" />
+                                                        </div>
+                                                        <div class="form-group col-md-12">
+                                                            <label>Régime d'imposition <span class="required">*</span></label>
+                                                            @php $regimeActuel = \App\Support\RegimeImposition::code($client->regime_imposition); @endphp
+                                                            <select class="form-control" name="regime_imposition" required>
+                                                                <option value="">Choisir le régime…</option>
+                                                                @foreach (\App\Support\RegimeImposition::CODES as $codeRegime => $libelleRegime)
+                                                                    <option value="{{ $codeRegime }}" @selected($regimeActuel === $codeRegime)>{{ $libelleRegime }}</option>
+                                                                @endforeach
+                                                            </select>
+                                                        </div>
+                                                        <div class="form-group col-md-12">
+                                                            <label>Nature de l’organisation <span class="required">*</span></label>
+                                                            <select class="form-control" name="nature_fne" required>
+                                                                @foreach (\App\Models\Client::NATURES_FNE as $codeNature => $libelleNature)
+                                                                    <option value="{{ $codeNature }}" @selected(($client->nature_fne ?: 'B2B') === $codeNature)>{{ $libelleNature }}</option>
+                                                                @endforeach
+                                                            </select>
                                                         </div>
                                                     @endif
                                                     {{-- ********************* FIN ************************ --}}
@@ -1390,6 +1613,15 @@
             document.querySelector('.dashboard-content')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
 
+        // Lot 107 (17/09/2026) : /mon-compte#account-detail (menu « Profil » de l'en-tête)
+        // ouvre directement l'onglet visé — le lien du menu latéral porte l'id « <onglet>-tab ».
+        (function () {
+            var cible = (location.hash || '').replace('#', '');
+            if (!cible) { return; }
+            var lien = document.getElementById(cible + '-tab');
+            if (lien) { lien.click(); }
+        })();
+
         let form = document.getElementById('form');
         form.addEventListener('submit', function(e) {
             let pass1 = document.getElementById('pass1')
@@ -1432,6 +1664,17 @@
     </script>
 
 
+    {{-- Messages de session en toast SweetAlert2 (10/09/2026) : suppression
+         d'un devis, refus motivé. Jamais d'alerte native. --}}
+    @if (session('success') || session('error'))
+        <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                if (typeof window.showToast === 'function') {
+                    window.showToast(@json(session('success') ?: session('error')), @json(session('success') ? 'success' : 'error'));
+                }
+            });
+        </script>
+    @endif
     <script type="text/javascript">
         $(function() {
             // Les deux tableaux de devis : les devis en attente et l'historique

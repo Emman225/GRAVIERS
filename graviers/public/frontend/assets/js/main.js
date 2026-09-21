@@ -25,12 +25,20 @@
     });
 
     /*------ ScrollUp -------- */
+    // 17/09/2026 : chevron SVG net ; caché en haut de page, il apparaît après 300 px de défilement.
+    // Tant qu'il est caché, le bouton WhatsApp occupe sa place (classe « avec-remonter » sur body).
     $.scrollUp({
-        scrollText: '<i class="fi-rs-arrow-small-up"></i>',
+        scrollText: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 14.5l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+        scrollDistance: 300,
         easingType: "linear",
         scrollSpeed: 900,
         animation: "fade"
     });
+    var basculerWhatsApp = function () {
+        document.body.classList.toggle('avec-remonter', (window.pageYOffset || document.documentElement.scrollTop) > 300);
+    };
+    $(window).on('scroll', basculerWhatsApp);
+    basculerWhatsApp();
 
     /*------ Wow Active ----*/
     new WOW().init();

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Paiement;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -20,6 +21,10 @@ class Facture extends Model
         // d'enlèvements : la répartition se fait au prorata du HT facturé.
         'remise_appliquee',
         'cout_livraison_applique',
+        // Part de TVA sur le transport portée par cette facture.
+        'tva_transport_applique',
+        // Part d'AIRSI portée par cette facture (10/09/2026).
+        'airsi_applique',
         'statut',
         'service',
         'service_id',
@@ -41,15 +46,94 @@ class Facture extends Model
         'fne_error_message',
         'fne_request_payload',
         'fne_response_payload',
+
+        // Facture d'avoir (lot 92, 16/09/2026).
+        'type_document',
+        'facture_origine_id',
+        'motif_avoir',
+        'lignes_avoir',
+        // Courriel de la facture certifiée (lot 93).
+        'courriel_envoye_le',
+        // Données de la page de vérification de la DGI (lot 96).
+        'fne_verification_payload',
     ];
+
+    public const TYPE_FACTURE = 'FACTURE';
+    public const TYPE_AVOIR   = 'AVOIR';
 
     protected $casts = [
         'fne_warning' => 'boolean',
         'fne_certified_at' => 'datetime',
         'fne_request_payload' => 'array',
         'fne_response_payload' => 'array',
+        'lignes_avoir' => 'array',
+        'fne_verification_payload' => 'array',
         'date_echeance' => 'date',
     ];
+
+    /** Une facture d'avoir : montant négatif, jamais réclamée au client (lot 92). */
+    public function estUnAvoir(): bool
+    {
+        return ($this->type_document ?? self::TYPE_FACTURE) === self::TYPE_AVOIR;
+    }
+
+    /** Les colonnes du lot 92 sont-elles posées (migration 2026_09_16_100000) ? */
+    public static function avoirsDisponibles(): bool
+    {
+        static $ok = null;
+
+        return $ok ??= \Illuminate\Support\Facades\Schema::hasColumn('facture', 'facture_origine_id');
+    }
+
+    /** La facture sur laquelle porte cet avoir. */
+    public function origine()
+    {
+        return $this->belongsTo(Facture::class, 'facture_origine_id');
+    }
+
+    /** Les avoirs établis sur cette facture. */
+    public function avoirs()
+    {
+        return $this->hasMany(Facture::class, 'facture_origine_id');
+    }
+
+    /**
+     * LES ARTICLES TELS QUE LA DGI LES A CERTIFIÉS, avec leur identifiant FNE
+     * (c'est lui que l'API d'avoir attend) et la quantité qu'il reste possible
+     * de créditer, les avoirs déjà établis déduits.
+     */
+    public function articlesCertifies(): array
+    {
+        $items = $this->fne_response_payload['invoice']['items'] ?? [];
+        $deja = [];
+        // Sans la migration du lot 92, la relation ferait une requête sur une
+        // colonne absente : page blanche. On lit les articles sans les avoirs.
+        $avoirs = self::avoirsDisponibles() ? $this->avoirs : collect();
+        foreach ($avoirs as $avoir) {
+            foreach ((array) ($avoir->lignes_avoir ?? []) as $ligne) {
+                $id = (string) ($ligne['id'] ?? '');
+                $deja[$id] = ($deja[$id] ?? 0) + (float) ($ligne['quantity'] ?? 0);
+            }
+        }
+        $articles = [];
+        foreach ((array) $items as $item) {
+            if (empty($item['id'])) {
+                continue;
+            }
+            $quantite = (float) ($item['quantity'] ?? 0);
+            $articles[] = [
+                'id'              => (string) $item['id'],
+                'reference'       => (string) ($item['reference'] ?? ''),
+                'description'     => (string) ($item['description'] ?? ''),
+                'quantity'        => $quantite,
+                'amount'          => (float) ($item['amount'] ?? 0),
+                'measurementUnit' => (string) ($item['measurementUnit'] ?? ''),
+                'reste'           => max(0.0, $quantite - ($deja[(string) $item['id']] ?? 0)),
+            ];
+        }
+
+        return $articles;
+    }
 
     function user(){
         return $this->belongsTo(User::class, 'user_id');
@@ -60,6 +144,21 @@ class Facture extends Model
     }
 
     // Facture d'une location (service = LOCATION, service_id = location.id).
+    /**
+     * La demande de livraison d'une facture de TRANSPORT.
+     *
+     * `service_id` désigne l'affaire, quelle qu'elle soit : c'est `service` qui
+     * dit laquelle. Appeler cette relation sur une facture de vente renverrait
+     * la demande qui porte par hasard le même identifiant — d'où le garde-fou.
+     */
+    function demandeLivraison(){
+        if (strtoupper((string) $this->service) !== strtoupper(\Help::$LIVRAISON)) {
+            return $this->belongsTo(DemandeLivraison::class, 'service_id')->whereRaw('1 = 0');
+        }
+
+        return $this->belongsTo(DemandeLivraison::class, 'service_id');
+    }
+
     function location(){
         return $this->belongsTo(Location::class, 'service_id');
     }
@@ -116,6 +215,11 @@ class Facture extends Model
      */
     public function totalAPayer(): float
     {
+        // Un avoir ne se réclame pas : il crédite le client (lot 92).
+        if ($this->estUnAvoir()) {
+            return 0.0;
+        }
+
         $montant = (float) $this->montant;
 
         if ($montant > 0) {
@@ -146,13 +250,16 @@ class Facture extends Model
 
     public function montantPaye(): float
     {
-        // La relation est presque toujours préchargée par les états de créance :
-        // la relire ligne à ligne y ajoutait une requête par facture.
-        if ($this->relationLoaded('paiements')) {
-            return (float) $this->paiements->where('statut', 1)->sum('montant_total');
-        }
-
-        return (float) Paiement::where('facture_id', $this->id)->where('statut', 1)->sum('montant_total');
+        // TOUS LES CHEMINS, PAS SEULEMENT `facture_id`.
+        //
+        // La relation `paiements` ne connaît que les règlements portant
+        // `facture_id`. Les guichets rattachent le leur à l'AFFAIRE : cette
+        // méthode les ignorait, et tous les états de créance annonçaient dues
+        // des factures encaissées au comptoir.
+        //
+        // Le préchargement n'est plus une raison de se tromper : mieux vaut une
+        // requête de plus qu'un montant faux.
+        return $this->montantDejaRegle();
     }
 
     public function resteAPayer(): float
@@ -229,4 +336,113 @@ class Facture extends Model
         }
         return $paye > 0 ? 'Échue partielle' : 'Échue impayée';
     }
+    /**
+     * CE QUI A DÉJÀ ÉTÉ RÉGLÉ SUR CETTE FACTURE — PAR TOUS LES CHEMINS.
+     *
+     * L'argent arrive par deux routes qui ne se voient pas :
+     *
+     *   · LES GUICHETS (ventes, locations, demandes de livraison) rattachent le
+     *     règlement à l'AFFAIRE — `service` + `service_id` — et ne renseignent
+     *     PAS `facture_id` ;
+     *   · l'écran client à terme rattache le règlement à la FACTURE.
+     *
+     * Le contrôle « le montant dépasse-t-il le reste à payer ? » ne comptait que
+     * la seconde route. Une facture déjà encaissée au guichet lui apparaissait
+     * donc ENTIÈREMENT DUE, et il laissait la régler une seconde fois.
+     *
+     * Constaté le 02/09/2026 sur DA1 TECHNOLOGIE : la facture de location 340101
+     * (29 960) et celle de transport 800860 (4 000) réglées deux fois chacune —
+     * 33 960 F affichés « Versé en trop » sur l'espace client.
+     *
+     * On additionne donc les DEUX rattachements, sans compter deux fois un même
+     * règlement qui porterait les deux.
+     *
+     * UNE COMMANDE PORTE PLUSIEURS FACTURES — ET C'EST LÀ QUE ÇA SE GÂTAIT.
+     *
+     * La facturation émet une facture par groupe d'enlèvements : plusieurs
+     * factures partagent donc le MÊME `service_id`. La condition « ou bien le
+     * règlement désigne mon affaire » les faisait alors se voler mutuellement
+     * leurs encaissements. Reproduit le 04/09/2026 : une commande, deux
+     * factures de 100 000 réglées chacune de 100 000 — 200 000 réellement
+     * encaissés, 400 000 comptés. Et avec un seul règlement de comptoir de
+     * 100 000, les deux factures s'affichaient soldées alors que 100 000
+     * restaient dus : la dette disparaissait de la balance âgée.
+     *
+     * D'où les deux règles ci-dessous :
+     *
+     *   · un règlement qui DÉSIGNE une facture n'appartient qu'à elle ;
+     *   · un règlement de l'affaire, qui n'en désigne aucune, se RÉPARTIT
+     *     entre les factures de cette affaire — de la plus ancienne à la plus
+     *     récente, chacune absorbant ce qui lui reste dû et pas un franc de
+     *     plus. Le surplus éventuel n'est attribué à personne : c'est un
+     *     versement en trop, qui se traite ailleurs.
+     */
+    public function montantDejaRegle(): float
+    {
+        // 1. Ce qui désigne CETTE facture, et elle seule.
+        $propres = $this->reglementsDesignant($this->id);
+
+        if (!$this->service || !$this->service_id) {
+            return $propres;
+        }
+
+        // 2. Ce qui désigne l'AFFAIRE sans nommer de facture.
+        $pot = (float) Paiement::where('statut', \Help::$STATUT_ACTIF)
+            ->whereNull('facture_id')
+            ->where('service', $this->service)
+            ->where('service_id', $this->service_id)
+            ->sum('montant_total');
+
+        if ($pot <= 0) {
+            return $propres;
+        }
+
+        $soeurs = static::where('service', $this->service)
+            ->where('service_id', $this->service_id)
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get();
+
+        // Les règlements nominatifs de toutes les sœurs en UNE requête : sans
+        // cela, un écran qui liste les créances en relance une par facture.
+        $nominatifs = Paiement::where('statut', \Help::$STATUT_ACTIF)
+            ->whereIn('facture_id', $soeurs->pluck('id'))
+            ->selectRaw('facture_id, SUM(montant_total) AS total')
+            ->groupBy('facture_id')
+            ->pluck('total', 'facture_id');
+
+        $part = 0.0;
+
+        foreach ($soeurs as $soeur) {
+            if ($pot <= 0) {
+                break;
+            }
+
+            $dejaNomme = (float) ($nominatifs[$soeur->id] ?? 0);
+            $absorbe = min($pot, max(0, $soeur->totalAPayer() - $dejaNomme));
+            $pot -= $absorbe;
+
+            if ((int) $soeur->id === (int) $this->id) {
+                $part = $absorbe;
+                break;
+            }
+        }
+
+        return $propres + $part;
+    }
+
+    /** Les règlements valides qui nomment cette facture. */
+    private function reglementsDesignant($factureId): float
+    {
+        return (float) Paiement::where('statut', \Help::$STATUT_ACTIF)
+            ->where('facture_id', $factureId)
+            ->sum('montant_total');
+    }
+
+    /** Ce qu'il reste à encaisser, au franc — le FCFA n'a pas de centimes. */
+    public function resteAEncaisser(): float
+    {
+        return \Help::arrondiFranc(max(0, (float) $this->montant - $this->montantDejaRegle()));
+    }
+
 }

@@ -4,7 +4,6 @@ import 'package:date_field/date_field.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -55,88 +54,131 @@ class _ProductDescriptionState extends State<ProductDescription> {
 
   @override
   Widget build(BuildContext context) {
+    final produit = widget.product;
+    final bool estLocation = produit.type_affaire == LOCATION;
+    final double? ancienPrix = produit.aPrixPersonnalise
+        ? produit.prixMoyen?.toDouble()
+        : ((produit.prixReduction ?? 0) > 0
+            ? produit.prixReduction?.toDouble()
+            : null);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.symmetric(horizontal: kSpaceXl),
           child: Column(
-            mainAxisAlignment: mainStart,
-            crossAxisAlignment: crossStart,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                "${widget.product.type_affaire} de ${widget.product.nom}",
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              Text("#${widget.product.reference}", style: red14MediumTextStyle),
-              addVerticalSpace(20),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    "${formaterMontant(widget.product.prixEffectif.toDouble())}/${widget.product.unite.toString()}",
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                      color: kPrimaryColor,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // « VENTE de Sable lavé » : la nature de l'offre était
+                        // collée au nom du produit, en corps de titre. Elle
+                        // devient une étiquette, et le nom redevient le titre.
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: kSpaceSm, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: estLocation
+                                ? kAccentSoftColor
+                                : kPrimarySoftColor,
+                            borderRadius: BorderRadius.circular(kRadiusPill),
+                          ),
+                          child: Text(
+                            estLocation ? "LOCATION" : "VENTE",
+                            style: kEtiquetteStyle.copyWith(
+                              color: estLocation ? kAccentColor : kPrimaryColor,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: kSpaceMd),
+                        Text(
+                          produit.nom.toString(),
+                          style: kTitreEcranStyle.copyWith(fontSize: 22),
+                        ),
+                        const SizedBox(height: kSpaceXs),
+                        // La référence s'affichait en ROUGE, comme une alerte.
+                        Text("Référence ${produit.reference}", style: kLegendeStyle),
+                      ],
                     ),
                   ),
-                  addHorizontalSpace(20),
-                  if (widget.product.aPrixPersonnalise)
-                    Text(
-                      "${formaterMontant(widget.product.prixMoyen?.toDouble() ?? 0)}/${widget.product.unite.toString()}",
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: redColor,
-                        decoration: TextDecoration.lineThrough,
-                      ),
-                    )
-                  else if ((widget.product.prixReduction ?? 0) > 0)
-                    Text(
-                      "${formaterMontant(widget.product.prixReduction?.toDouble() ?? 0)}/${widget.product.unite.toString()}",
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: redColor,
-                        decoration: TextDecoration.lineThrough,
+                  const SizedBox(width: kSpaceMd),
+                  // Le bouton « liste de souhaits » était une demi-pastille
+                  // rose accrochée au bord droit de l'écran, sans libellé ni
+                  // état visible. Il devient un bouton rond, cadré, de taille
+                  // tactile.
+                  Material(
+                    color: kSurfaceMutedColor,
+                    shape: const CircleBorder(),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () =>
+                          _ajouterRetirerDeLaListeDeSouhait(produit.id),
+                      child: Padding(
+                        padding: const EdgeInsets.all(kSpaceMd),
+                        child: SvgPicture.asset(
+                          "assets/icons/Heart Icon_2.svg",
+                          height: 18,
+                          width: 18,
+                          colorFilter: const ColorFilter.mode(
+                              kErrorColor, BlendMode.srcIn),
+                        ),
                       ),
                     ),
+                  ),
                 ],
-              )
+              ),
+              const SizedBox(height: kSpaceLg),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Flexible(
+                    child: Text(
+                      formaterMontant(produit.prixEffectif.toDouble()),
+                      style: kMontantFortStyle.copyWith(fontSize: 26),
+                    ),
+                  ),
+                  Text(
+                    " / ${produit.unite}",
+                    style: kCorpsSecondaireStyle,
+                  ),
+                  if (ancienPrix != null) ...[
+                    const SizedBox(width: kSpaceMd),
+                    Flexible(
+                      child: Text(
+                        formaterMontant(ancienPrix),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          color: kTextMutedColor,
+                          decoration: TextDecoration.lineThrough,
+                          decorationColor: kTextMutedColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              if (produit.description != null &&
+                  produit.description.toString().trim().isNotEmpty &&
+                  produit.description.toString() != 'null') ...[
+                const SizedBox(height: kSpaceLg),
+                // La description était bornée à trois lignes, coupées net,
+                // sans « voir plus » : la fin du texte était perdue.
+                Text(
+                  produit.description.toString(),
+                  style: kCorpsStyle.copyWith(color: kTextSecondaryColor),
+                ),
+              ],
             ],
-          ),
-        ),
-        Align(
-          alignment: Alignment.centerRight,
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            width: 48,
-            decoration: const BoxDecoration(
-              color: Color(0xFFFFE6E6),
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(20),
-                bottomLeft: Radius.circular(20),
-              ),
-            ),
-            child: GestureDetector(
-              onTap: () => _ajouterRetirerDeLaListeDeSouhait(widget.product.id),
-              child: SvgPicture.asset(
-                "assets/icons/Heart Icon_2.svg",
-                colorFilter:
-                    const ColorFilter.mode(Color(0xFFFF4848), BlendMode.srcIn),
-                height: 16,
-              ),
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(
-            left: 20,
-            right: 64,
-          ),
-          child: Text(
-            widget.product.description.toString(),
-            maxLines: 3,
           ),
         ),
         addVerticalSpace(30),
@@ -168,7 +210,7 @@ class _ProductDescriptionState extends State<ProductDescription> {
               textInputAction: TextInputAction.done,
               controller: widget.qteController,
               decoration: InputDecoration(
-                labelText: "Quantité en ${widget.product.unite}",
+                labelText: "Quantité en ${widget.product.unite} *",
                 hintText: "Saisir la quantité",
                 // If  you are using latest version of flutter then lable text and hint text shown like this
                 // if you r using flutter less then 1.20.* then maybe this is not working properly
@@ -212,7 +254,7 @@ class _ProductDescriptionState extends State<ProductDescription> {
               textInputAction: TextInputAction.done,
               controller: widget.qteController,
               decoration: const InputDecoration(
-                labelText: "Quantité",
+                labelText: "Quantité *",
                 hintText: "Saisir la quantité",
               ),
             ),
@@ -228,7 +270,7 @@ class _ProductDescriptionState extends State<ProductDescription> {
                       errorStyle: TextStyle(color: Colors.redAccent),
                       border: OutlineInputBorder(),
                       suffixIcon: Icon(Icons.event_note),
-                      labelText: 'Date début',
+                      labelText: 'Date début *',
                     ),
                     initialValue: DateTime.parse(widget.debutController.text),
                     use24hFormat: true,
@@ -248,7 +290,7 @@ class _ProductDescriptionState extends State<ProductDescription> {
                       errorStyle: TextStyle(color: Colors.redAccent),
                       border: OutlineInputBorder(),
                       suffixIcon: Icon(Icons.event_note),
-                      labelText: 'Date fin',
+                      labelText: 'Date fin *',
                     ),
                     initialValue: DateTime.parse(widget.finController.text),
                     use24hFormat: true,

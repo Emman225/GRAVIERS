@@ -41,11 +41,30 @@
 
     // Un libellé sans valeur n'apprend rien au lecteur : on n'imprime que les
     // lignes renseignées dans la fiche de l'entreprise.
+    // Lot 112 (19/09/2026) : l'identité fiscale de l'entreprise (NCC, RCCM, régime d'imposition),
+    // lue dans Paramètres → informations de l'entreprise, comme sur la facture FNE. Le régime
+    // s'imprime en code suivi de son libellé quand le code est connu (RNI, RSI, RME, RE).
+    $regimeEntreprise = trim((string) $fiche?->regime_imposition);
+    $codeRegime = \App\Support\RegimeImposition::code($regimeEntreprise);
+    if ($codeRegime) {
+        // En code seul (RNI, RSI, RME, RE), comme sur la facture FNE : avec le libellé, la ligne
+        // d'identité fiscale passait sur deux lignes.
+        $regimeEntreprise = $codeRegime;
+    }
+
     $coordonnees = array_filter([
         'Adresse'       => $fiche?->adresse_siege,
         'Téléphone'     => $fiche?->telephone,
         'Adresse mail'  => $fiche?->email_entreprise,
         'Site internet' => $siteInternet,
+    ], fn ($valeur) => trim((string) $valeur) !== '');
+
+    // Sur UNE ligne : trois lignes de plus repoussaient le cadre de signature sur une
+    // seconde page (même piège que celui décrit plus bas pour les marges).
+    $identiteFiscale = array_filter([
+        'NCC'                 => $fiche?->ncc,
+        'RCCM'                => $fiche?->rccm,
+        "Régime d'imposition" => $regimeEntreprise,
     ], fn ($valeur) => trim((string) $valeur) !== '');
 @endphp
 
@@ -56,11 +75,11 @@
     .info-box p { margin: 4px 0; }
 </style>
 
-<table class="header" style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+<table class="header" style="width: 100%; border-collapse: collapse; margin-bottom: 10px;">
     <tr>
         <td style="width: 30%; vertical-align: top; padding: 0;">
             @if ($logoPlateforme)
-                <img src="{{ $logoPlateforme }}" alt="GRAVIER.COM" style="width: 80px; height: auto;">
+                <img src="{{ $logoPlateforme }}" alt="Mon Gravier" style="width: 80px; height: auto;">
             @endif
         </td>
         <td style="vertical-align: top; padding: 0; text-align: right; font-size: 12px;">
@@ -74,6 +93,9 @@
             @foreach ($coordonnees as $libelle => $valeur)
                 <span>{{ $libelle }} : {{ $valeur }}</span><br>
             @endforeach
+            @if (count($identiteFiscale))
+                <span class="identite-fiscale">{!! collect($identiteFiscale)->map(fn ($v, $l) => e($l) . ' : ' . e($v))->implode(' &nbsp;·&nbsp; ') !!}</span><br>
+            @endif
         </td>
     </tr>
 </table>

@@ -48,8 +48,22 @@ class Vehicule extends Model
             return false;
         }
 
+        // UNE COURSE REFUSÉE N'EST PAS UNE COURSE EN COURS.
+        //
+        // Le refus laisse la course en base, active et non livrée — elle ne le
+        // sera jamais. Comptée ici, elle retenait le camion pour toujours : une
+        // seule course refusée dans son histoire, et il ne redevenait plus
+        // jamais disponible, même après avoir terminé toutes les autres.
+        //
+        // Même règle que le site (Vehicule de graviers) : la clôture se fait
+        // depuis l'application OU depuis le site, et ne corriger qu'un des deux
+        // ferait dépendre l'état du camion du canal employé.
+        //
+        // `accepte` vaut 3 pour un refus. La valeur est écrite en clair ici :
+        // ce projet n'a pas de constante côté API.
         $courseEnCours = Livraison::where('vehicule_id', $vehiculeId)
             ->where('statut', Help::$STATUT_ACTIF)
+            ->where('accepte', '!=', 3)
             ->where('etat_livraison', '!=', Help::$LIVRAISON_LIVREE)
             ->exists();
 

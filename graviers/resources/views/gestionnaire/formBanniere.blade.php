@@ -48,6 +48,10 @@
                     <option value="TOP" @selected(old('type_banniere', $banniere->type_banniere) == 'TOP')>Top</option>
                     <option value="FLASH" @selected(old('type_banniere', $banniere->type_banniere) == 'FLASH')>Flash</option>
                     <option value="BOTTOM" @selected(old('type_banniere', $banniere->type_banniere) == 'BOTTOM')>Bottom</option>
+                    {{-- POPUP : le visuel de la fenetre publicitaire de l'accueil.
+                         Il se change ici, sans intervention technique. La PREMIERE
+                         banniere active de ce type est celle qui s'affiche. --}}
+                    <option value="POPUP" @selected(old('type_banniere', $banniere->type_banniere) == 'POPUP')>Popup d'accueil (publicité)</option>
                 </select>
                 <span class="text-danger">
                     @error('type_banniere')

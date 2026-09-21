@@ -45,7 +45,7 @@
 @endif
 
 @if($lieu)
-    @section('adresse_livraison', ucwords($lieu))
+    @section('adresse_livraison', \Help::phrase($lieu))
 @endif
 
 @section('articles')
@@ -66,9 +66,15 @@
             @php
                 $totalHT = 0;
                 $totalTVA_montant = 0;
-                $livraison = 0;
                 $remise = session('remise') ?? 0;
                 $index = 0;
+                // Le transport est une ligne du tableau (09/09/2026), taxée quand le
+                // paramétrage « Appliquer la TVA au transport » l'a décidé.
+                $livraison    = (float) (session('0')['cout_livraison'] ?? 0);
+                $tvaTransport = (float) (session('0')['tva_transport'] ?? 0);
+                $km           = session('0')['km'] ?? null;
+                // Le numéro de bon de commande interne en colonne Réf, « 01 - N° » (13/09/2026).
+                $refBon = \Help::referenceBonDeCommande(session('numero_bon_commande'));
             @endphp
 
             @foreach (Cart::content() as $produit)
@@ -81,8 +87,8 @@
                     $index++;
                 @endphp
                 <tr>
-                    <td class="col-ref">{{ str_pad($index, 2, '0', STR_PAD_LEFT) }}</td>
-                    <td class="col-designation">{{ ucwords($produit->model->nom) }}</td>
+                    <td class="col-ref">{{ \Help::referenceLigne($index, $refBon) }}</td>
+                    <td class="col-designation">{{ \Help::phrase($produit->model->nom) }}</td>
                     <td class="col-pu">{{ number_format($prixUnitaire, 0, '', ' ') }}</td>
                     <td class="col-qte">{{ $produit->qty }}</td>
                     <td class="col-unite">{{ $produit->model->uniteProduit->abreviation ?? 'U' }}</td>
@@ -91,21 +97,26 @@
                     <td class="col-montant">{{ number_format($montantLigne, 0, '', ' ') }}</td>
                 </tr>
             @endforeach
+
+            @include('document.partials._ligne_transport', ['coutLivraison' => $livraison, 'adresse' => trim(($lieu ?? '') . ($km ? ' — ' . $km . ' km' : ''), ' —') ?: null])
         </tbody>
     </table>
 @endsection
 
 @section('totaux')
     @php
-        if (session('0') && isset(session('0')['cout_livraison'])) {
-            $livraison = session('0')['cout_livraison'];
-        }
         if (session('0') && isset(session('0')['tva']) && session('0')['tva']) {
             $totalTVA_montant = session('0')['tva'];
         }
 
-        $totalTTC = $totalHT + $totalTVA_montant;
-        $totalAPayer = $totalTTC + $livraison - $remise;
+        // Transport TAXÉ : ligne du tableau, comptée dans le TTC. Transport NON
+        // taxé : présentation d'avant, sous les totaux (décision du client,
+        // 09/09/2026).
+        $transportEnLigne = $tvaTransport > 0;
+        $totalTTC = $totalHT + $totalTVA_montant + ($transportEnLigne ? $livraison + $tvaTransport : 0);
+        // AIRSI (10/09/2026) : sur le HT net de remise + TVA.
+        $airsi = \Help::airsiPour(Auth::user()?->client, max(0, $totalHT - $remise) + $totalTVA_montant);
+        $totalAPayer = $totalTTC + ($transportEnLigne ? 0 : $livraison) - $remise + $airsi;
 
         session()->put([
             'totalCommande' => intVal($totalAPayer)
@@ -113,9 +124,11 @@
     @endphp
 
     <table class="fne-totaux-outer"><tr><td class="fne-totaux-spacer"></td><td class="fne-totaux-content"><table class="fne-totaux">
+        {{-- TOTAL HT = la somme du tableau, transport compris ; TVA = articles +
+             transport taxé (09/09/2026). --}}
         <tr>
             <td class="label">TOTAL HT</td>
-            <td class="valeur">{{ number_format($totalHT, 0, '', ' ') }}</td>
+            <td class="valeur">{{ number_format($totalHT + ($transportEnLigne ? $livraison : 0), 0, '', ' ') }}</td>
         </tr>
         @if($remise > 0)
         <tr>
@@ -125,11 +138,11 @@
         @endif
         <tr>
             <td class="label">TVA ({{ $config->tva ?? 0 }}%)</td>
-            <td class="valeur">{{ number_format($totalTVA_montant, 0, '', ' ') }}</td>
+            <td class="valeur">{{ number_format($totalTVA_montant + $tvaTransport, 0, '', ' ') }}</td>
         </tr>
-        @if($livraison > 0)
+        @if($livraison > 0 && !$transportEnLigne)
         <tr>
-            <td class="label">Coût livraison @if(session('0') && isset(session('0')['km']))({{ session('0')['km'] }} km)@endif</td>
+            <td class="label">Coût livraison @if($km)({{ $km }} km)@endif</td>
             <td class="valeur">{{ number_format($livraison, 0, '', ' ') }}</td>
         </tr>
         @endif
@@ -137,10 +150,7 @@
             <td class="label">TOTAL TTC</td>
             <td class="valeur">{{ number_format($totalTTC, 0, '', ' ') }}</td>
         </tr>
-        <tr>
-            <td class="label">AUTRES TAXES</td>
-            <td class="valeur">0</td>
-        </tr>
+        @include('document.partials._ligne_airsi', ['airsi' => $airsi ?? 0])
         <tr>
             <td class="label" style="font-size:10pt;">TOTAL A PAYER</td>
             <td class="valeur" style="font-size:10pt; font-weight:bold;">{{ number_format($totalAPayer, 0, '', ' ') }}</td>
@@ -163,9 +173,10 @@
             @if(($config->tva ?? 0) > 0 && ($client->applique_tva ?? 0))
                 <tr>
                     <td>TVA {{ $config->tva }}% sur HT</td>
-                    <td class="text-right">{{ number_format($totalHT, 0, '', ' ') }}</td>
+                    {{-- Assiette = articles + transport taxé ; taxes = les deux TVA (09/09/2026). --}}
+                    <td class="text-right">{{ number_format($totalHT + ($tvaTransport > 0 ? $livraison : 0), 0, '', ' ') }}</td>
                     <td class="text-center">{{ $config->tva }}%</td>
-                    <td class="text-right">{{ number_format($totalTVA_montant, 0, '', ' ') }}</td>
+                    <td class="text-right">{{ number_format($totalTVA_montant + $tvaTransport, 0, '', ' ') }}</td>
                 </tr>
             @else
                 <tr>

@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 class DetteApporteurController extends Controller
 {
     use DoubleValidationPaiement;
+    use \App\Traits\PreuveDeReglementPartenaire;
 
     /**
      * Liste des commissions des apporteurs avec calcul du statut commission,
@@ -138,6 +139,16 @@ class DetteApporteurController extends Controller
                 'notes'            => $p->notes,
                 'en_attente'       => $enAttente,
                 'peut_valider'     => $peutValider,
+                // Point 20 (09/09/2026) : « À payer » après la 2e validation, preuve, « Effectuée ».
+                // Le TROISIÈME administrateur : celui qui a finalisé, sinon celui qui a joint la preuve.
+                'troisieme_par'    => \Help::compteAvecIdentifiant($p->agentEffectuee ?? $p->agentPreuve),
+                'etat_reglement'   => $p->etat_reglement,
+                'libelle_etat'     => $p->libelleReglement(),
+                'a_preuve'         => !empty($p->preuve_paiement),
+                'peut_joindre'     => $p->peutJoindrePreuve() && $p->troisiemeAdministrateur(Auth::user()),
+                'peut_finaliser'   => $p->peutFinaliser() && $p->troisiemeAdministrateur(Auth::user()),
+                // Sécurité : un TROISIÈME administrateur téléverse et finalise ; les validateurs voient pourquoi ils ne peuvent pas.
+                'attend_troisieme' => ($p->peutJoindrePreuve() || $p->peutFinaliser()) && !$p->troisiemeAdministrateur(Auth::user()),
             ];
         });
 
@@ -162,6 +173,8 @@ class DetteApporteurController extends Controller
                     'code_com'       => $codeCom,
                     'apporteur_nom'  => $com->apporteur?->user?->nom_prenoms ?? '-',
                     'code_apporteur' => $codeApp,
+                    // Courriel : la liste du formulaire se cherche aussi dessus (08/09/2026).
+                    'apporteur_email' => $com->apporteur?->user?->email ?? '',
                     // commande_id polymorphe : numéro de la LOCATION le cas échéant
                     'numero_cmd'     => $com->type_affaire === 'LOCATION'
                         ? ('LOC ' . (\App\Models\Location::find($com->commande_id)?->numero ?? '-'))
@@ -425,7 +438,8 @@ class DetteApporteurController extends Controller
             return back()->with('error', $result['message']);
         }
 
-        $p->update(['statut' => 1]);
+        // Validé deux fois : le virement reste à faire (point 20, 09/09/2026).
+        $p->update(['statut' => 1, 'etat_reglement' => \App\Models\DemandePaiement::A_PAYER]);
 
         // Le solde de l'apporteur est CRÉDITÉ à la création de chaque commission :
         // il représente ce que l'entreprise lui doit. Le régler doit donc le
@@ -464,6 +478,12 @@ class DetteApporteurController extends Controller
                 'defaultFont' => 'DejaVu Sans',
             ]);
         return $pdf->download('recu-apporteur-' . str_pad($p->id, 4, '0', STR_PAD_LEFT) . '.pdf');
+    }
+
+    /** Les données du reçu, pour son envoi par courriel (App\Services\RecuDeReglement). */
+    public function donneesDuRecu($paiement): array
+    {
+        return $this->buildRecuData($paiement);
     }
 
     private function buildRecuData(PaiementApporteur $p): array
@@ -604,5 +624,21 @@ class DetteApporteurController extends Controller
             'dettesParApporteur'  => $dettesParApporteur,
             'config'              => $config,
         ]);
+    }
+
+    // Point 20 (09/09/2026) : preuve du versement, puis « Effectuée ».
+    public function preuve($id, \Illuminate\Http\Request $request)
+    {
+        return $this->joindrePreuveReglement(PaiementApporteur::find($id), $request);
+    }
+
+    public function voirPreuve($id)
+    {
+        return $this->voirPreuveReglement(PaiementApporteur::find($id));
+    }
+
+    public function effectuer($id)
+    {
+        return $this->effectuerReglement(PaiementApporteur::find($id));
     }
 }

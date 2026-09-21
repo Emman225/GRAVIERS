@@ -69,7 +69,7 @@
                                                         <span class="retour-produit-qte-badge">{{ $detail->qte }}</span>
                                                     </td>
                                                     <td><span class="retour-produit-num">{{ $commande->numero }}</span></td>
-                                                    <td><small>{{ Carbon::parse($detail->updated_at)->format('d/m/Y H:i') }}</small></td>
+                                                    <td><small>{{ Carbon::parse($detail->updated_at)->format('d/m/Y H:i:s') }}</small></td>
                                                     <td class="text-center">
                                                         @if($detail->retour)
                                                             @switch($detail->retour->statut)
@@ -98,7 +98,7 @@
                                                                 <span class="retour-produit-motif__intitule">Votre motif</span>
                                                                 <small>{{ $detail->retour->motif }}</small>
                                                                 <span class="retour-produit-motif__date">
-                                                                    demandé le {{ Carbon::parse($detail->retour->created_at)->format('d/m/Y') }}
+                                                                    demandé le {{ \Help::dateHeure($detail->retour->created_at) }}
                                                                 </span>
                                                             </div>
                                                             @if($detail->retour->observation_reception)
@@ -107,7 +107,7 @@
                                                                     <small>{{ $detail->retour->observation_reception }}</small>
                                                                     @if($detail->retour->date_reception)
                                                                         <span class="retour-produit-motif__date">
-                                                                            le {{ Carbon::parse($detail->retour->date_reception)->format('d/m/Y') }}
+                                                                            le {{ \Help::dateHeure($detail->retour->date_reception) }}
                                                                         </span>
                                                                     @endif
                                                                 </div>

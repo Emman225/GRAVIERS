@@ -25,7 +25,7 @@ Detail de la demande de location
             </tr>
         @endforeach
         <tr>
-            <td colspan="5" style="border: 1px solid #ddd; padding: 8px; text-align:center"> Montant Total: {{number_format($location->montant_total,'0','','  ')}}fcfa</td>
+            <td colspan="5" style="border: 1px solid #ddd; padding: 8px; text-align:center"> Montant total: {{number_format($location->montant_total,'0','','  ')}}fcfa</td>
         </tr>
     </tbody>
 </table>

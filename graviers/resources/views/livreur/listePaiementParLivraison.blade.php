@@ -19,8 +19,11 @@
                 @if (!$demandes->isEmpty())
                     <!-- card-header end// -->
                     <div class="card-body">
+                        <x-export-buttons table-id="listePaiementsParLivraison"
+                                          filename="paiements-par-livraison"
+                                          title="Paiements par livraison" />
                         <div class="table-responsive">
-                            <table class="table table-striped">
+                            <table id="listePaiementsParLivraison" class="table table-striped">
                                 <thead>
                                     <tr>
                                         <th class="text-center">N°</th>

@@ -37,7 +37,7 @@
                             <th class="text-center">N° Bon</th>
                             <th class="text-center">Date</th>
                             <th class="text-center">Fournisseur</th>
-                            <th class="text-center">N° Cmd Client liée</th>
+                            <th class="text-center">N° Cmd client liée</th>
                             <th class="text-center">Produit</th>
                             <th class="text-end">Montant dû</th>
                             <th class="text-end">Reste à Payer</th>
@@ -51,7 +51,7 @@
                             @endphp
                             <tr class="{{ $l->statut === 'Échue impayée' ? 'table-danger' : '' }}">
                                 <td class="text-center"><strong>{{ $l->numero_be }}</strong></td>
-                                <td class="text-center">{{ $l->date ? Carbon::parse($l->date)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date ? \Help::dateHeure($l->date) : '-' }}</td>
                                 <td>{{ $l->fournisseur_nom }}</td>
                                 <td class="text-center">{{ $l->numero_commande }}</td>
                                 <td>{{ $l->produit }}</td>

@@ -10,7 +10,7 @@
     <div class="content-header">
         <h2 class="content-title">Tickets SAV </h2>
         {{-- <div>
-            <a href="{{ route('sellers.register') }}" class="btn btn-primary"><i class="material-icons md-plus"></i> Ajouter Nouveau</a>
+            <a href="{{ route('sellers.register') }}" class="btn btn-primary"><i class="material-icons md-plus"></i> Ajouter nouveau</a>
         </div> --}}
     </div>
     @if(session('success'))
@@ -37,6 +37,9 @@
         </header>
         <!-- card-header end// -->
         <div class="card-body">
+            <x-export-buttons table-id="liste"
+                              filename="tickets-sav"
+                              title="Tickets SAV" />
             <div class="table-responsive">
                 <table class="table table-striped" id="liste">
                     {{-- @dd($founisseurs) --}}
@@ -71,7 +74,7 @@
 
                                 <td class="text-center"> {{$ticket->detailCommande?->produit?->nom ?? '-'}} </td>
 
-                                <td class="text-center fw_bold"> {{Carbon::parse($ticket->created_at)->format('d-m-Y à H:i')}} </td>
+                                <td class="text-center fw_bold"> {{Carbon::parse($ticket->created_at)->format('d/m/Y à H:i:s')}} </td>
                                 <td class="text-center"> {{$ticket->message}} </td>
 
                                 {{-- À qui le ticket est confié : la liste ne le disait nulle
@@ -88,7 +91,7 @@
                                     @endif
                                 </td>
 
-                                <td class="text-center">
+                                <td class="text-nowrap text-center">
                                     {{-- La colonne s'intitule « Action » mais n'en proposait
                                          plus aucune dès le ticket assigné : un simple badge, et
                                          la personne qui l'avait en charge n'avait aucun moyen
@@ -96,14 +99,14 @@
                                          qu'il fallait passer par « Mes tickets SAV ». --}}
                                     @switch($ticket->statut)
                                         @case(1)
-                                            <a href="{{route('show.ticketSAVTraitement',$ticket)}}" class="btn btn-primary btn-sm">Confier le ticket</a>
+                                            <a href="{{route('show.ticketSAVTraitement',$ticket)}}" class="btn btn-primary btn-sm" title="Confier le ticket"><i class="material-icons md-person_add"></i></a>
                                             @break
                                         @case(2)
                                             @if ((int) $ticket->user_id === (int) Auth::id())
-                                                <a href="{{ route('show.traiterTicketSAVPage', $ticket) }}" class="btn btn-success btn-sm">Traiter</a>
+                                                <a href="{{ route('show.traiterTicketSAVPage', $ticket) }}" class="btn btn-success btn-sm" title="Traiter"><i class="material-icons md-play_arrow"></i></a>
                                             @else
                                                 <span class="badge badge-warning bg-warning d-block mb-1">En traitement</span>
-                                                <a href="{{route('show.ticketSAVTraitement',$ticket)}}" class="btn btn-outline-primary btn-sm">Confier à quelqu'un d'autre</a>
+                                                <a href="{{route('show.ticketSAVTraitement',$ticket)}}" class="btn btn-primary btn-sm" title="Confier à quelqu'un d'autre"><i class="material-icons md-person_add"></i></a>
                                             @endif
                                             @break
                                         @case(3)

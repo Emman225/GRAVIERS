@@ -15,7 +15,7 @@
     </a>
     <li class="nav-item">
         <a class="nav-link btn-icon" href="{{route('client.panier')}}">
-            <i class="material-icons md-shopping-cart animation-shake"></i>
+            <i class="material-icons md-shopping_cart-cart animation-shake"></i>
             <span class="material-symbols-outlined">
                 shopping_cart
             </span>

@@ -26,12 +26,19 @@ class Devis extends Model
         'tva',
         'statut',
         'cout_livraison',
+        // TVA sur le transport, figée au devis (Help::tvaSurTransport).
+        'tva_transport',
+        // AIRSI figé sur l'affaire (10/09/2026), comme la TVA du transport.
+        'airsi',
         'mode_paiement_id',
         'cout_reduction',
         'montant_ht',
         'service',
         'type_livraison_id',
         'date_livraison',
+        // Numéro de bon de commande interne de l'entreprise (09/09/2026),
+        // reporté devant chaque désignation du devis.
+        'numero_bon_commande',
     ];
 
     /**
@@ -88,6 +95,9 @@ class Devis extends Model
         return max(0, $ht
             + (float) ($this->tva ?? 0)
             + (float) ($this->cout_livraison ?? 0)
+            + (float) ($this->tva_transport ?? 0)
+            // AIRSI figé sur le devis (10/09/2026).
+            + (float) ($this->airsi ?? 0)
             - (float) ($this->cout_reduction ?? 0));
     }
 
@@ -143,6 +153,48 @@ class Devis extends Model
         $obj->save();
         $obj->delete();
         return $obj;
+    }
+
+    /**
+     * LE CLIENT PEUT-IL SUPPRIMER CE DEVIS ? (10/09/2026)
+     *
+     * Un devis se supprime tant qu'il est EN ATTENTE : ni transformé en
+     * commande (statut 2), ni rattaché à une commande encore vivante. Une
+     * commande abandonnée sur la passerelle de paiement ne compte pas : elle
+     * est morte, et le devis reste au client, qui doit pouvoir s'en défaire.
+     *
+     * Retourne la raison du refus, ou null si la suppression est possible.
+     */
+    public function motifDeNonSuppression(): ?string
+    {
+        if ((int) $this->statut !== (int) Help::$STATUT_ACTIF) {
+            return 'Ce devis a déjà été transformé en commande : il ne peut plus être supprimé.';
+        }
+        $commande = Commande::where('devis_id', $this->id)->orderByDesc('id')->get()
+            ->first(fn (Commande $c) => $c->affaireVivante());
+        if ($commande) {
+            return "Ce devis est rattaché à la commande n° {$commande->numero} : il ne peut plus être supprimé.";
+        }
+
+        return null;
+    }
+
+    public function supprimable(): bool
+    {
+        return $this->motifDeNonSuppression() === null;
+    }
+
+    /**
+     * Suppression demandée par le client : le devis et ses lignes passent
+     * inactifs, le devis est archivé (soft delete). Rien n'est effacé.
+     */
+    public function supprimerParLeClient(): void
+    {
+        foreach ($this->detailDevis as $ligne) {
+            $ligne->statut = Help::$STATUT_INACTIF;
+            $ligne->save();
+        }
+        self::supprimer($this->id);
     }
 
     public function paiements(){

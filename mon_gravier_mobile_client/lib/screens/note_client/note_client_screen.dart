@@ -2,10 +2,12 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:mon_gravier_com/globale.dart';
 import 'package:mon_gravier_com/models/ConfigModel.dart';
+import '../../components/bouton_retour.dart';
+import '../../components/etat_vide.dart';
+import '../../constants.dart';
 import '../../helper/constants.dart';
 import 'components/top_rounded_container.dart';
 import 'package:custom_rating_bar/custom_rating_bar.dart';
@@ -29,8 +31,29 @@ class _NoteClientScreenState extends State<NoteClientScreen> {
   @override
   void initState() {
     avisController = TextEditingController();
-    ids = Get.arguments;
+    ids = _lireIdentifiants(Get.arguments);
     super.initState();
+  }
+
+  /// IDENTIFIANTS DES PRODUITS À NOTER.
+  ///
+  /// `ids = Get.arguments` était écrit tel quel. L'écran « Détails location »
+  /// appelait cet écran en lui passant un OBJET `LigneCommande` — un reste de
+  /// l'époque où l'on ne notait qu'un produit à la fois. Affecter un objet à
+  /// une `List<int>` lève un `_TypeError` DANS initState : l'écran ne se
+  /// construit jamais, et le client tombe sur une page entièrement grise, sans
+  /// message ni bouton de retour.
+  ///
+  /// On accepte désormais les trois formes rencontrées, et l'absence
+  /// d'identifiant se dit à l'écran au lieu de le faire disparaître.
+  List<int> _lireIdentifiants(dynamic argument) {
+    if (argument is List) {
+      return argument.whereType<int>().toList();
+    }
+    if (argument is int) {
+      return [argument];
+    }
+    return const [];
   }
 
   @override
@@ -41,33 +64,33 @@ class _NoteClientScreenState extends State<NoteClientScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Aucun produit identifiable : on le DIT. Un écran vide ne se distingue
+    // pas d'une panne.
+    if (ids.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(
+          leading: const BoutonRetour(),
+          title: const Text("Noter un produit"),
+        ),
+        body: EtatVide(
+          icone: Icons.star_outline,
+          titre: "Produit introuvable",
+          message: "Nous n'avons pas pu identifier l'article à noter. "
+              "Revenez en arrière et réessayez depuis la liste.",
+          libelleAction: "Retour",
+          action: () => Get.back(),
+        ),
+      );
+    }
+
     return Scaffold(
       extendBody: true,
       extendBodyBehindAppBar: true,
-      backgroundColor: const Color(0xFFF5F6F9),
+      backgroundColor: kSurfaceMutedColor,
       appBar: AppBar(
         title: const Text("Noter un produit"),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       body: ListView(
         children: [
@@ -129,7 +152,7 @@ class _NoteClientScreenState extends State<NoteClientScreen> {
                     controller: avisController,
                     textInputAction: TextInputAction.done,
                     decoration: const InputDecoration(
-                      labelText: "Votre avis sur le/les produit(s)",
+                      labelText: "Votre avis sur le/les produit(s) *",
                       hintText: "Saisissez votre avis ici...",
                       // If  you are using latest version of flutter then lable text and hint text shown like this
                       // if you r using flutter less then 1.20.* then maybe this is not working properly

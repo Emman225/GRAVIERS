@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:mon_gravier_com/impression/impression_recu_paiement_pdf.dart';
 import 'package:mon_gravier_com/screens/init_screen.dart';
@@ -108,7 +109,16 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // Cet ecran n'a PAS de barre de titre : les pictogrammes de la barre
+    // systeme, passes en blanc pour le navy des autres ecrans, seraient
+    // invisibles sur son fond clair. On les repasse en sombre, ici seulement.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+      ),
+      child: Scaffold(
       body: SafeArea(
         child: SizedBox(
           width: double.infinity,
@@ -181,6 +191,7 @@ class _SplashScreenState extends State<SplashScreen> {
             ],
           ),
         ),
+      ),
       ),
     );
   }

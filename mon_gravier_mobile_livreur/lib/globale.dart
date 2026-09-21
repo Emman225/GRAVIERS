@@ -35,6 +35,62 @@ int entierTransition = 0;
 int idNotification = 1;
 User user = User();
 
+/// RETOUR DEPUIS UN ÉCRAN D'ONGLET.
+///
+/// Les écrans de la barre du bas ne sont pas empilés : ils sont tous portés par
+/// le MÊME écran (InitScreen). Il n'y a donc rien à dépiler — `Navigator.pop`
+/// y remonterait à l'écran de connexion, ce qui n'est pas un « retour ».
+///
+/// Leur bouton retour ramène à l'ACCUEIL, ce qui est le seul sens utile ici.
+/// InitScreen renseigne ce pointeur tant qu'il est affiché.
+void Function(int)? allerAOnglet;
+
+/// RECHARGE L'ACCUEIL, SANS VOILE NI BRUIT.
+///
+/// Pose par `HomeScreen` lui-meme, comme `allerAOnglet` l'est par la barre du
+/// bas. Depuis que les onglets restent vivants, une action faite ailleurs ne
+/// recharge plus l'accueil en y revenant : ses chiffres resteraient ceux
+/// d'avant. On l'appelle donc apres ce qui les change — une livraison close,
+/// une demande de paiement.
+///
+/// Nul si l'accueil n'a jamais ete ouvert : il chargera de lui-meme.
+Future<void> Function()? rafraichirAccueil;
+
+
+/// Ramène sur l'onglet Accueil. Sans effet hors des onglets.
+void retourAccueil() => allerAOnglet?.call(0);
+
+/// Ouvre l'ecran des livraisons SUR UN ONGLET PRECIS.
+///
+/// Pose par `LivraisonScreenState`, qui seul detient le controleur. Nul
+/// ailleurs : deux endroits qui changent le meme onglet, c'est deux
+/// endroits a corriger le jour ou il se deplace.
+void Function(int)? allerAOngletLivraison;
+
+/// Onglets de l'ecran des livraisons.
+const ONGLET_LIVRAISON_EN_ATTENTE = 0;
+const ONGLET_LIVRAISON_EN_TRAITEMENT = 1;
+const ONGLET_LIVRAISON_EFFECTUEE = 2;
+
+/// L'onglet que l'ecran des livraisons doit ouvrir a son prochain
+/// affichage.
+///
+/// Depuis que les onglets se construisent a la PREMIERE visite, l'ecran
+/// des livraisons peut ne pas exister au moment ou on lui demande un
+/// onglet : `allerAOngletLivraison` est alors nul et la demande tombe dans
+/// le vide. On la retient ici, et l'ecran l'applique en arrivant.
+int? ongletLivraisonDemande;
+
+/// Amene sur l'ecran des livraisons, onglet designe.
+void ouvrirLivraisons(int onglet) {
+  // Retenu D'ABORD : si l'ecran n'est pas encore construit, il lira cette
+  // demande a sa creation.
+  ongletLivraisonDemande = onglet;
+  allerAOnglet?.call(1);
+  // Et s'il est deja la, il s'y rend tout de suite.
+  allerAOngletLivraison?.call(onglet);
+}
+
 /// Version de l'application, affichée sur l'écran Profil.
 ///
 /// À incrémenter à CHAQUE build livré, en même temps que `version:` dans
@@ -42,8 +98,7 @@ User user = User();
 /// indiscernables une fois installés : on ne sait plus lequel s'exécute, et
 /// tout diagnostic devient une conjecture. C'est ce qui a coûté une journée
 /// entière sur l'application client.
-const String versionApplication = '1.0.3 (4)';
-
+const String versionApplication = '1.0.0 (1)';
 DateTime? currentBackPressTime;
 List<Cart> paniers = [];
 DemandeLivraison demandeLivraison = DemandeLivraison();
@@ -155,7 +210,7 @@ String lienAPI() {
     'http://192.168.100.79:8002/mon_gravier_livreur/'; //Local (dev PC sur LAN)
   } else {
     url =
-    'https://apigravier.fneconnect.net/mon_gravier_livreur/';
+    'https://apigravier.mongravier.com/mon_gravier_livreur/';
   }
   if (kDebugMode) {
     print(url);
@@ -440,13 +495,26 @@ onWillPop() {
   }
 }
 
-formaterDate(String dateString, {String format = 'd MMMM y à HH\'h\'mm'}){
+formaterDate(String dateString, {String? format}){
   // DateTime.parse levait une FormatException sur une date absente (les appelants
   // passent parfois « null » ou un motif de repli) : la carte ou la fiche était
   // alors remplacée par un rectangle d'erreur rouge. On renvoie une chaîne vide.
   final dateTime = DateTime.tryParse(dateString);
   if (dateTime == null) return '';
-  return DateFormat(format, 'fr_FR').format(dateTime);
+
+  // UNE DATE SANS HEURE NE S'AFFICHE PAS AVEC UNE HEURE.
+  //
+  // La date de livraison est une DATE en base : le client choisit un jour,
+  // jamais une heure. Le « à 00h00 » affiché n'était donc pas une heure
+  // fausse — c'était une heure INVENTÉE, et le livreur pouvait la prendre
+  // pour un rendez-vous.
+  //
+  // Un appelant qui impose son motif garde le sien ; une vraie date-heure
+  // garde la sienne, minuit compris, puisqu'elle l'affirme.
+  final porteUneHeure = RegExp(r'\d{1,2}:\d{2}').hasMatch(dateString);
+  final motif = format ?? (porteUneHeure ? 'd MMMM y à HH\'h\'mm' : 'd MMMM y');
+
+  return DateFormat(motif, 'fr_FR').format(dateTime);
 }
 
 double calculerDistanceEnKM(LatLong debut, LatLong fin){

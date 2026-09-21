@@ -42,18 +42,27 @@
 
                                         @if ($client->type_client == 'ENTREPRISE')
                                             <div class="custom_select mb-3">
-                                                <label class="paiement-field-label"><i class="fi-rs-file"></i> Numéro de bon de commande</label>
+                                                {{-- Astérisque des champs obligatoires (lot 81, 15/09/2026). --}}
+                                                <label class="paiement-field-label"><i class="fi-rs-file"></i> Numéro de bon de commande <span class="text-danger">*</span></label>
                                                 <input type="text" required placeholder="Entrez un numéro de bon de commande"
                                                        class="form-control paiement-input" name="numero_bon">
                                             </div>
                                             <div class="custom_select mb-3">
-                                                <label class="paiement-field-label"><i class="fi-rs-upload"></i> Joindre le bon de commande</label>
-                                                <input type="file" required class="form-control paiement-input" name="fichier">
+                                                <label class="paiement-field-label"><i class="fi-rs-upload"></i> Joindre le bon de commande <span class="text-danger">*</span></label>
+                                                {{-- `accept` ne remplace pas la validation du serveur, qui reste
+                                                     seule juge : il evite seulement au client de chercher un PDF
+                                                     quand il a une photo de son bon signe. --}}
+                                                <input type="file" required class="form-control paiement-input" name="fichier"
+                                                       accept="{{ \App\Support\BonDeCommandeJoint::accept() }}">
+                                                <small class="text-muted d-block mt-1">
+                                                    {{ \App\Support\BonDeCommandeJoint::formatsLisibles() }}
+                                                    — {{ (int) (\App\Support\BonDeCommandeJoint::TAILLE_MAX_KO / 1024) }} Mo maximum.
+                                                </small>
                                             </div>
                                         @endif
 
                                         <div class="custom_select mb-3">
-                                            <label class="paiement-field-label"><i class="fi-rs-shipping-fast"></i> Type de livraison</label>
+                                            <label class="paiement-field-label"><i class="fi-rs-shipping-fast"></i> Type de livraison <span class="text-danger">*</span></label>
                                             <select required class="form-control paiement-select" name="type_livraison">
                                                 <option value="">Type de livraison...</option>
                                                 @foreach ($typeLivraison as $type)
@@ -62,8 +71,10 @@
                                             </select>
                                         </div>
                                         <div class="custom_select mb-3">
-                                            <label class="paiement-field-label" for="date_livraison"><i class="fi-rs-calendar"></i> Date de livraison souhaitée</label>
+                                            <label class="paiement-field-label" for="date_livraison"><i class="fi-rs-calendar"></i> Date de livraison souhaitée <span class="text-danger">*</span></label>
                                             <input type="date" name="date_livraison" min="{{now()->format('Y-m-d')}}" required class="form-control paiement-input" id="date_livraison">
+                                            {{-- Le délai toléré (lot 81, 15/09/2026) : le client le lit en choisissant sa date. --}}
+                                            <small class="text-muted d-block mt-1">{{ \Help::mentionDelaiLivraison() }}</small>
                                         </div>
 
                                         <div class="custom_select mb-3">
@@ -155,7 +166,7 @@
                                 <div class="d-flex align-items-end justify-content-between mb-3">
                                     @if (session('point_reduc') || session('reduction_id'))
                                         <h1 class="fw-bold barre">
-                                            {{ number_format(session('totalLocation') + session('0')['cout_livraison'], 0, '', ' ') }}fcfa
+                                            {{ number_format(session('totalLocation') + session('0')['cout_livraison'] + (session('0')['tva_transport'] ?? 0), 0, '', ' ') }}fcfa
                                         </h1>
                                     @endif
                                 </div>
@@ -238,7 +249,7 @@
                                                 </th>
                                             </tr>
                                             <tr id="mpMontantTotal">
-                                                <th class="cart_total_label"><h6 class="">Montant Total</h6></th>
+                                                <th class="cart_total_label"><h6 class="">Montant total</h6></th>
                                                 <th></th>
                                                 <th class="cart_total_amount">
                                                     <h6 class="text-brand text-end"><span id="leMontantTotal" class="js-montant-net">{{ Help::formatNombre($devis->montantAPayer(), true) }}</span> fcfa</h6>
@@ -247,7 +258,7 @@
                                             <tr>
                                                 <th colspan="3">
                                                     <span class="text-danger" id="messageAlert">
-                                                        @if($devis->montantAPayer() > 2000000)
+                                                        @if(\App\Support\PlafondPaiementEnLigne::depasse($devis->montantAPayer()))
                                                             Pour tout montant supérieur à 2 000 000 fcfa le paiement doit se faire par virement bancaire, en agence ou en plusieurs commandes.
                                                         @endif
                                                     </span>
@@ -315,7 +326,7 @@
                                                     <td class="cart_total_label"><h6 class="text-muted">Coût livraison</h6></td>
                                                     <td></td>
                                                     <td class="cart_total_amount">
-                                                        <h6 class="text-brand text-end"> <span id="montant_total">({{ session('0')['km'] }} km) {{ number_format(session('0')['cout_livraison'], 0, '', ' ') }}</span> fcfa</h6>
+                                                        <h6 class="text-brand text-end"> <span id="montant_total">({{ session('0')['km'] }} km) {{ number_format(session('0')['cout_livraison'], 0, '', ' ') }}</span> fcfa @if ((session('0')['tva_transport'] ?? 0) > 0)<br><small class="text-muted">+ TVA sur le transport : {{ number_format(session('0')['tva_transport'], 0, '', ' ') }} fcfa</small>@endif</h6>
                                                     </td>
                                                 </tr>
                                             @endif
@@ -325,20 +336,20 @@
                                                 <th class="cart_total_label"><h6 class="text-muted text-start">Montant TTC</h6></th>
                                                 <th></th>
                                                 <th class="cart_total_amount">
-                                                    <h6 class="text-brand text-end paiement-total-final"> <span id="montant_total">{{ number_format($total + $total * $tva + session('0')['cout_livraison'], 0, '', ' ') }}</span> fcfa</h6>
+                                                    <h6 class="text-brand text-end paiement-total-final"> <span id="montant_total">{{ number_format($total + $total * $tva + session('0')['cout_livraison'] + (session('0')['tva_transport'] ?? 0), 0, '', ' ') }}</span> fcfa</h6>
                                                 </th>
                                             </tr>
                                             <tr id="mpMontantTotal">
                                                 <th class="cart_total_label"><h6 class="">Montant TTC</h6></th>
                                                 <th></th>
                                                 <th class="cart_total_amount">
-                                                    <h6 class="text-brand text-end"> <span id="leMontantTotal" class="js-montant-net">{{ number_format($total + $total * $tva + session('0')['cout_livraison'], 0, '', ' ') }}</span> fcfa</h6>
+                                                    <h6 class="text-brand text-end"> <span id="leMontantTotal" class="js-montant-net">{{ number_format($total + $total * $tva + session('0')['cout_livraison'] + (session('0')['tva_transport'] ?? 0), 0, '', ' ') }}</span> fcfa</h6>
                                                 </th>
                                             </tr>
                                             <tr>
                                                 <th colspan="3">
                                                     <span class="text-danger" id="messageAlert">
-                                                        @if($total + $total * $tva + session('0')['cout_livraison'] > 2000000)
+                                                        @if(\App\Support\PlafondPaiementEnLigne::depasse($total + $total * $tva + session('0')['cout_livraison'] + (session('0')['tva_transport'] ?? 0)))
                                                             Pour tout montant supérieur à 2 000 000 fcfa le paiement doit se faire par virement bancaire, en agence ou en plusieurs commandes.
                                                         @endif
                                                     </span>
@@ -409,7 +420,7 @@
                                                     <td class="cart_total_label"><h6 class="text-muted">Coût livraison</h6></td>
                                                     <td></td>
                                                     <td class="cart_total_amount">
-                                                        <h6 class="text-brand text-end"> <span>({{ session('0')['km'] }} km) {{ number_format(session('0')['cout_livraison'], 0, '', ' ') }}</span> fcfa</h6>
+                                                        <h6 class="text-brand text-end"> <span>({{ session('0')['km'] }} km) {{ number_format(session('0')['cout_livraison'], 0, '', ' ') }}</span> fcfa @if ((session('0')['tva_transport'] ?? 0) > 0)<br><small class="text-muted">+ TVA sur le transport : {{ number_format(session('0')['tva_transport'], 0, '', ' ') }} fcfa</small>@endif</h6>
                                                     </td>
                                                 </tr>
                                             @endif
@@ -420,7 +431,7 @@
                                                 <th class="cart_total_label"><h6 class="text-muted text-start">Montant TTC</h6></th>
                                                 <th></th>
                                                 <th class="cart_total_amount">
-                                                    <h6 class="text-brand text-end paiement-total-final"> <span>{{ number_format($total + $total * $tva + (session('0')['cout_livraison'] ?? 0), 0, '', ' ') }}</span> fcfa</h6>
+                                                    <h6 class="text-brand text-end paiement-total-final"> <span>{{ number_format($total + $total * $tva + (session('0')['cout_livraison'] ?? 0) + (session('0')['tva_transport'] ?? 0), 0, '', ' ') }}</span> fcfa</h6>
                                                 </th>
                                             </tr>
                                             {{-- Montant TTC net après remise : masqué au départ, affiché par le JS. --}}
@@ -428,13 +439,13 @@
                                                 <th class="cart_total_label"><h6 class="">Montant TTC</h6></th>
                                                 <th></th>
                                                 <th class="cart_total_amount">
-                                                    <h6 class="text-brand text-end"> <span id="leMontantTotal" class="js-montant-net">{{ number_format($total + $total * $tva + (session('0')['cout_livraison'] ?? 0), 0, '', ' ') }}</span> fcfa</h6>
+                                                    <h6 class="text-brand text-end"> <span id="leMontantTotal" class="js-montant-net">{{ number_format($total + $total * $tva + (session('0')['cout_livraison'] ?? 0) + (session('0')['tva_transport'] ?? 0), 0, '', ' ') }}</span> fcfa</h6>
                                                 </th>
                                             </tr>
                                             <tr>
                                                 <th colspan="3">
                                                     <span class="text-danger" id="messageAlert">
-                                                        @if($total + $total * $tva + (session('0')['cout_livraison'] ?? 0) > 2000000)
+                                                        @if(\App\Support\PlafondPaiementEnLigne::depasse($total + $total * $tva + (session('0')['cout_livraison'] ?? 0) + (session('0')['tva_transport'] ?? 0)))
                                                             Pour tout montant supérieur à 2 000 000 fcfa le paiement doit se faire par virement bancaire, en agence ou en plusieurs commandes.
                                                         @endif
                                                     </span>
@@ -782,7 +793,7 @@
                             confirmButtonColor: '#ea580c',
                         });
                     } else {
-                        alert("La date de livraison ne peut pas être antérieure à aujourd'hui.");
+                        alerte("La date de livraison ne peut pas être antérieure à aujourd'hui.");
                     }
                     dateInput.value = ""; // Réinitialise le champ
                 }
@@ -799,6 +810,6 @@
     {{-- L'application AJAX du code promo et des points de fidélité (avec SweetAlert2
          et mise à jour des totaux) est gérée de façon centralisée dans
          public/frontend/assets/js/ajoutProduit.js (handlers #formPromo / #formPoint).
-         L'ancien handler inline (alert() basique) a été retiré : il faisait double
+         L'ancien handler inline (alerte() basique) a été retiré : il faisait double
          emploi et provoquait l'affichage d'une alerte basique AVANT le SweetAlert2. --}}
 @endsection

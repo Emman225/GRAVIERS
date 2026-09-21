@@ -39,6 +39,13 @@ class User extends Authenticatable
         'statut',
         'token',
         'ville_id',
+        // ABSENT DE CETTE LISTE, IL ETAIT PERDU EN SILENCE.
+        //
+        // La colonne users.pays_id existe et n'accepte pas de nul — elle vaut 0
+        // par defaut. Un pays transmis a la creation d'un compte etait donc
+        // ecarte par l'affectation de masse, sans la moindre erreur : la fiche
+        // se creait avec un pays inexistant.
+        'pays_id',
         'deleted_at'
     ];
 

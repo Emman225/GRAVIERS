@@ -11,6 +11,9 @@
 
 @section('title','Accueil')
 @section('content')
+{{-- Le popup de publicite de l'accueil : son visuel vient d'une banniere de
+     type POPUP, administrable depuis Gestionnaire -> Bannieres. --}}
+@include('client._popupPublicite')
 @if(session('annule'))
     <div class="alert alert-success conatiner.fluid text-center" id="notify">
         {{session('annule')}}
@@ -150,59 +153,10 @@
                             padding: 6px 16px !important;
                             font-size: 0.8rem !important;
                         }
-                        /* Cartes produits compactes */
-                        .product-grid-4 .product-cart-wrap .product-img-action-wrap {
-                            padding: 8px !important;
-                        }
-                        .product-grid-4 .product-cart-wrap .product-img-action-wrap .product-img a {
-                            max-height: 120px;
-                            overflow: hidden;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            border-radius: 16px;
-                        }
-                        .product-grid-4 .product-cart-wrap .product-img-action-wrap .product-img a img {
-                            object-fit: cover;
-                            height: 120px;
-                            width: 100%;
-                            border-radius: 16px;
-                        }
-                        .product-grid-4 .product-cart-wrap {
-                            margin-bottom: 12px !important;
-                            border-radius: 20px !important;
-                        }
-                        .product-grid-4 .product-cart-wrap .product-content-wrap {
-                            padding: 8px 12px 12px !important;
-                            min-height: auto !important;
-                        }
-                        .product-grid-4 .product-cart-wrap .product-content-wrap h2 {
-                            font-size: 13px !important;
-                            margin: 4px 0 !important;
-                        }
-                        .product-grid-4 .product-cart-wrap .product-content-wrap h2 a {
-                            font-size: 13px !important;
-                            margin-bottom: 0 !important;
-                        }
-                        .product-grid-4 .product-cart-wrap .product-rate-cover {
-                            margin-bottom: 0 !important;
-                            line-height: 1 !important;
-                        }
-                        .product-grid-4 .product-cart-wrap .product-category {
-                            margin-bottom: 0 !important;
-                            font-size: 11px;
-                        }
-                        .product-grid-4 .product-cart-wrap .product-card-bottom {
-                            margin-top: 4px !important;
-                        }
-                        .product-grid-4 .product-cart-wrap .product-price span {
-                            font-size: 1rem !important;
-                        }
-                        .product-grid-4 .product-cart-wrap .add-cart .add {
-                            padding: 8px 16px !important;
-                            font-size: 12px !important;
-                            margin-top: 6px !important;
-                        }
+                        /* Le dessin des cartes produit a quitte cette page : il vaut
+                           pour tout le site et vit dans client/_styleCartesProduits.
+                           Le garder ici en aurait fait deux definitions concurrentes,
+                           dont une seule serait mise a jour le jour venu. */
                         .section-title.style-2 {
                             margin-bottom: 8px !important;
                         }
@@ -532,7 +486,7 @@
                                                 <div class="slider-actions">
                                                     @if ($slide->bouton1_texte && $slide->bouton1_lien)
                                                         <a href="{{ $lien($slide->bouton1_lien) }}" class="btn-slider-primary">
-                                                            <i class="fi-rs-shopping-cart"></i> {{ $slide->bouton1_texte }}
+                                                            <i class="{{ str_contains((string) $slide->bouton1_lien, 'application') ? 'fi-rs-download' : 'fi-rs-shopping-cart' }}"></i> {{ $slide->bouton1_texte }}
                                                         </a>
                                                     @endif
                                                     @if ($slide->bouton2_texte && $slide->bouton2_lien)
@@ -577,7 +531,7 @@
                             <h3>Produits populaires</h3>
                             <ul class="nav nav-tabs links" id="myTab" role="tablist">
                                 <li class="nav-item" role="presentation">
-                                    <button class="nav-link active" id="nav-tab-one" data-bs-toggle="tab" data-bs-target="#tab-one" type="button" role="tab" aria-controls="tab-one" aria-selected="true">Tout les produits</button>
+                                    <button class="nav-link active" id="nav-tab-one" data-bs-toggle="tab" data-bs-target="#tab-one" type="button" role="tab" aria-controls="tab-one" aria-selected="true">Tous les produits</button>
                                 </li>
                                 @foreach ($categories as $categorie )
                                     <li class="nav-item" role="presentation">
@@ -993,6 +947,66 @@
         </div>
 
         {{-- slide de catégorie --}}
+        {{-- Lot 110 (17/09/2026) : les trois applications mobiles et leurs téléchargements. --}}
+        @php $applications = \App\Http\Controllers\UserController::applicationsMobiles(); @endphp
+        <section class="section-applications" id="applications">
+            <div class="container">
+                <div class="appli-entete">
+                    <span class="appli-sur"><i class="fi-rs-smartphone"></i> Applications mobiles</span>
+                    <h2>Mon Gravier dans votre poche</h2>
+                    <p>Trois applications Android, une pour chaque acteur du chantier : commandez, livrez, apportez des affaires — depuis votre téléphone, où que vous soyez.</p>
+                </div>
+                @if (session('application_indisponible'))
+                    <div class="appli-alerte">{{ session('application_indisponible') }}</div>
+                @endif
+                <div class="appli-grille">
+                    <article class="appli-carte appli-carte--client">
+                        {{-- L'écran réel de l'application (capture du 17/09/2026), dans un cadre de téléphone. --}}
+                        <div class="appli-visuel"><img src="{{ asset('frontend/assets/imgs/applications/client.png') }}?v=3" alt="Application Client sur un téléphone" loading="lazy"></div>
+                        <div class="appli-icone"><i class="fi-rs-shopping-cart"></i></div>
+                        <h3>Client</h3>
+                        <p class="appli-sous">{{ $applications['client']['sous'] }}</p>
+                        <ul>
+                            <li><i class="fi-rs-check"></i> Catalogue, panier et devis</li>
+                            <li><i class="fi-rs-check"></i> Suivi des commandes et codes de livraison</li>
+                            <li><i class="fi-rs-check"></i> Factures, paiements et photo de profil</li>
+                        </ul>
+                        <a class="appli-bouton" href="{{ $applications['client']['lien'] }}"><i class="fi-rs-download"></i> Télécharger pour Android</a>
+                        <small>@if($applications['client']['disponible'])APK · {{ $applications['client']['taille'] }} · mis à jour le {{ $applications['client']['date'] }}@else Fichier APK · bientôt disponible @endif</small>
+                    </article>
+                    <article class="appli-carte appli-carte--livreur">
+                        {{-- L'écran réel de l'application (capture du 17/09/2026), dans un cadre de téléphone. --}}
+                        <div class="appli-visuel"><img src="{{ asset('frontend/assets/imgs/applications/livreur.png') }}?v=3" alt="Application Livreur sur un téléphone" loading="lazy"></div>
+                        <div class="appli-icone"><i class="fi-rs-box"></i></div>
+                        <h3>Livreur</h3>
+                        <p class="appli-sous">{{ $applications['livreur']['sous'] }}</p>
+                        <ul>
+                            <li><i class="fi-rs-check"></i> Courses proposées en temps réel</li>
+                            <li><i class="fi-rs-check"></i> Itinéraire, code de livraison, clôture</li>
+                            <li><i class="fi-rs-check"></i> Historique et gains</li>
+                        </ul>
+                        <a class="appli-bouton" href="{{ $applications['livreur']['lien'] }}"><i class="fi-rs-download"></i> Télécharger pour Android</a>
+                        <small>@if($applications['livreur']['disponible'])APK · {{ $applications['livreur']['taille'] }} · mis à jour le {{ $applications['livreur']['date'] }}@else Fichier APK · bientôt disponible @endif</small>
+                    </article>
+                    <article class="appli-carte appli-carte--apporteur">
+                        {{-- L'écran réel de l'application (capture du 17/09/2026), dans un cadre de téléphone. --}}
+                        <div class="appli-visuel"><img src="{{ asset('frontend/assets/imgs/applications/apporteur.png') }}?v=3" alt="Application Apporteur d'affaires sur un téléphone" loading="lazy"></div>
+                        <div class="appli-icone"><i class="fi-rs-users"></i></div>
+                        <h3>Apporteur d'affaires</h3>
+                        <p class="appli-sous">{{ $applications['apporteur']['sous'] }}</p>
+                        <ul>
+                            <li><i class="fi-rs-check"></i> Inscription et suivi de vos clients</li>
+                            <li><i class="fi-rs-check"></i> Commissions sur leurs commandes</li>
+                            <li><i class="fi-rs-check"></i> Demandes de retrait de vos gains</li>
+                        </ul>
+                        <a class="appli-bouton" href="{{ $applications['apporteur']['lien'] }}"><i class="fi-rs-download"></i> Télécharger pour Android</a>
+                        <small>@if($applications['apporteur']['disponible'])APK · {{ $applications['apporteur']['taille'] }} · mis à jour le {{ $applications['apporteur']['date'] }}@else Fichier APK · bientôt disponible @endif</small>
+                    </article>
+                </div>
+                <p class="appli-note"><i class="fi-rs-info"></i> Installation directe (fichier APK) : à l'ouverture, autorisez l'installation depuis cette source si votre téléphone le demande. Compatible Android 7 et plus.</p>
+            </div>
+        </section>
+
         <section class="popular-categories section-padding" id="popular-categories">
             <div class="container">
                 <div class="section-title">
@@ -1002,28 +1016,96 @@
                              gabarit qui n'existe pas (404). Le carrousel ci-dessous
                              affiche déjà toutes les catégories. --}}
                     </div>
-                    <div class="slider-arrow slider-arrow-2 flex-right carausel-8-columns-arrow" id="carausel-8-columns-arrows"></div>
                 </div>
-                <div class="carausel-8-columns-cover position-relative">
-                    <div class="carausel-8-columns" id="carausel-8-columns">
-                        @foreach($categories as $categorie)
-                            <div class="card-1">
-                                <figure class="img-hover-scale overflow-hidden">
-                                    <a href="{{route('product.categorie',$categorie->nom)}}"><img src="storage/{{$categorie->icon}}" alt="" loading="lazy" decoding="async" /></a>
-                                </figure>
-                                <h6>
-                                    <a href="{{route('product.categorie',$categorie->nom)}}"> {{$categorie->nom}} </a>
-                                </h6>
-                            </div>
-                        @endforeach
-                    </div>
+
+                {{-- UNE GRILLE, PLUS UN CARROUSEL.
+                     Le carrousel etait regle sur huit colonnes pour cinq categories :
+                     il ne faisait defiler rien du tout, et ses fleches promettaient
+                     un contenu cache qui n'existait pas. Une grille les montre
+                     toutes, s'adapte a leur nombre et fonctionne au doigt. --}}
+                <div class="cat-grille">
+                    @foreach($categories as $categorie)
+                        @php
+                            // L'icone peut etre un fichier depose sur le disque public
+                            // OU une adresse complete saisie au back-office : les deux
+                            // existent en base. Prefixer aveuglement par « storage/ »
+                            // cassait la seconde.
+                            $icone = $categorie->icon;
+                            $adresseIcone = $icone
+                                ? (str_starts_with($icone, 'http') ? $icone : asset('storage/' . ltrim($icone, '/')))
+                                : null;
+
+                            // Le nombre de produits est deja charge par le controleur,
+                            // filtre sur ce qui est reellement vendable. Il coute donc
+                            // zero requete, et il dit au visiteur ce qui l'attend.
+                            $nombreProduits = $categorie->produits->count();
+                        @endphp
+
+                        <a class="cat-carte" href="{{ route('product.categorie', $categorie->nom) }}">
+                            <span class="cat-visuel">
+                                @if ($adresseIcone)
+                                    <img src="{{ $adresseIcone }}" alt="{{ $categorie->nom }}"
+                                         loading="lazy" decoding="async">
+                                @else
+                                    {{-- Sans icone, une initiale plutot qu'une image
+                                         cassee : le bloc garde sa forme. --}}
+                                    <span class="cat-initiale">{{ mb_substr($categorie->nom, 0, 1) }}</span>
+                                @endif
+                            </span>
+
+                            <span class="cat-texte">
+                                <span class="cat-nom">{{ $categorie->nom }}</span>
+                                <span class="cat-compte">
+                                    @if ($nombreProduits > 0)
+                                        {{ $nombreProduits }} {{ $nombreProduits > 1 ? 'produits' : 'produit' }}
+                                    @else
+                                        Bientôt disponible
+                                    @endif
+                                </span>
+                            </span>
+                        </a>
+                    @endforeach
                 </div>
+
+                <style>
+                    /* Palette reprise du site : bleu #1C57A3, encre #253D4E,
+                       surface #F4F6FA. Rien d'invente, pour que la section ne
+                       detonne pas au milieu de la page. */
+                    .cat-grille{display:grid;gap:20px;
+                        grid-template-columns:repeat(auto-fill,minmax(180px,1fr));}
+                    .cat-carte{display:flex;flex-direction:column;overflow:hidden;
+                        background:#fff;border:1px solid #E6EAF2;border-radius:14px;
+                        text-decoration:none;transition:transform .18s ease,
+                        box-shadow .18s ease,border-color .18s ease;}
+                    .cat-carte:hover{transform:translateY(-4px);border-color:#1C57A3;
+                        box-shadow:0 12px 28px rgba(28,87,163,.14);}
+                    .cat-visuel{display:block;position:relative;overflow:hidden;
+                        background:#F4F6FA;aspect-ratio:4/3;}
+                    .cat-visuel img{width:100%;height:100%;object-fit:cover;display:block;
+                        transition:transform .35s ease;}
+                    .cat-carte:hover .cat-visuel img{transform:scale(1.06);}
+                    .cat-initiale{position:absolute;inset:0;display:flex;align-items:center;
+                        justify-content:center;font-size:44px;font-weight:700;color:#1C57A3;
+                        opacity:.35;}
+                    .cat-texte{display:block;padding:14px 16px 16px;}
+                    .cat-nom{display:block;font-size:15.5px;font-weight:600;color:#253D4E;
+                        line-height:1.3;transition:color .18s ease;}
+                    .cat-carte:hover .cat-nom{color:#1C57A3;}
+                    .cat-compte{display:block;margin-top:4px;font-size:12.5px;color:#7B8794;}
+                    /* Sur mobile, deux colonnes valent mieux qu'une : les blocs
+                       restent lisibles et la section ne s'etire pas sur un ecran. */
+                    @media (max-width:575px){
+                        .cat-grille{gap:14px;grid-template-columns:repeat(2,1fr);}
+                        .cat-texte{padding:11px 12px 13px;}
+                        .cat-nom{font-size:14px;}
+                    }
+                </style>
             </div>
         </section>
         <!--End category slider-->
 
 
-        <section class="section-padding mb-30">
+        <section class="section-padding blocs-mis-en-avant">
             <div class="container">
                 {{-- Les quatre blocs ci-dessous puisaient tous dans $produits avec le
                      MÊME critère (meilleur_note >= 90) et sans borne : ils affichaient

@@ -67,20 +67,18 @@
                                     <td><strong>{{ $r->numero }}</strong></td>
                                     <td>{{ $r->client_nom }} <small class="text-muted">#{{ $r->client_id }}</small></td>
                                     <td class="text-center">
-                                        {{ $r->date_echeance ? Carbon::parse($r->date_echeance)->format('d/m/Y') : '-' }}
+                                        {{ $r->date_echeance ? \Help::dateHeure($r->date_echeance) : '-' }}
                                     </td>
                                     <td class="text-center">
                                         <span class="badge bg-danger">{{ $r->jours_retard }} j</span>
                                     </td>
                                     <td class="text-end"><strong>{{ \Help::formatNombre($r->reste, true) }}</strong></td>
-                                    <td class="text-center">
+                                    <td class="text-nowrap text-center">
                                         <button type="button" class="btn btn-sm btn-warning btn-prefill-relance"
                                                 data-bs-toggle="modal" data-bs-target="#modalRelance"
                                                 data-client-id="{{ $r->client_id }}"
                                                 data-facture-id="{{ $r->facture_id }}"
-                                                data-niveau="{{ $r->jours_retard >= ($delaiRelance * 3) ? '3' : ($r->jours_retard >= ($delaiRelance * 2) ? '2' : '1') }}">
-                                            <i class="material-icons md-call"></i> Relancer
-                                        </button>
+                                                data-niveau="{{ $r->jours_retard >= ($delaiRelance * 3) ? '3' : ($r->jours_retard >= ($delaiRelance * 2) ? '2' : '1') }}" title="Relancer"><i class="material-icons md-call"></i></button>
                                     </td>
                                 </tr>
                             @endforeach
@@ -109,7 +107,7 @@
                         <tr>
                             <th class="text-center">Date Relance</th>
                             <th class="text-center">N° Facture</th>
-                            <th class="text-center">Code Client</th>
+                            <th class="text-center">Code client</th>
                             <th class="text-center">Client</th>
                             <th class="text-center">Type</th>
                             <th class="text-center">Niveau</th>
@@ -129,7 +127,7 @@
                                 };
                             @endphp
                             <tr>
-                                <td class="text-center">{{ $l->date_relance ? Carbon::parse($l->date_relance)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date_relance ? \Help::dateHeure($l->date_relance) : '-' }}</td>
                                 <td class="text-center">{{ $l->numero_facture }}</td>
                                 <td class="text-center">{{ $l->code_client }}</td>
                                 <td>{{ $l->client_nom }}</td>

@@ -1,8 +1,8 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:mon_gravier_com/screens/commande_success/commande_success_screen.dart';
 import 'package:printing/printing.dart';
@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:pdf/pdf.dart';
 import 'package:intl/intl.dart';
 
+import '../components/bouton_retour.dart';
 import '../../globale.dart';
 import '../models/retour_liste_ligne_paiement.dart';
 import 'fne_template.dart';
@@ -35,6 +36,47 @@ class _ImpressionRecuPaiementPdfState extends State<ImpressionRecuPaiementPdf> {
   int niveau = 1;
   String codePaiement = "";
   int idPaiement = 0;
+
+  /// LE REÇU DU SITE (lot 88, 15/09/2026) : le client voit sur son téléphone le
+  /// même reçu que sur le web. Null quand le site n'a pas répondu : le reçu
+  /// local (gabarit FNE) sert alors de repli.
+  Uint8List? recuDuSite;
+  String motifRecuLocal = '';
+
+  Future<void> chargerRecuDuSite(Map<String, dynamic> param) async {
+    try {
+      final reponse = await http
+          .post(Uri.parse('${lienAPI()}recu-paiement-pdf'),
+              headers: {"Content-Type": "application/json"},
+              body: jsonEncode(param))
+          .timeout(const Duration(seconds: 45));
+      final type = reponse.headers['content-type'] ?? '';
+      if (reponse.statusCode == 200 &&
+          type.contains('pdf') &&
+          reponse.bodyBytes.length > 4 &&
+          String.fromCharCodes(reponse.bodyBytes.sublist(0, 4)) == '%PDF') {
+        recuDuSite = reponse.bodyBytes;
+      } else {
+        // Le motif renvoyé par l'API (jeton refusé, site injoignable…), sinon le code HTTP.
+        try {
+          final json = jsonDecode(reponse.body);
+          motifRecuLocal = (json is Map && json['message'] != null)
+              ? json['message'].toString()
+              : 'réponse ${reponse.statusCode}';
+        } catch (_) {
+          motifRecuLocal = 'réponse ${reponse.statusCode}';
+        }
+        if (kDebugMode) {
+          print('Reçu du site indisponible : $motifRecuLocal');
+        }
+      }
+    } catch (e) {
+      motifRecuLocal = messageErreurTechnique(e);
+      if (kDebugMode) {
+        print('Reçu du site : ${e.toString()}');
+      }
+    }
+  }
 
   chargerInfosPaiement() async {
     if (await verifierConnexion()) {
@@ -64,6 +106,11 @@ class _ImpressionRecuPaiementPdfState extends State<ImpressionRecuPaiementPdf> {
           lignes = ret.data ?? [];
           ligne = lignes.isEmpty ? LignePaiement() : lignes[0];
           somme = lignes.fold(0.0, (sum, p) => sum + (p.montant ?? 0));
+          // Le reçu du site, même format que le web (lot 88).
+          await chargerRecuDuSite(param);
+          if (recuDuSite == null) {
+            afficherInfo("Reçu simplifié (version $versionApplication) : $motifRecuLocal");
+          }
         }
       } catch (e) {
         user.code = 500;
@@ -118,34 +165,16 @@ class _ImpressionRecuPaiementPdfState extends State<ImpressionRecuPaiementPdf> {
         appBar: AppBar(
           title: const Text(
             "Imprimer mon reçu de paiement",
-            style: TextStyle(color: Colors.black),
           ),
-          backgroundColor: Colors.transparent,
           elevation: 0,
-          leading: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: ElevatedButton(
-              onPressed: () {
+          leading: BoutonRetour(onTap: () {
                 if (niveau == 1) {
                   Get.toNamed(CommandeSuccessScreen.routeName,
                       arguments: "Paiement effectué avec succès");
                 } else {
                   Get.back();
                 }
-              },
-              style: ElevatedButton.styleFrom(
-                shape: const CircleBorder(),
-                padding: EdgeInsets.zero,
-                elevation: 0,
-                backgroundColor: Colors.white,
-              ),
-              child: const Icon(
-                Icons.arrow_back_ios_new,
-                color: Colors.black,
-                size: 20,
-              ),
-            ),
-          ),
+              }),
         ),
         body: !_dataLoaded
             ? const Center(child: CircularProgressIndicator())
@@ -156,7 +185,8 @@ class _ImpressionRecuPaiementPdfState extends State<ImpressionRecuPaiementPdf> {
                 initialPageFormat: PdfPageFormat.a4,
                 pdfFileName: "$codePaiement.pdf",
                 build: (context) async {
-                  return await makePdf();
+                  // Le reçu du site quand il est là, le reçu local sinon (lot 88).
+                  return recuDuSite ?? await makePdf();
                 },
               ),
       ),

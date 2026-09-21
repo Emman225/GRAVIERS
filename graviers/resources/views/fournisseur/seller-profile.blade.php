@@ -4,7 +4,7 @@
 
 
                 <div class="content-header">
-                    <a href="javascript:history.back()"><i class="material-icons md-arrow_back"></i> Go back </a>
+                    <a href="javascript:history.back()" class="btn btn-light"><i class="material-icons md-arrow_back"></i> Retour</a>
                 </div>
                 <div class="card mb-4">
                     <div class="card-header bg-brand-2" style="height: 150px"></div>

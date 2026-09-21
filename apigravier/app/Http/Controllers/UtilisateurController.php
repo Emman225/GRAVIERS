@@ -155,6 +155,15 @@ class UtilisateurController extends Controller
             'type_client' => "required",
             'pays_id'=> "required",
             'ville_id'=> "required",
+            // Une entreprise complète pour la facture normalisée (lot 100, 16/09/2026) :
+            // la DGI exige le NCC du client sur une facture entre entreprises (B2B).
+            'rccm' => "required_if:type_client,2",
+            'ncc' => "required_if:type_client,2",
+            'regime_imposition' => "required_if:type_client,2",
+        ], [
+            'rccm.required_if' => 'Le RCCM est obligatoire pour une entreprise.',
+            'ncc.required_if' => 'Le NCC (numéro de compte contribuable) est obligatoire pour une entreprise : il figure sur vos factures.',
+            'regime_imposition.required_if' => "Le régime d'imposition est obligatoire pour une entreprise.",
         ]);
 
         $retour = new Retour();
@@ -243,6 +252,16 @@ class UtilisateurController extends Controller
                     $client->parrain_id = $parrain->id;
                     $client->rccm_clt = $rccm;
                     $client->ncc_clt = $ncc;
+                    // La nature de l'organisation pour la DGI (lot 100 bis) : B2B par défaut.
+                    $client->nature_fne = $type_client == 2
+                        ? (in_array($request->nature_fne, ['B2B', 'B2G', 'B2F'], true) ? $request->nature_fne : 'B2B')
+                        : null;
+                    // LE REGIME D'IMPOSITION DU CLIENT FIGURE SUR SA FACTURE.
+                    // La DGI l'attend sur une facture entre entreprises, et
+                    // FneService le lit depuis toujours : sans cette ligne, la
+                    // mention sort vide pour toute entreprise inscrite depuis
+                    // le telephone.
+                    $client->regime_imposition = $request->regime_imposition;
                     $client->dfe = $dfePath;
                     $client->registre_commerce = $rcPath;
                     $client->type_client = $type_client == 1 ? Help::$PARTICULIER : Help::$ENTREPRISE;
@@ -271,6 +290,11 @@ class UtilisateurController extends Controller
                         'bannieres' => Banniere::liste(),
                         'produits' => $prods,
                         'mode_paiements' => ModePaiement::listePourClient(),
+                        // Liste propre à la demande de livraison : les mêmes opérateurs, plus
+                        // le règlement au guichet. Servie SOUS UNE AUTRE CLÉ pour que les
+                        // applications déjà installées, qui ne la lisent pas, gardent
+                        // exactement le comportement d'aujourd'hui.
+                        'mode_paiements_livraison' => ModePaiement::listePourDemandeLivraison(),
                         'type_livraisons' => TypeLivraison::liste(),
                         'unites' => UniteProduit::liste(),
                         'pays' => Pays::liste(),
@@ -289,6 +313,20 @@ class UtilisateurController extends Controller
                         // désormais l'erreur pour pouvoir diagnostiquer les non-réceptions.
                         \Log::error("Echec envoi OTP inscription à $email : " . $mailEx->getMessage());
                     }
+
+                    // LE CODE PART AUSSI PAR WHATSAPP.
+                    //
+                    // Beaucoup de clients n'ont pas d'adresse consultée
+                    // régulièrement, et le courriel part parfois en indésirables.
+                    // Un code jamais reçu, c'est un compte jamais activé.
+                    //
+                    // L'envoi ne lève jamais et ne fait rien tant qu'aucun compte
+                    // fournisseur n'est configuré : poser cette version ne change
+                    // donc rien au fonctionnement actuel.
+                    \App\Services\WhatsAppService::envoyerCode(
+                        $request->contact,
+                        $this->codeAffichable($code->code)
+                    );
                 } else {
                     if ($user->statut == Help::$STATUT_INACTIF && $user->type_user_id == Help::$USER_CLIENT) {
                         $client = Client::lireSurUser($user->id);
@@ -324,6 +362,11 @@ class UtilisateurController extends Controller
                                 'bannieres' => Banniere::liste(),
                                 'produits' => $prods,
                                 'mode_paiements' => ModePaiement::listePourClient(),
+                                // Liste propre à la demande de livraison : les mêmes opérateurs, plus
+                                // le règlement au guichet. Servie SOUS UNE AUTRE CLÉ pour que les
+                                // applications déjà installées, qui ne la lisent pas, gardent
+                                // exactement le comportement d'aujourd'hui.
+                                'mode_paiements_livraison' => ModePaiement::listePourDemandeLivraison(),
                                 'type_livraisons' => TypeLivraison::liste(),
                                 'unites' => UniteProduit::liste(),
                                 'pays' => Pays::liste(),
@@ -340,6 +383,14 @@ class UtilisateurController extends Controller
                         } catch (\Throwable $mailEx) {
                             // Email failed silently - registration succeeded
                         }
+
+                        // Le même code, par WhatsApp : c'est une REPRISE
+                        // d'inscription, donc quelqu'un qui n'a déjà pas reçu le
+                        // premier courriel.
+                        \App\Services\WhatsAppService::envoyerCode(
+                            $request->contact,
+                            $this->codeAffichable($code->code)
+                        );
                         }
                     }else{
                         $retour->code = 406;
@@ -403,6 +454,11 @@ class UtilisateurController extends Controller
                             'bannieres' => Banniere::liste(),
                             'produits' => $prods,
                             'mode_paiements' => ModePaiement::listePourClient(),
+                            // Liste propre à la demande de livraison : les mêmes opérateurs, plus
+                            // le règlement au guichet. Servie SOUS UNE AUTRE CLÉ pour que les
+                            // applications déjà installées, qui ne la lisent pas, gardent
+                            // exactement le comportement d'aujourd'hui.
+                            'mode_paiements_livraison' => ModePaiement::listePourDemandeLivraison(),
                             'type_livraisons' => TypeLivraison::liste(),
                             'unites' => UniteProduit::liste(),
                             'pays' => Pays::liste(),
@@ -540,10 +596,41 @@ class UtilisateurController extends Controller
                     } else {
                         $message = "Bonjour $user->nom_prenoms, Votre code de confirmation pour reinitialiser votre mot de passe sur mon gravier est: {$this->codeAffichable($codeReset->code)}. Veuillez le saisir pour finaliser l'opération.";
                     }
-                    // The email sending is done using the to method on the Mail facade
-                    Mail::to($user->email)->send(new CodeInscriptionMail($user->nom_prenoms, $this->codeAffichable($codeReset->code), $message));
-                    $retour->code = 200;
-                    $retour->message = 'Le code a bien été renvoyé sur votre mail';
+                    // L'ENVOI DU COURRIEL EST ISOLÉ.
+                    //
+                    // Sans ce try/catch, un serveur de messagerie en panne
+                    // faisait remonter une erreur 500 et le renvoi par WhatsApp
+                    // n'aurait jamais lieu — alors que c'est justement le cas où
+                    // il sert : le client redemande un code parce que le premier
+                    // courriel n'est pas arrivé.
+                    $courrielEnvoye = false;
+                    try {
+                        Mail::to($user->email)->send(new CodeInscriptionMail($user->nom_prenoms, $this->codeAffichable($codeReset->code), $message));
+                        $courrielEnvoye = true;
+                    } catch (\Throwable $mailEx) {
+                        \Log::error("Echec renvoi OTP à {$user->email} : " . $mailEx->getMessage());
+                    }
+
+                    // Le second canal, pour une inscription à confirmer. La
+                    // réinitialisation de mot de passe reste sur le courriel
+                    // seul : ce n'est pas ce qui a été demandé ici.
+                    $whatsappEnvoye = $niveau == 1
+                        && \App\Services\WhatsAppService::envoyerCode(
+                            $user->contact,
+                            $this->codeAffichable($codeReset->code)
+                        );
+
+                    if ($courrielEnvoye || $whatsappEnvoye) {
+                        $retour->code = 200;
+                        $retour->message = $whatsappEnvoye
+                            ? ($courrielEnvoye
+                                ? 'Le code vous a été renvoyé par e-mail et par WhatsApp'
+                                : 'Le code vous a été renvoyé par WhatsApp')
+                            : 'Le code a bien été renvoyé sur votre mail';
+                    } else {
+                        $retour->code = 500;
+                        $retour->message = "Le code n'a pas pu être renvoyé, veuillez réessayer";
+                    }
                 } else {
                     $retour->code = 404;
                     $retour->message = 'Aucun code trouvé';
@@ -686,6 +773,13 @@ class UtilisateurController extends Controller
             if ($user->id > 0) {
                 $retour->code = 200;
                 $user->photo = Help::urlFichier($user->photo);
+                // La fiche client : type, RCCM, NCC, régime (lot 100), pour « Mes informations ».
+                $client = Client::lireSurUser($user->id);
+                $user->type_client = $client?->type_client;
+                $user->rccm_clt = $client?->rccm_clt;
+                $user->ncc_clt = $client?->ncc_clt;
+                $user->regime_imposition = $client?->regime_imposition;
+                $user->nature_fne = $client?->nature_fne;
                 $retour->data = $user;
                 $retour->message = 'ok';
             } else {
@@ -746,6 +840,27 @@ class UtilisateurController extends Controller
                 $client = Client::lireSurUser($user->id);
                 $client->nom = $nom_prenoms;
                 $client->contact1 = $contact;
+                // RCCM, NCC et régime d'une entreprise (lot 100) : enregistrés quand
+                // l'application les envoie ; le NCC ne peut pas être effacé.
+                if ((string) $client->type_client === (string) Help::$ENTREPRISE) {
+                    if ($request->has('ncc') && trim((string) $request->ncc) === '') {
+                        $retour->code = 501;
+                        $retour->message = 'Le NCC (numéro de compte contribuable) est obligatoire pour une entreprise : il figure sur vos factures.';
+                        return response()->json($retour);
+                    }
+                    if ($request->filled('ncc')) {
+                        $client->ncc_clt = trim((string) $request->ncc);
+                    }
+                    if ($request->filled('rccm')) {
+                        $client->rccm_clt = trim((string) $request->rccm);
+                    }
+                    if ($request->filled('regime_imposition')) {
+                        $client->regime_imposition = trim((string) $request->regime_imposition);
+                    }
+                    if (in_array($request->nature_fne, ['B2B', 'B2G', 'B2F'], true)) {
+                        $client->nature_fne = $request->nature_fne;
+                    }
+                }
                 $client->save();
 
                 $user->photo = Help::urlFichier($user->photo);
@@ -826,6 +941,29 @@ class UtilisateurController extends Controller
                 } else {
                     $demande = DemandeCompteClientATerme::lireSurClient($client->id);
                     if ($demande->id <= 0) {
+                        // LES TROIS PIÈCES SONT OBLIGATOIRES (07/09/2026), comme sur le
+                        // site. L'application le vérifie aussi ; le serveur fait foi et
+                        // nomme ce qui manque.
+                        $libellesPieces = [
+                            'rccm'     => 'le RCCM / registre de commerce',
+                            'bilan'    => "l'attestation de revenus ou le bilan",
+                            'piece_id' => "la pièce d'identité du dirigeant",
+                        ];
+                        $documentsRecus = is_array($request->documents) ? $request->documents : [];
+                        $manquantes = [];
+                        foreach ($libellesPieces as $clePiece => $libellePiece) {
+                            $docRecu = $documentsRecus[$clePiece] ?? null;
+                            if (!is_array($docRecu) || empty($docRecu['fichier'])) {
+                                $manquantes[] = $libellePiece;
+                            }
+                        }
+                        if ($manquantes) {
+                            $retour->code = 400;
+                            $retour->message = 'Pièce(s) manquante(s) : ' . implode(', ', $manquantes)
+                                . '. Joignez-les pour envoyer votre demande.';
+                            return response()->json($retour);
+                        }
+
                         // Documents justificatifs (mêmes clés que le formulaire web :
                         // rccm / bilan / piece_id / autre), envoyés en base64 par le mobile.
                         // Stockés sur le disque principal ; le web les retrouve via
@@ -929,6 +1067,11 @@ class UtilisateurController extends Controller
                         'bannieres' => Banniere::liste(),
                         'produits' => $prods,
                         'mode_paiements' => ModePaiement::listePourClient(),
+                        // Liste propre à la demande de livraison : les mêmes opérateurs, plus
+                        // le règlement au guichet. Servie SOUS UNE AUTRE CLÉ pour que les
+                        // applications déjà installées, qui ne la lisent pas, gardent
+                        // exactement le comportement d'aujourd'hui.
+                        'mode_paiements_livraison' => ModePaiement::listePourDemandeLivraison(),
                         'type_livraisons' => TypeLivraison::liste(),
                         'unites' => UniteProduit::liste(),
                         'pays' => Pays::liste(),

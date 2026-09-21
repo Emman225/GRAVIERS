@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mon_gravier_com_livreur/helper/constants.dart';
 
@@ -31,7 +30,7 @@ class _CartCardState extends State<CartCard> {
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: const Color(0xFFF5F6F9),
+                color: kSurfaceMutedColor,
                 borderRadius: BorderRadius.circular(15),
               ),
               child: Image.network(widget.cart.product.image.toString()),

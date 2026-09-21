@@ -40,6 +40,17 @@ class UnPaiement {
   String? service;
   int? clientId;
   String? datePaiement;
+  // « Mes paiements » du site (lot 89, 16/09/2026) : le règlement dont on ouvre
+  // le reçu, son numéro, son mode, son état, et pour un paiement en attente le
+  // total à payer (montant = reste).
+  int? paiementId;
+  String? numCommande;
+  String? numeroRecu;
+  String? codePaiement;
+  String? modePaiement;
+  String? etat;
+  double? montantAPayer;
+  String? dateCommande;
 
   UnPaiement(
       {this.id,
@@ -68,6 +79,14 @@ class UnPaiement {
     service = json['service'];
     clientId = json['client_id'];
     datePaiement = json['date_paiement'];
+    paiementId = json['paiement_id'] == null ? null : int.tryParse(json['paiement_id'].toString());
+    numCommande = json['num_commande']?.toString();
+    numeroRecu = json['numero_recu']?.toString();
+    codePaiement = json['code_paiement']?.toString();
+    modePaiement = json['mode_paiement']?.toString();
+    etat = json['etat']?.toString();
+    montantAPayer = json['montant_a_payer'] == null ? null : double.tryParse(json['montant_a_payer'].toString());
+    dateCommande = json['date_commande']?.toString();
   }
 
   Map<String, dynamic> toJson() {

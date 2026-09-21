@@ -18,6 +18,7 @@ use App\Models\blog_commentaire;
 use App\Models\blog;
 use App\Models\Categorie;
 use App\Models\Client;
+use Illuminate\Support\Facades\Schema;
 use App\Models\Commande;
 use App\Models\CommissionApporteur;
 use App\Models\Compte;
@@ -185,29 +186,17 @@ class ClientController extends Controller
             $q->where('produit.statut', 1)->where('produit.type_affaire', 'VENTE')->avecFournisseur();
         }, 'produits.image'])->get();
 
-        // Prix fournisseur le plus bas (parmi les stocks actifs avec un prix défini)
-        // pour chaque produit. Sert de prix affiché au catalogue (le client commande à ce prix).
-        $prixFournisseur = \App\Models\StockProduit::where('statut', 1)
-            ->where('prix', '>', 0)
-            ->groupBy('produit_id')
-            ->selectRaw('produit_id, MIN(prix) as mn')
-            ->pluck('mn', 'produit_id')
-            ->toArray();
+        // LA MÊME RÈGLE QUE PARTOUT AILLEURS : prix d'achat le plus élevé majoré
+        // du pourcentage DALAKOUN.
+        //
+        // Cet écran gardait sa propre copie du calcul, sur le fournisseur le
+        // MOINS cher et sans marge. Elle écrasait le prix calculé : après la
+        // mise en service du pourcentage, l'accueil affichait encore 100 F un
+        // gravier vendu 14 850.
+        Produit::alignerPrixAffiche($produits);
 
-        // Surcharge d'affichage uniquement (non persistée) : on aligne le prix affiché
-        // du catalogue sur le prix fournisseur le plus bas. Le prix métier (prixPour)
-        // utilisé pour le panier/commande reste inchangé.
-        $appliquerPrix = function ($p) use ($prixFournisseur) {
-            if (isset($prixFournisseur[$p->id])) {
-                $p->prix_moyen = (float) $prixFournisseur[$p->id];
-            }
-            return $p;
-        };
-        $produits->getCollection()->transform($appliquerPrix);
         foreach ($categories as $cat) {
-            foreach ($cat->produits as $p) {
-                $appliquerPrix($p);
-            }
+            Produit::alignerPrixAffiche($cat->produits);
         }
 
         return view('client.index', array_merge($this->blocsMisEnAvant(), [
@@ -215,7 +204,6 @@ class ClientController extends Controller
             'categories' => $categories,
             'client' => $client,
             'prixPerso' => $prixPerso,
-            'prixFournisseur' => $prixFournisseur,
             // C'est CETTE méthode qui sert la racine du site (route client.index) ;
             // index() rend la même vue mais depuis une autre adresse. Les deux
             // doivent fournir les diapositives ET les quatre blocs mis en avant,
@@ -335,6 +323,160 @@ class ClientController extends Controller
         ]);
     }
 
+    /**
+     * LA PROFORMA OU LA FACTURE DE LA COMMANDE, EN PDF (lot 81, 15/09/2026) :
+     * le bouton de « Mon compte ». Le document est celui du courriel.
+     */
+    public function documentCommandePdf($numero){
+        $commande = Commande::where('numero', $numero)->firstOrFail();
+        $client   = Client::where('user_id', Auth::id())->first();
+        if (!$client || (int) $commande->client_id !== (int) $client->id) {
+            abort(403);
+        }
+
+        return \App\Services\DocumentDeCommande::pdf($commande)
+            // Prévisualisation par défaut (lot 95, 16/09/2026) ; ?action=telecharger pour le fichier.
+            ->{request('action') === 'telecharger' ? 'download' : 'stream'}(\App\Services\DocumentDeCommande::nomFichier($commande));
+    }
+
+    /**
+     * L'API des mobiles demande au site d'envoyer la proforma (ou la facture)
+     * d'une commande passée depuis l'application, en présentant le jeton
+     * partagé JETON_INTERNE — comme pour le reçu de paiement (routes/api.php).
+     */
+    public function envoyerDocumentInterne(Request $request, $numero){
+        $jeton = (string) config('constantes.jeton_interne');
+        if ($jeton === '' || !hash_equals($jeton, (string) $request->input('jeton', ''))) {
+            return response()->json(['code' => 403, 'message' => 'Jeton interne absent ou invalide'], 403);
+        }
+
+        $commande = Commande::where('numero', $numero)->first();
+        if (!$commande) {
+            return response()->json(['code' => 404, 'message' => 'Commande introuvable'], 404);
+        }
+
+        $envoye = \App\Services\DocumentDeCommande::envoyerParCourriel($commande, true);
+
+        return response()->json([
+            'code'   => 200,
+            'envoye' => $envoye,
+            'type'   => \App\Services\DocumentDeCommande::type($commande),
+        ]);
+    }
+
+    /** Les factures DGI du client pour l'application (lot 95, 16/09/2026), par le jeton interne. */
+    public function facturesInterne(Request $request, Client $client){
+        $jeton = (string) config('constantes.jeton_interne');
+        if ($jeton === '' || !hash_equals($jeton, (string) $request->input('jeton', ''))) {
+            return response()->json(['code' => 403, 'message' => 'Jeton interne absent ou invalide'], 403);
+        }
+
+        return response()->json(['code' => 200, 'data' => \App\Services\FacturesDuClient::pourLApplication($client)]);
+    }
+
+    /** Le PDF d'une facture DGI (vente, location, transport, avoir) pour l'application (lot 95). */
+    public function facturePdfInterne(Request $request, $factureId){
+        $jeton = (string) config('constantes.jeton_interne');
+        if ($jeton === '' || !hash_equals($jeton, (string) $request->input('jeton', ''))) {
+            return response()->json(['code' => 403, 'message' => 'Jeton interne absent ou invalide'], 403);
+        }
+        $facture = \App\Models\Facture::find($factureId);
+        if (!$facture) {
+            return response()->json(['code' => 404, 'message' => 'Facture introuvable'], 404);
+        }
+        $pdf = \App\Services\CourrielFactureFne::pdf($facture);
+        if (!$pdf) {
+            return response()->json(['code' => 404, 'message' => 'Document indisponible'], 404);
+        }
+
+        return response($pdf->output(), 200, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . \App\Services\CourrielFactureFne::nomFichier($facture) . '"',
+        ]);
+    }
+
+    /**
+     * « Mes paiements » du client pour l'application (lot 89, 16/09/2026) : l'API
+     * demande la liste avec le jeton partagé JETON_INTERNE.
+     */
+    public function paiementsInterne(Request $request, Client $client){
+        $jeton = (string) config('constantes.jeton_interne');
+        if ($jeton === '' || !hash_equals($jeton, (string) $request->input('jeton', ''))) {
+            return response()->json(['code' => 403, 'message' => 'Jeton interne absent ou invalide'], 403);
+        }
+
+        return response()->json(['code' => 200, 'data' => \App\Services\PaiementsDuClient::pourLApplication($client)]);
+    }
+
+    /** Le client connecté, ou 403 si l'affaire n'est pas à lui (lot 85). */
+    private function clientProprietaire($affaire): Client
+    {
+        $client = Client::where('user_id', Auth::id())->first();
+        if (!$client || !$affaire || (int) $affaire->client_id !== (int) $client->id) {
+            abort(403);
+        }
+
+        return $client;
+    }
+
+    /** Proforma ou facture d'une LOCATION, en PDF (lot 85, 15/09/2026). */
+    public function documentLocationPdf(Location $location){
+        $this->clientProprietaire($location);
+
+        return \App\Services\DocumentDAffaire::pdfLocation($location)
+            // Prévisualisation par défaut (lot 95, 16/09/2026) ; ?action=telecharger pour le fichier.
+            ->{request('action') === 'telecharger' ? 'download' : 'stream'}(strtolower(\App\Services\DocumentDAffaire::typeLocation($location)) . '-location-' . $location->numero . '.pdf');
+    }
+
+    /** Proforma ou facture d'une DEMANDE DE LIVRAISON, en PDF (lot 85, 15/09/2026). */
+    public function documentLivraisonPdf(DemandeLivraison $demande){
+        $this->clientProprietaire($demande);
+
+        return \App\Services\DocumentDAffaire::pdfLivraison($demande)
+            // Prévisualisation par défaut (lot 95, 16/09/2026) ; ?action=telecharger pour le fichier.
+            ->{request('action') === 'telecharger' ? 'download' : 'stream'}(strtolower(\App\Services\DocumentDAffaire::typeLivraison($demande)) . '-livraison-' . $demande->numero . '.pdf');
+    }
+
+    /** Les factures DGI d'une location ou d'une demande de livraison (lot 85). */
+    public function listeFactureAffaire($service, $id){
+        if ($service === 'location') {
+            $affaire = Location::findOrFail($id);
+            $codeService = Help::$LOCATION;
+            $libelle = 'location';
+        } elseif ($service === 'livraison') {
+            $affaire = DemandeLivraison::findOrFail($id);
+            $codeService = Help::$LIVRAISON;
+            $libelle = 'demande de livraison';
+        } else {
+            abort(404);
+        }
+        $client = $this->clientProprietaire($affaire);
+
+        return view('client.listeFactureAffaire', [
+            'affaire'    => $affaire,
+            'libelle'    => $libelle,
+            'factures'   => \App\Services\DocumentDAffaire::factures($codeService, (int) $affaire->id),
+            'categories' => Categorie::all(),
+            'produits'   => Produit::all(),
+            'client'     => $client,
+        ]);
+    }
+
+    /** Une facture DGI de location ou de transport du client, à voir ou télécharger (lot 85). */
+    public function factureAffairePdf(\App\Models\Facture $facture, $action = 'voir'){
+        $client = Client::where('user_id', Auth::id())->first();
+        if (!$client || (int) $facture->client_id !== (int) $client->id) {
+            abort(403);
+        }
+        $pdf = \App\Services\DocumentDAffaire::pdfFacture($facture);
+        if (!$pdf) {
+            abort(404);
+        }
+        $nom = \App\Services\DocumentDAffaire::nomFichierFacture($facture);
+
+        return $action === 'telecharger' ? $pdf->download($nom) : $pdf->stream($nom);
+    }
+
     public function nouvelleFacture($numero){
         $commande = Commande::where('numero',$numero)->first();
 
@@ -368,7 +510,7 @@ class ClientController extends Controller
         $client = Client::where('user_id',Auth::user()->id)->first();
         $commandes = Commande::where('client_id',$client->id)->orderByDesc('created_at')->get();
 
-        $pdf = PDF::loadView('document.etatCommande',['commandes' => $commandes,'image' => $image])
+        $pdf = PDF::loadView('document.etatCommande',['commandes' => $commandes,'image' => $image, 'client' => $client])
                     ->setOptions(['isHTML5ParseEnebled' => true, 'defaultPaperOrientation' => 'portait'] );
 
         return $pdf->download('Mes commandes DALAKOUN.pdf');
@@ -385,7 +527,7 @@ class ClientController extends Controller
         $client = Client::where('user_id',Auth::user()->id)->first();
         $livraisons = DemandeLivraison::where('client_id',$client->id)->orderByDesc('created_at')->get();
 
-        $pdf = PDF::loadView('document.etatLivraison',['livraisons' => $livraisons,'image' => $image])
+        $pdf = PDF::loadView('document.etatLivraison',['livraisons' => $livraisons,'image' => $image, 'client' => $client])
                     ->setOptions(['isHTML5ParseEnebled' => true, 'defaultPaperOrientation' => 'portait'] );
 
         return $pdf->download('Mes demandes de livraison DALAKOUN.pdf');
@@ -402,7 +544,7 @@ class ClientController extends Controller
         $client = Client::where('user_id',Auth::user()->id)->first();
         $locations = Location::where('client_id',$client->id)->orderByDesc('created_at')->get();
 
-        $pdf = PDF::loadView('document.etatLocation',['locations' => $locations,'image' => $image])
+        $pdf = PDF::loadView('document.etatLocation',['locations' => $locations,'image' => $image, 'client' => $client])
                     ->setOptions(['isHTML5ParseEnebled' => true, 'defaultPaperOrientation' => 'landscape '] );
         // var_dump($locations.'<br>');
 
@@ -472,13 +614,9 @@ class ClientController extends Controller
             }
         }
 
-        $image = config("constantes.logo");
-        return view('client.commandeValidee',[
-            'commande' => $commande,
-            'image' => $image,
-            'config' => Configuration::first(),
-            'prixPerso' => $prixPerso,
-        ]);
+        // Un seul jeu de données pour l'écran, le PDF et le courriel (lot 81) :
+        // le titre dit « Proforma » ou « Facture de vente » selon le paiement.
+        return view('client.commandeValidee', \App\Services\DocumentDeCommande::donnees($commande));
 
 
 
@@ -612,14 +750,18 @@ class ClientController extends Controller
 
         if ($request->hasFile('fichier')) {
 
-            $request->validate(['fichier' => 'required|mimes:pdf|max:2048'], [
-                'fichier.mimes' => 'Le fichier doit être au format PDF',
-                'fichier.max' => 'Le fichier ne doit pas dépasser 2 Mo',
-            ]);
+            // LE FORMAT ACCEPTE EST DEFINI A UN SEUL ENDROIT : voir
+            // App\Support\BonDeCommandeJoint. Recopiee sur quatre ecrans, la regle
+            // se serait fatalement ecartee d'elle-meme.
+            $request->validate(
+                ['fichier' => \App\Support\BonDeCommandeJoint::regle()],
+                \App\Support\BonDeCommandeJoint::messages()
+            );
 
-            // $destination = base_path('public/storage/productsImage');
             $destination = Storage::disk('public')->path('temp_pdfs'); // racine reelle du disque (cf. config/filesystems.php)
-            $nomPdf = 'bon'.'-'.Auth::user()->client->display_name.'-'. date('YmdHis') .'.pdf'; // extension forcée : jamais l'extension d'origine (anti-upload de .php exécutable)
+            // L'extension vient de la LISTE BLANCHE, jamais du nom recu.
+            $nomPdf = \App\Support\BonDeCommandeJoint::nomDeFichier(
+                $request->file('fichier'), Auth::user()->client->display_name);
 
             $request->file('fichier')->move($destination, $nomPdf);
 
@@ -679,18 +821,24 @@ class ClientController extends Controller
 
         $client = Help::clientValide();
 
-        // PAS DE TVA SUR LE TRANSPORT.
+        // LA TVA SUR LE TRANSPORT EST UNE OPTION.
         //
         // Le site ajoutait 18 % au coût du transport, l'application mobile non :
         // la même course coûtait 23 600 F depuis le site et 20 000 F depuis le
-        // téléphone. Arbitrage du responsable projet, comptable de formation, le
-        // 13/08/2026 : « Pas de TVA sur le transport. » C'est donc le mobile qui
-        // avait raison, et le site qui s'aligne.
+        // téléphone. L'arbitrage du 13/08/2026 l'avait supprimée, en gardant la
+        // mécanique pour le jour où le régime changerait.
         //
-        // Le taux reste transmis à la vue — d'autres écrans le lisent — mais le
-        // montant est nul : rien n'est ajouté au prix.
+        // Elle est désormais commandée par un réglage — Paramètres → Livraison —
+        // et reste DÉSACTIVÉE par défaut : sans décision explicite, le transport
+        // se facture hors taxe, comme aujourd'hui.
+        //
+        // Le taux est lu au moment de la demande et le montant figé avec elle :
+        // une course chiffrée hors taxe le reste, même si l'option est activée
+        // le lendemain. On ne rouvre pas un prix annoncé à un client.
         $tva = Client::tva($client);
-        $montantTva = 0;
+
+        $tvaSurTransport = (int) ($conf->tva_transport ?? 0) === 1;
+        $montantTva = $tvaSurTransport ? round($prix * $tva) : 0;
 
         //table produit
         $produits = [];
@@ -785,25 +933,21 @@ class ClientController extends Controller
             }
         }
 
-        $couts = CoutLivraison::all();
-
-        $km = round(session('km'))/1000;
-        $prix = 0;
-        $coutLivraison = 0;
-        foreach ($couts as $cout) {
-            switch ($km) {
-                case ($km >= $cout->distance_min_km && $km<= $cout->distance_max_km):
-                    $prix = $km * $cout->prix_km;
-                    $coutLivraison = $cout->id;
-                    break;
-            }
-        }
-
-        // dd($coutLivraison);
-
-        if($prix == 0){
-            $prix = $km * 5000;
-        }
+        // LE PRIX N'EST PAS CALCULÉ ICI.
+        //
+        // Il l'était — sur une formule à part : « km × prix_km », avec un repli
+        // à « km × 5 000 », en ignorant l'unité et la quantité. Mais le montant
+        // ainsi obtenu n'était utilisé nulle part : la demande est enregistrée
+        // avec `session('montant_total')`, que `recapLivraison()` a posé en
+        // additionnant, ligne par ligne, le forfait de la tranche de la grille.
+        //
+        // Quinze lignes qui ressemblaient au calcul du prix de la course sans
+        // en être : le jour où quelqu'un aurait voulu ajuster le tarif des
+        // demandes de livraison, il les aurait trouvées, modifiées, et n'aurait
+        // pas compris pourquoi rien ne changeait. Elles chargeaient au passage
+        // les 96 tranches à chaque validation, pour les jeter.
+        //
+        // La grille reste la seule source du prix, ici comme ailleurs.
         $paiement = ModePaiement::find(session('paiement'));
         // dd($paiement);
         $type_livraison = TypeLivraison::where('libelle',session('type_livraison'))->first();
@@ -814,6 +958,19 @@ class ClientController extends Controller
         // dd(session('poids'));
         $client = Client::where('user_id',Auth::user()->id)->first();
 
+        // LE PLAFOND DU PAIEMENT EN LIGNE — AVANT LA CRÉATION DE LA DEMANDE.
+        //
+        // Le test existait plus bas, écrit à la main, et il se contentait de
+        // SAUTER la passerelle : la demande était enregistrée sans qu'un franc
+        // soit encaissé et sans que le client soit prévenu. On le lui dit ici,
+        // et rien n'est créé tant qu'il n'a pas choisi un mode possible.
+        $montantDemande = (float) session('montant_total') + (float) session('montantTva');
+
+        if ($paiement
+            && !\App\Support\PlafondPaiementEnLigne::modeAutorise($paiement, $montantDemande)) {
+            return back()->with('error', \App\Support\PlafondPaiementEnLigne::refus());
+        }
+
         // PLAFOND DE CRÉDIT. Le contrôle gardait les six points de création de
         // commandes et de locations, mais pas celui-ci : un client à terme
         // pouvait accumuler du transport sans aucune limite. Une demande de
@@ -823,6 +980,17 @@ class ClientController extends Controller
         // Le montant retenu est le net réellement dû : transport + TVA. Aucune
         // remise n'est appliquée à ce stade sur une demande de livraison.
         $engageLivraison = (float) session('montant_total') + (float) session('montantTva');
+        // L'AIRSI fait partie de ce que le client devra (10/09/2026).
+        $engageLivraison += \Help::airsiPour($client, $engageLivraison,
+            (float) session('montant_total'), (float) Client::tvaTransport($client));
+
+        // Une avance disponible couvre d'abord la demande : seul le reliquat
+        // engage le crédit — même règle que la vente (point 19). Un mode en
+        // ligne ne touche pas à l'avance.
+        $modeEnLigneLivraison = $paiement && (int) $paiement->en_ligne === 1;
+        if (!$modeEnLigneLivraison) {
+            $engageLivraison = max(0, $engageLivraison - \App\Services\Avances::soldeDisponible($client));
+        }
 
         if ($refus = $this->refusPlafondCredit($client, $engageLivraison)) {
             return redirect()->route('client.demandeLivraison')->with('error', $refus);
@@ -855,7 +1023,16 @@ class ClientController extends Controller
 
 
         $livraison = [
-            'numero' => uniqid(),
+            // MÊME FORMAT DE NUMÉRO QUE LES VENTES.
+            //
+            // Le site écrivait `uniqid()` : une suite de treize caractères
+            // comme « 6a999a12546cb », quand une commande de vente porte six
+            // chiffres. Deux affaires du même client, voisines dans les
+            // listes, ne se lisaient pas de la même façon — et l'application
+            // mobile, elle, générait déjà les six chiffres (LivraisonController
+            // de l'API). Même défaut, et même correction, que sur les numéros
+            // de location.
+            'numero' => \Help::genererNumeroUnique('demande_livraison'),
             'libelle' => session('libelle'),
             'description' => session('description'),
             'client_id' => $client->id,
@@ -890,7 +1067,6 @@ class ClientController extends Controller
                 // État en toutes lettres : etat_livraison est un ENUM, où un
                 // entier désigne la position de la valeur et non la valeur.
                 'etat_livraison' => Help::$LIVRAISON_EN_ATTENTE,
-                // 'cout_livraison_id' => $coutLivraison,
                 'description' => $produit['desc'] ?? '',
 
             ];
@@ -907,10 +1083,14 @@ class ClientController extends Controller
             TvaCommande::create([
                 'client_id' => $client->id,
                 'commande_id' => $c->id,
-                'montant' => session('montantTva'),
+                'montant' => \Help::arrondiFranc(session('montantTva') ?? 0),
                 'type_affaire' => Help::$LIVRAISON,
             ]);
         }
+        // AIRSI figé sur la demande (10/09/2026) : transport TTC.
+        $c->update(['airsi' => \Help::airsiPour($client,
+            (float) session('montant_total') + \Help::arrondiFranc((float) (session('montantTva') ?? 0)),
+            (float) session('montant_total'), (float) Client::tva($client))]);
 
         // Bon de commande joint par le client.
         //
@@ -973,7 +1153,11 @@ class ClientController extends Controller
                 // désignait Orange Money ou Wave voyait sa demande enregistrée sans
                 // qu'aucun règlement ne parte. Même correction que pour les commandes
                 // et les locations, où le verrou a déjà été retiré.
-                if ($modeLivObj && $modeLivObj->en_ligne == 1 && $c->montantTotal + session('montantTva') < 2000000) {
+                // Le plafond a déjà été opposé au client plus haut, AVANT que la
+                // demande n'existe. Ici il ne reste que le caractère du mode :
+                // le laisser une seconde fois ferait deux règles à tenir, et
+                // celle-ci escamotait le paiement au lieu de le refuser.
+                if ($modeLivObj && $modeLivObj->en_ligne == 1) {
                     $codePaiement = Help::getCommandeNo();
                     $nomPrenoms = $client->nom;
                     $arrNoms = explode(" ", $nomPrenoms);
@@ -1064,7 +1248,18 @@ class ClientController extends Controller
 
 
 
-        return redirect()->route('client.livraisonValide',$c)->with('success','Votre demande de livraison a bien été envoyé');
+        // AVANCE DU CLIENT (10/09/2026) : une demande réglée « en agence »
+        // s'impute d'elle-même sur les avances disponibles, comme une vente.
+        // Un mode en ligne n'y touche pas, même si la passerelle a échoué.
+        $messageAvance = null;
+        if (!($modeLivObj && $modeLivObj->en_ligne == 1)) {
+            $imputationAvance = \App\Services\Avances::imputerSurDemandeLivraison($c, Auth::id());
+            $messageAvance = \App\Services\Avances::messageImputation($imputationAvance, Help::$LIVRAISON) ?: null;
+        }
+
+        return redirect()->route('client.livraisonValide',$c)
+            ->with('success','Votre demande de livraison a bien été envoyé')
+            ->with('avance_imputee', $messageAvance);
     }
 
     public function livraisonValide(DemandeLivraison $livraison){
@@ -1077,12 +1272,21 @@ class ClientController extends Controller
     }
 
     public function demandeClientATerme(Request $request){
+        // LES PIÈCES SONT OBLIGATOIRES (07/09/2026). Le formulaire les
+        // exige aussi, mais seul le serveur fait foi : le message nomme la
+        // pièce qui manque, pour que le client sache quoi joindre.
         $request->validate([
             'objet'       => 'required|string|max:255',
             'description' => 'required|string|min:20',
-            'documents.*' => 'nullable|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:5120',
+            'documents.rccm'     => 'required|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:5120',
+            'documents.bilan'    => 'required|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:5120',
+            'documents.piece_id' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'documents.autre'    => 'nullable|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:5120',
         ], [
             'description.min' => 'Veuillez détailler votre demande (au moins 20 caractères).',
+            'documents.rccm.required'     => 'Pièce manquante : le RCCM / registre de commerce est obligatoire.',
+            'documents.bilan.required'    => "Pièce manquante : l'attestation de revenus ou le bilan est obligatoire.",
+            'documents.piece_id.required' => "Pièce manquante : la pièce d'identité du dirigeant est obligatoire.",
             'documents.*.mimes' => 'Les documents doivent être au format PDF, JPG, PNG, DOC ou DOCX.',
             'documents.*.max' => 'Chaque document ne doit pas dépasser 5 Mo.',
         ]);
@@ -1320,7 +1524,7 @@ class ClientController extends Controller
         $blogs = blog::where('publie', 1)
             ->withCount(['commentairesPublies as nb_commentaires'])
             ->orderByDesc('created_at')
-            ->paginate(6);
+            ->paginate(3); // lot 109 : trois articles par page, le reste en pagination
 
         // 'commande' n'était utilisé que par une variable morte de la vue, mais
         // Commande::first() renvoie null sur une base sans commande : la page
@@ -1471,6 +1675,13 @@ class ClientController extends Controller
             $prixPerso = Produit::prixPersonnalisesPour($client);
         }
 
+        // LE MONTANT QUI DÉCIDE DU PLAFOND, c'est celui qu'on paiera : le TTC
+        // livraison comprise, exactement la somme que la page affiche en face
+        // de « Montant TTC ». Comparer le HT laisserait passer une commande de
+        // 1 900 000 HT, soit 2 254 000 à régler.
+        $tvaClient = Client::tva($client);
+        $montantAPayer = $total + $total * $tvaClient + (session('0')['cout_livraison'] ?? 0);
+
         return view('client.modePaiement',[
             // 'devis' => $devis,
             'produits' => Produit::all(),
@@ -1478,7 +1689,9 @@ class ClientController extends Controller
             'villes' => Ville::all(),
             'client' => Auth::user() ?  Client::where('user_id',Auth::user()->id)->first(): new Client,
             'categories' => Categorie::all(),
-            'modes'=> ModePaiement::listePourClient(),
+            // Au-delà du plafond, le menu ne propose plus que le règlement en
+            // agence : inutile d'offrir un mode que la suite refusera.
+            'modes'=> ModePaiement::listePourClient($montantAPayer),
             'total' => $total,
             'typeLivraison' => TypeLivraison::all(),
             'conf' => Configuration::first(),
@@ -1554,6 +1767,11 @@ class ClientController extends Controller
         }
 
         // dd($arr);
+        // La TVA sur le transport (point 5) suit le taux du client, comme sa
+        // marchandise ; Help::tvaSurTransport rend 0 tant que la case du
+        // paramétrage n'est pas cochée.
+        $tvaTransport = Help::tvaTransportPour($client, (float) $livraison['cout_livraison']);
+
         array_push($arr, [
             'ville' => $request->ville,
             'infoSup' => $request->infoSup,
@@ -1561,9 +1779,15 @@ class ClientController extends Controller
             'lat' => $request->lat,
             'montantHT' => Cart::total(),
             'tva' => Cart::total() * Client::tva($client),
-            'montantTTC' => Cart::total() + (Cart::total() * Client::tva($client)),
+            // montantTTC = TOUT ce qui est dû : marchandise + TVA + transport
+            // + TVA transport. Les recalculs (remise, points, location)
+            // écrivent la même chose, et le montant remis à la passerelle
+            // se lit ici, sans rien lui rajouter.
+            'montantTTC' => Cart::total() + (Cart::total() * Client::tva($client))
+                + (float) $livraison['cout_livraison'] + $tvaTransport,
             'km' => $livraison['km'],
             'cout_livraison' => $livraison['cout_livraison'],
+            'tva_transport' => $tvaTransport,
             'estLivrable' => $request->onMeLivre,
         ]);
 
@@ -1911,6 +2135,17 @@ class ClientController extends Controller
                 'km' => $livraison['km'],
                 'cout_livraison' =>$livraison['cout_livraison'],
                 'tva' => Cart::total() * Client::tva($client),
+                // LE CHOIX DU CLIENT DOIT ÊTRE ENREGISTRÉ.
+                //
+                // Il était lu ici pour calculer le coût, puis PERDU : le flux
+                // des ventes le range dans la session (infoLivraison), celui
+                // des locations ne le rangeait nulle part. La création de la
+                // location retombait donc sur son repli « livrable », et une
+                // location « Retrait sur place » se présentait au gestionnaire
+                // comme une livraison. Il affectait un livreur, et la course
+                // partait SANS adresse — « Lieu : null » sur le mobile livreur,
+                // et une distance de 0 km pour sa rémunération.
+                'estLivrable' => 'oui',
             ]);
         }else{
 
@@ -1922,6 +2157,7 @@ class ClientController extends Controller
                 'km' => null,
                 'cout_livraison' =>null,
                 'tva' => Cart::total() * Client::tva($client),
+                'estLivrable' => 'non',
             ]);
 
         }
@@ -2021,8 +2257,9 @@ class ClientController extends Controller
         $remise = round(session('remise') ?? 0);
         $htNet  = max(0, $total - $remise);
         $tab = session('0') ?: [];
-        $tab['tva']        = round($htNet * $taux);
-        $tab['montantTTC'] = round($htNet + $tab['tva'] + ($tab['cout_livraison'] ?? 0));
+        $tab['tva']           = round($htNet * $taux);
+        $tab['tva_transport'] = Help::tvaTransportPour(Auth::user()?->client, (float) ($tab['cout_livraison'] ?? 0));
+        $tab['montantTTC']    = round($htNet + $tab['tva'] + ($tab['cout_livraison'] ?? 0) + $tab['tva_transport']);
         session(['0' => $tab]);
 
 
@@ -2145,7 +2382,12 @@ class ClientController extends Controller
             $tva = $montantTotal * Client::tva(Auth::user()->client);
             $data = session('0') ?: [];
             $data["tva"] = $tva;
-            $data['montantTTC'] = $montantTotal + $cout_livraison + $tva;
+            // La TVA sur le transport ne bouge pas avec la remise : celle du
+            // devis s'il y en a un, sinon celle posée à l'étape adresse.
+            $data['tva_transport'] = $devis->id
+                ? (float) ($devis->tva_transport ?? 0)
+                : (float) ($data['tva_transport'] ?? Help::tvaTransportPour(Auth::user()->client, (float) $cout_livraison));
+            $data['montantTTC'] = $montantTotal + $cout_livraison + $tva + $data['tva_transport'];
             session()->put([
                 '0' => $data
             ]);
@@ -2219,8 +2461,30 @@ class ClientController extends Controller
 
         $config = Configuration::first();
 
-        // Valeur des points fidélité.
-        $montantAEnlever += $points * $config->montant_point;
+        // PLANCHER DE PAIEMENT.
+        //
+        // Les points pouvaient couvrir la commande ENTIÈRE : sans livraison, le
+        // total à payer tombait à ZÉRO, et la commande devenait une impasse — la
+        // passerelle appelée avec 0, l'encaissement au guichet refusant le montant
+        // nul (`min:1`), le virement supposant un justificatif de 0. Ils ne
+        // réduisent plus le total au-delà du minimum paramétré ; le reliquat reste
+        // au compte du client pour la commande suivante.
+        //
+        // `Client::tva()` rend un TAUX FRACTIONNAIRE (0,18) ; l'aide attend un
+        // pourcentage.
+        $remisePromo = $montantAEnlever;
+        $pointsRetenus = (int) Help::pointsUtilisables(
+            (float) $total,
+            (float) $remisePromo,
+            (float) Client::tva($client) * 100,
+            (float) $cout_livraison,
+            (float) $config->montant_point,
+            (float) $points,
+            (float) ($client->point ?? 0)
+        );
+
+        // Valeur des points fidélité réellement retenus.
+        $montantAEnlever += $pointsRetenus * $config->montant_point;
 
         // Plafond : la remise (promo + points) ne peut dépasser le HT marchandise,
         // sinon HT net / TVA / TTC deviendraient négatifs.
@@ -2233,14 +2497,20 @@ class ClientController extends Controller
 
         session(['remise' => $montantAEnlever]);
         session()->put([
-            'point_reduc' => $points,
+            // Ce sont les points RETENUS qui seront débités à la commande, pas
+            // ceux demandés : les deux doivent être la même valeur, sinon le
+            // client perdrait des points sans en voir l'effet.
+            'point_reduc' => $pointsRetenus,
             // 'reduc' => $config
         ]);
 
         // TVA sur le HT net + TTC = HT net + livraison + TVA (cohérent avec le code promo).
         $tva = $montantTotal * Client::tva($client);
         $data['tva'] = $tva;
-        $data['montantTTC'] = $montantTotal + $cout_livraison + $tva;
+        $data['tva_transport'] = ($devis && $devis->id)
+            ? (float) ($devis->tva_transport ?? 0)
+            : (float) ($data['tva_transport'] ?? Help::tvaTransportPour($client, (float) $cout_livraison));
+        $data['montantTTC'] = $montantTotal + $cout_livraison + $tva + $data['tva_transport'];
         session()->put([
             '0' => $data
         ]);
@@ -2249,6 +2519,13 @@ class ClientController extends Controller
             'statut' => 1,
             'total' => $data['montantTTC'],
             'tva' => $tva,
+            'pointsRetenus' => $pointsRetenus,
+            'message' => $pointsRetenus < $points
+                ? "Seuls {$pointsRetenus} point(s) ont été appliqués : une commande "
+                  . "ne peut pas descendre en dessous de "
+                  . number_format((float) $config->montant_minimum_a_payer, 0, ',', ' ')
+                  . " F. Vos autres points restent disponibles."
+                : null,
             'montantEnleve' => $montantAEnlever
         ]);
 
@@ -2673,29 +2950,15 @@ class ClientController extends Controller
             ->orderBy('nom', 'asc')
             ->get();
 
-        // Prix fournisseur le plus bas par produit : on aligne le prix affiché de la
-        // recherche sur celui de l'accueil (cohérence du catalogue). Surcharge d'affichage
-        // uniquement (non persistée).
-        $prixFournisseur = \App\Models\StockProduit::where('statut', 1)
-            ->where('prix', '>', 0)
-            ->groupBy('produit_id')
-            ->selectRaw('produit_id, MIN(prix) as mn')
-            ->pluck('mn', 'produit_id')
-            ->toArray();
-
-        $produits->transform(function ($p) use ($prixFournisseur) {
-            if (isset($prixFournisseur[$p->id])) {
-                $p->prix_moyen = (float) $prixFournisseur[$p->id];
-            }
-            return $p;
-        });
+        // Même règle que l'accueil et le panier : le prix montré est celui qui
+        // sera facturé.
+        Produit::alignerPrixAffiche($produits);
 
         return view('client.search-produit',[
             'produits' => $produits,
             'client' => $client,
             'categories' => categorie::all(),
             'prixPerso' => $prixPerso,
-            'prixFournisseur' => $prixFournisseur,
         ]);
     }
 
@@ -2735,6 +2998,11 @@ class ClientController extends Controller
                             // On verifie s'il y a une adresse enregistrée
 
                         }
+
+                    // Lot 114 : en mode « site en construction », la connexion mène à l'accueil.
+                    if (\App\Models\Configuration::siteEnConstruction()) {
+                        return redirect()->route('client.index');
+                    }
 
                     return redirect()->route('client.monCompte');
 
@@ -2833,6 +3101,11 @@ class ClientController extends Controller
         $token = Help::getNumberToken(4);
         $user->update(['token' => $token]);
 
+        // Le renvoi emprunte les deux canaux, comme l'inscription : c'est
+        // justement quand le courriel n'est pas arrivé que le client redemande
+        // un code.
+        \App\Services\WhatsAppService::envoyerCode($user->contact, $token);
+
         // Envoi non bloquant : si le SMTP tombe, on ne renvoie pas le client sur une
         // erreur 500 après lui avoir promis un code. On le lui dit.
         try {
@@ -2881,7 +3154,11 @@ class ClientController extends Controller
                     "contact1" => "required|digits:10",
                     "contact2" => "nullable|digits:10",
                     "adresse" => "required",
-                    "password" => "required",
+                    // « confirmed » compare avec le champ password_confirmation du
+                    // formulaire. Sans lui, une faute de frappe passait : le compte
+                    // etait cree avec un mot de passe que le client ne connaissait
+                    // pas, et il fallait le reinitialiser avant la premiere commande.
+                    "password" => "required|confirmed",
                     "code_promo" => "nullable",
                     "condition" => "required"
                 ],[
@@ -2897,6 +3174,7 @@ class ClientController extends Controller
                     "contact2.digits" => "Veuillez entrer un numéro valide !",
                     "adresse.required" => "Veuillez remplir ce champs !",
                     "password.required" => "Veuillez remplir ce champs !",
+                    "password.confirmed" => "Les deux mots de passe ne correspondent pas !",
                     "condition.required" => "Veuillez accepter les conditions d'utilisation !"
                 ]);
 
@@ -2910,19 +3188,31 @@ class ClientController extends Controller
                     "contact1" => "required|digits:10",
                     "contact2" => "required",
                     "adresse" => "required",
-                    "password" => "required",
+                    // « confirmed » compare avec le champ password_confirmation du
+                    // formulaire. Sans lui, une faute de frappe passait : le compte
+                    // etait cree avec un mot de passe que le client ne connaissait
+                    // pas, et il fallait le reinitialiser avant la premiere commande.
+                    "password" => "required|confirmed",
                     "rccm" => "required",
                     "ncc" => "required",
+                    "nature_fne" => "nullable|in:B2B,B2G,B2F",
+                    // Le regime d'imposition du CLIENT figure sur la facture,
+                    // et la DGI l'attend sur une facture entre entreprises.
+                    // Il etait lu par FneService depuis toujours, mais aucun
+                    // ecran ne permettait de le saisir : la ligne sortait vide.
+                    "regime_imposition" => "required|string|" . \App\Support\RegimeImposition::regle(),
                     "dfe" => "required|file|mimes:pdf,jpg,jpeg,png|max:5120",
                     "registre_commerce" => "required|file|mimes:pdf,jpg,jpeg,png|max:5120",
                     "condition" => "required"
                 ],[
                     "raisonSociale.required" => "La raison sociale est obligatoire !",
+                    "regime_imposition.required" => "Le régime d'imposition est obligatoire : il figure sur vos factures.",
                     "email.required" => "Veuillez remplir ce champs !",
                     "contact1.required" => "Veuillez remplir ce champs !",
                     "contact2.required" => "Veuillez remplir ce champs !",
                     "adresse.required" => "Veuillez remplir ce champs !",
                     "password.required" => "Veuillez remplir ce champs !",
+                    "password.confirmed" => "Les deux mots de passe ne correspondent pas !",
                     "rccm.required" => "Le RCCM est obligatoire !",
                     "ncc.required" => "Le NCC est obligatoire !",
                     "dfe.required" => "Le fichier DFE est obligatoire !",
@@ -2956,9 +3246,26 @@ class ClientController extends Controller
 
             $numeroToken = Help::getNumberToken(4);
 
+            // LE NOM DU COMPTE, QUEL QUE SOIT LE PROFIL.
+            //
+            // Il ne lisait que « raisonSociale » ou « display_name ». Or le
+            // formulaire d'inscription ne porte AUCUN champ display_name : un
+            // particulier arrivait donc ici avec un nom vide, et la colonne
+            // users.nom_prenoms n'accepte pas de valeur nulle. L'inscription
+            // partait en erreur 500 — aucun particulier ne pouvait creer de
+            // compte depuis le site.
+            //
+            // On retombe sur le prenom et le nom, qui sont exiges par la
+            // validation du particulier : ils existent forcement a ce stade.
             $nomPrenoms = $request->raisonSociale
-                ? $request->raisonSociale
-                : $request->display_name;
+                ?: ($request->display_name
+                    ?: trim(($request->prenom ?? '') . ' ' . ($request->nom ?? '')));
+
+            if ($nomPrenoms === '') {
+                return redirect()->route('client.register')
+                    ->with('existEmail', "Nous n'avons pas pu lire votre nom. Reprenez le formulaire.")
+                    ->withInput();
+            }
 
             $dataUser = [
                 'nom_prenoms' => $nomPrenoms,
@@ -3010,6 +3317,11 @@ class ClientController extends Controller
                 'type_client' => $request->type == 2 ? 'ENTREPRISE' : 'PARTICULIER',
                 'rccm_clt' => $request->rccm,
                 'ncc_clt' => $request->ncc,
+                'regime_imposition' => $request->regime_imposition,
+                // La nature de l'organisation pour la DGI (lot 100) : B2B par défaut.
+                'nature_fne' => $request->type == 2
+                    ? (in_array($request->nature_fne, ['B2B', 'B2G', 'B2F'], true) ? $request->nature_fne : 'B2B')
+                    : null,
                 'user_id' => $userId,
                 'dfe' => $dfePath,
                 'registre_commerce' => $rcPath,
@@ -3045,6 +3357,21 @@ class ClientController extends Controller
                 \Log::warning('Email de confirmation inscription non envoyé: '.$e->getMessage());
             }
 
+            // LE CODE PART AUSSI PAR WHATSAPP.
+            //
+            // Beaucoup de clients n'ont pas d'adresse consultée régulièrement,
+            // le message part parfois en indésirables, et le serveur d'envoi
+            // peut être lent. Un code jamais reçu, c'est un compte jamais
+            // activé — donc une vente perdue.
+            //
+            // Les deux partent : le client se sert de celui qui lui arrive en
+            // premier. L'envoi ne lève jamais et ne fait rien tant qu'aucun
+            // compte fournisseur n'est configuré.
+            $codeEnvoyeParWhatsapp = \App\Services\WhatsAppService::envoyerCode(
+                $request->contact1,
+                $numeroToken
+            );
+
             session()->forget([
                 'type',
                 'ville',
@@ -3056,7 +3383,10 @@ class ClientController extends Controller
 
             // return view('client.pageConfirmationToken');
 
-            return redirect()->route('client.pageToken',['email' => $request->email])->with('success','Succès, veuillez consulter votre boite email pour confirmer votre inscription');
+            return redirect()->route('client.pageToken', ['email' => $request->email])
+                ->with('success', $codeEnvoyeParWhatsapp
+                    ? 'Succès. Votre code de confirmation vous a été envoyé par e-mail et par WhatsApp.'
+                    : 'Succès, veuillez consulter votre boite email pour confirmer votre inscription');
         // } catch (\Throwable $th) {
         //     return view('errorCatch',[
         //         'message' => $th->getMessage(),
@@ -3154,8 +3484,13 @@ class ClientController extends Controller
             "password" => "nullable",
             "newPassword" => "nullable",
             "confirmPassword" => "nullable",
+            // Photo de profil (lot 105, 17/09/2026).
+            "photo" => "nullable|image|mimes:jpg,jpeg,png,webp|max:2048",
 
         ],[
+            'photo.image' => "La photo doit être une image.",
+            'photo.mimes' => "La photo doit être au format JPG, PNG ou WEBP.",
+            'photo.max' => "La photo ne doit pas dépasser 2 Mo.",
             'nom.required' => "Champ obligatoire",
             'prenom.required' => "Champ obligatoire",
             'contact1.digits' => "Entrez 10 chiffres",
@@ -3234,6 +3569,14 @@ class ClientController extends Controller
             'adresse' => $request->adresse,
             'ville_id' => $request->ville
         ];
+        // LA PHOTO DE PROFIL (lot 105, 17/09/2026) : même fichier et même chemin
+        // que l'application mobile (imageUser/{id}.png dans le stockage public du
+        // site), pour qu'une photo changée d'un côté se voie de l'autre.
+        if ($request->hasFile('photo')) {
+            $cheminPhoto = 'imageUser/' . Auth::id() . '.png';
+            \Illuminate\Support\Facades\Storage::disk('public')->put($cheminPhoto, file_get_contents($request->file('photo')->getRealPath()));
+            $dataUser['photo'] = $cheminPhoto;
+        }
         Auth::user()->update($dataUser);
 
         if($request->raisonSociale){
@@ -3250,6 +3593,12 @@ class ClientController extends Controller
             'contact1' => $request->contact1,
             'contact2' => $request->contact2,
             'ncc_clt' => $request->ncc,
+            ...(in_array($request->nature_fne, ['B2B', 'B2G', 'B2F'], true) ? ['nature_fne' => $request->nature_fne] : []),
+            // Le formulaire de modification ne porte pas le régime : sans
+            // cette garde, chaque enregistrement de la fiche l'effaçait.
+            ...($request->filled('regime_imposition')
+                ? ['regime_imposition' => \App\Support\RegimeImposition::code($request->regime_imposition) ?? $request->regime_imposition]
+                : []),
             // Le champ du formulaire s'appelle « rccm ». La faute de frappe
             // « rmmc » lisait un champ inexistant : chaque modification de la
             // fiche remplaçait donc le RCCM de l'entreprise par une valeur
@@ -3407,7 +3756,12 @@ class ClientController extends Controller
             'locations' => $location,
             'villes' => Ville::all(),
             'paiements' => $paiements,
-            'types' => TypeVehicule::all()
+            'types' => TypeVehicule::all(),
+            // Avance disponible (point 19) et ce qu'elle implique pour le client.
+            'soldeAvance' => \App\Services\Avances::soldeDisponible($client),
+            'mentionAvance' => \App\Services\Avances::MENTION,
+            // Ce que le client doit encore régler en agence (10/09/2026).
+            'creditsEnAgence' => \App\Services\Avances::creditsEnAgenceDetail($client),
         ]);
     }
 
@@ -3548,8 +3902,8 @@ class ClientController extends Controller
             $client = Client::where('user_id',Auth::user()->id)->first();
 
             // Adresse de livraison (un enregistrement d'adresse est inoffensif s'il n'aboutit pas).
-            if(session('0')['ville']){
-                $ville = Ville::where('id',session('0')['ville'])->first();
+            if (session('0')['ville'] ?? null) {
+                $ville = Ville::where('id', session('0')['ville'] ?? null)->first();
 
                 $dataAdresse = [
                     'client_id' => $client->id,
@@ -3570,7 +3924,15 @@ class ClientController extends Controller
             // Montant réellement dû = TTC net (identique à l'écran mode-paiement).
             $montantTTC = round(session('0')['montantTTC']
                 ?? (max(0, session('totalLocation') - round(session('remise') ?? 0))
-                    + (session('0')['tva'] ?? 0) + (session('0')['cout_livraison'] ?? 0)));
+                    + (session('0')['tva'] ?? 0) + (session('0')['cout_livraison'] ?? 0)
+                    + (session('0')['tva_transport'] ?? 0)));
+            // AIRSI (10/09/2026) : HT net de remise + TVA ; compté dans le TTC dû.
+            $airsiLocation = \Help::airsiPour($client,
+                max(0, (float) session('totalLocation') - round(session('remise') ?? 0)) + (float) (session('0')['tva'] ?? 0),
+                max(0, (float) session('totalLocation') - round(session('remise') ?? 0)), (float) Client::tva($client),
+                (float) (session('0')['cout_livraison'] ?? 0),
+                (float) (session('0')['tva_transport'] ?? 0) > 0 ? (float) Client::tvaTransport($client) : 0.0);
+            $montantTTC += $airsiLocation;
 
             // BROUILLON de la location (produits + dates + montants). Permet de ne créer
             // la location qu'APRÈS confirmation du paiement en ligne, ou de la créer
@@ -3590,12 +3952,18 @@ class ClientController extends Controller
             }
             $payload = [
                 'location' => [
-                    'numero'                => uniqid(),
+                    // Le meme generateur que le mobile : un seul format de
+                    // numero de location, dictable au telephone. Le brouillon
+                    // porte deja son numero, donc le repli du modele ne
+                    // s'appliquerait pas ici.
+                    'numero'                => \Help::genererNumeroUnique('location'),
                     'client_id'             => $client->id,
                     'mode_paiement_id'      => session('mode_paiement'),
                     'adresse_livraison_id'  => $adresseId,
                     'montant_total'         => $total,
                     'cout_livraison_client' => session('0')['cout_livraison'] ?? 0,
+                    'tva_transport'         => (float) (session('0')['tva_transport'] ?? 0),
+                    'airsi'                 => $airsiLocation,
                     // Le choix « Me faire livrer / Retrait sur place » doit voyager dans le
                     // brouillon : la location est créée par le callback de paiement, qui est
                     // un appel serveur-à-serveur SANS session. Repli sur livrable.
@@ -3613,7 +3981,24 @@ class ClientController extends Controller
             // il règle en ligne. » Les locations gardaient l'ancienne règle et
             // écartaient ces clients de la passerelle sans le leur dire.
             $modeLocObj = session('mode_paiement') ? ModePaiement::find(session('mode_paiement')) : null;
-            $online = ($modeLocObj && $modeLocObj->en_ligne == 1 && $montantTTC < 2000000);
+
+            // LE PLAFOND DU PAIEMENT EN LIGNE — ON LE DIT, ON NE L'ESCAMOTE PAS.
+            //
+            // Le test était ici, écrit à la main (`$montantTTC < 2000000`), et il
+            // se contentait de SAUTER la passerelle : la location s'enregistrait
+            // comme si de rien n'était, sans qu'un franc soit encaissé et sans
+            // que le client comprenne pourquoi. Il rangeait de surcroît le
+            // montant EXACT de 2 000 000 du mauvais côté, quand le message
+            // affiché dit « supérieur à ».
+            //
+            // Le refus est posé avant la création de la location.
+            if ($modeLocObj
+                && !\App\Support\PlafondPaiementEnLigne::modeAutorise($modeLocObj, $montantTTC)) {
+                return redirect()->route('client.choixDateProduitLocationTraitement')
+                    ->with('error', \App\Support\PlafondPaiementEnLigne::refus());
+            }
+
+            $online = ($modeLocObj && $modeLocObj->en_ligne == 1);
 
             // Message d'échec de la passerelle, s'il y en a un : il doit atteindre
             // le client. Sans lui, choisir « Wave » aboutissait à une location
@@ -3693,14 +4078,57 @@ class ClientController extends Controller
                 ]);
             }
 
+            // PLAFOND DE CRÉDIT — LA VOIE QUI Y ÉCHAPPAIT.
+            //
+            // Constaté en production le 29/08/2026 : le client 55, à terme
+            // depuis 00 h 25 avec un plafond de 5 000 F, a passé trois
+            // locations à 00 h 30, 00 h 35 et 00 h 42 — 22 000, 104 500 et
+            // 104 500 F. Aucune n'a été refusée.
+            //
+            // Le contrôle existait pourtant sur les autres voies : le devis, la
+            // vente en agence, et l'API mobile. Il manquait ICI, et c'est
+            // précisément la voie des règlements HORS LIGNE — donc celle des
+            // clients à terme, comme le dit le commentaire ci-dessous. Une
+            // quatrième copie du contrôle existait bien dans
+            // `enregistrementDeLocation`, mais cette méthode n'est appelée de
+            // nulle part : elle donnait l'illusion d'une protection.
+            //
+            // Le montant retenu est `$montantTTC`, celui réellement dû — le
+            // même que l'écran de paiement affiche au client.
+            //
+            // Un règlement EN LIGNE n'a pas besoin de ce contrôle : il n'engage
+            // aucun crédit, l'argent entre avant la location. C'est pourquoi il
+            // n'est pas posé dans le rappel de la passerelle.
+            //
+            // Une avance disponible couvre d'abord la location : seul le
+            // reliquat engage le crédit — même règle que la vente (point 19).
+            // Un mode en ligne ne touche pas à l'avance.
+            $montantACredit = $online
+                ? (float) $montantTTC
+                : max(0, (float) $montantTTC - \App\Services\Avances::soldeDisponible($client));
+            if ($refus = $this->refusPlafondCredit($client, $montantACredit)) {
+                return redirect()->route('client.monPanier')->with('error', $refus);
+            }
+
             // Création DIRECTE : modes hors-ligne (à terme, paiement=1, > 2M) OU échec init en ligne.
             $location = Location::creerDepuisDonnees($payload, 1);
             Cart::destroy();
+
+            // AVANCE DU CLIENT (10/09/2026) : une location réglée « en agence »
+            // s'impute d'elle-même sur les avances disponibles, comme une vente.
+            // Un mode en ligne n'y touche pas, même si la passerelle a échoué.
+            $messageAvance = null;
+            if (!$online && $location) {
+                $imputationAvance = \App\Services\Avances::imputerSurLocation($location, Auth::id());
+                $messageAvance = \App\Services\Avances::messageImputation($imputationAvance, Help::$LOCATION) ?: null;
+                $location = Location::find($location->id) ?: $location;
+            }
 
             return view('orders.recapLocation',[
                 'location' => $location,
                 'config'   => Configuration::first(),
                 'echecPaiementEnLigne' => $echecPaiementEnLigne,
+                'messageAvance' => $messageAvance,
             ]);
         }else{
 
@@ -3776,6 +4204,82 @@ class ClientController extends Controller
      * mode de paiement du devis concerné, où le client peut ajuster sa commande,
      * ou le panier à défaut.
      */
+    /**
+     * UNE COMMANDE SANS ARTICLE N'EST PAS UNE COMMANDE.
+     *
+     * Les lignes d'une commande sont RECOPIÉES de son devis. Quand le devis
+     * n'en porte aucune, la commande était tout de même enregistrée : avec son
+     * montant, son numéro, sa place dans l'espace client et dans l'application
+     * — et RIEN dedans. Son écran de détail s'ouvrait blanc, son bon
+     * s'imprimait vide, et personne ne pouvait dire ce qui avait été acheté.
+     *
+     * Un devis se retrouve sans ligne lorsque le panier de SESSION a expiré à
+     * l'instant où il a été créé : ses totaux, eux, survivent en session — d'où
+     * un montant sans contrepartie.
+     *
+     * Les TROIS points de création de commande du site passent par ici : ils ne
+     * peuvent donc plus diverger.
+     */
+    /**
+     * UNE LOCATION NE SE VEND PAS.
+     *
+     * Le menu du panier propose « Commander » quel que soit son contenu : il
+     * mène droit au parcours de VENTE, même quand le panier ne contient que du
+     * matériel de location. La page « Mon panier », elle, aiguille correctement
+     * (monPanier() renvoie vers le parcours de location) — mais le raccourci du
+     * menu court-circuitait cet aiguillage.
+     *
+     * Le matériel devenait alors une ligne de COMMANDE. Le client était engagé
+     * sur un achat au lieu d'une location : pas de dates, pas de caution, pas
+     * de retour de matériel — et l'écran de détail de l'application s'ouvrait
+     * blanc, la lecture écartant ces lignes.
+     *
+     * Constaté sur la commande 286453 : 5 « Mini-pelle de chantier », 495 000 F.
+     *
+     * L'aiguillage se fait ICI, au serveur : le raccourci du menu n'est pas le
+     * seul chemin (lien mis en favori, reprise d'un devis, second onglet).
+     */
+    private function porteDuMaterielDeLocation(?Devis $devis): bool
+    {
+        foreach (Cart::content() as $article) {
+            if ($article->options->type_affaire === \Help::$LOCATION) {
+                return true;
+            }
+        }
+
+        if (!$devis || !$devis->id) {
+            return false;
+        }
+
+        return DetailDevis::join('produit', 'produit.id', '=', 'detail_devis.produit_id')
+            ->where('detail_devis.devis_id', $devis->id)
+            ->where('detail_devis.statut', \Help::$STATUT_ACTIF)
+            ->where('produit.type_affaire', \Help::$LOCATION)
+            ->exists();
+    }
+
+    /**
+     * LA COMMANDE EN COURS N'A-T-ELLE PLUS AUCUN ARTICLE ?
+     *
+     * Deux origines, deux endroits où regarder :
+     *
+     *   · une commande née d'un DEVIS enregistré : ses articles sont les lignes
+     *     du devis ;
+     *   · une commande née du PANIER : ses articles sont dans le panier, et
+     *     aucun devis n'est créé pour elle. Répondre « sans article » dans ce
+     *     cas refuserait toute commande directe.
+     */
+    private function devisSansArticle(?Devis $devis): bool
+    {
+        if ($devis && $devis->id) {
+            return DetailDevis::where('devis_id', $devis->id)
+                ->where('statut', \Help::$STATUT_ACTIF)
+                ->count() === 0;
+        }
+
+        return Cart::count() === 0;
+    }
+
     private function retourApresRefusCommande(?Devis $devis)
     {
         if ($devis && $devis->id) {
@@ -3799,9 +4303,10 @@ class ClientController extends Controller
         $tva = (float) (session('0')['tva']
             ?? ($totalHt * Client::tva(Client::where('user_id', Auth::id())->first())));
 
-        $livraison = (float) (session('0')['cout_livraison'] ?? 0);
+        $livraison    = (float) (session('0')['cout_livraison'] ?? 0);
+        $tvaTransport = (float) (session('0')['tva_transport'] ?? 0);
 
-        return max(0, $totalHt - $remise) + $tva + $livraison;
+        return max(0, $totalHt - $remise) + $tva + $livraison + $tvaTransport;
     }
 
     /**
@@ -3814,7 +4319,21 @@ class ClientController extends Controller
      */
     private function montantNetDevis(Devis $devis): float
     {
-        return $devis->montantAPayer();
+        if ($devis->id) {
+            return $devis->montantAPayer();
+        }
+
+        // COMMANDE DIRECTE : le devis n'est qu'un porteur, jamais enregistré.
+        //
+        // montantAPayer() reconstitue le HT depuis les LIGNES du devis — il n'y
+        // en a aucune ici, et le montant retenu serait zéro. Le contrôle du
+        // plafond de crédit laisserait alors passer n'importe quelle commande
+        // à terme. On additionne donc les valeurs que le porteur transporte,
+        // avec la même formule : HT + TVA + livraison − remise.
+        return max(0, (float) ($devis->montant ?? 0)
+            + (float) ($devis->tva ?? 0)
+            + (float) ($devis->cout_livraison ?? 0)
+            - (float) ($devis->cout_reduction ?? 0));
     }
 
     public function panierCommande(Request $request, Devis $devis ){
@@ -3886,14 +4405,54 @@ class ClientController extends Controller
                     }
                 }
 
+                // AIGUILLAGE AVANT TOUTE ÉCRITURE.
+                //
+                // Placé plus bas, il aurait laissé derrière lui un devis créé
+                // depuis le panier et un code promo déjà consommé.
+                if ($this->porteDuMaterielDeLocation($devis)) {
+                    return redirect()->route('client.panierLocation')->with('error',
+                        "Ce matériel se LOUE, il ne s'achète pas. Nous vous avons ramené au "
+                        . "parcours de location : choisissez vos dates, puis validez.");
+                }
+
                 // on initialise les variables qui peuvent changer de valeur selon que nous sommes dans une modification de devis ou pas
                 $date_livraison = session('date_livraison');
                 $mode_paiement = session('mode_paiement');
+
+                // LE PLAFOND DU PAIEMENT EN LIGNE — AVANT TOUTE ÉCRITURE.
+                //
+                // Le client lisait « Pour tout montant supérieur à 2 000 000 fcfa
+                // le paiement doit se faire par virement bancaire, en agence ou en
+                // plusieurs commandes », puis partait quand même vers la passerelle :
+                // ce parcours-ci ne vérifiait rien, la ligne était commentée.
+                // Constaté le 04/09/2026 sur une commande de 6 502 000 fcfa.
+                //
+                // Le refus est posé ICI, avant la création du devis et de la
+                // commande : plus bas, il aurait laissé derrière lui une affaire
+                // que personne n'a demandée.
+                // montantTTC porte désormais TOUT ce qui est dû, transport compris
+                // (voir infoLivraison) : on ne lui rajoute plus rien.
+                $montantDuPlafond = $devis->id
+                    ? (($devis->montant + $devis->cout_livraison + $devis->tva + (float) ($devis->tva_transport ?? 0)) - $devis->cout_reduction)
+                    : (float) (session('0')['montantTTC'] ?? 0);
+
+                // On ne refuse QUE le mode en ligne au-dessus du plafond. Une
+                // commande sans mode enregistré — le règlement en agence, le
+                // client à terme — n'a rien à voir avec ce plafond et doit
+                // continuer de passer.
+                $modeChoisi = $mode_paiement ? ModePaiement::find($mode_paiement) : null;
+
+                if ($modeChoisi
+                    && !\App\Support\PlafondPaiementEnLigne::modeAutorise($modeChoisi, $montantDuPlafond)) {
+                    return redirect()->route('client.modeDePaiement')
+                        ->with('error', \App\Support\PlafondPaiementEnLigne::refus());
+                }
                 $numero = NULL;
                 $remise = 0;
                 $type_livraison = session('type_livraison');
                 $cout_livraison = 0;
                 $montantTva = 0;
+                $tvaTransport = 0;
 
 
                 $user = Auth::user();
@@ -3909,16 +4468,24 @@ class ClientController extends Controller
 
                 if($devis->id == null){
 
-                    $ville = Ville::where('id',session('0')['ville'])->first();
+                    // 12/09/2026 : sans l'étape « adresse et livraison » (session '0'),
+                    // la page faisait une erreur 500 ; on y renvoie le client.
+                    if (!is_array(session('0'))) {
+                        return redirect()->route('client.commandeAdresse')
+                            ->with('error', "Renseignez d'abord l'adresse et le mode de livraison de votre commande.");
+                    }
+
+                    $ville = Ville::where('id', session('0')['ville'] ?? null)->first();
                     $cout_livraison = session('0')? session('0')['cout_livraison'] : 0;
                     $livrable = session('0')['estLivrable'] == 'oui' ? 1 : 0;
                     $montantTva = session('0')['tva'] ?? 0;
+                    $tvaTransport = (float) (session('0')['tva_transport'] ?? 0);
                     // dd($date_livraison,$ville,$mode_paiement,$type_livraison,$cout_livraison,$livrable,$montantTva);
                     // dd(session('type'));
 
                     $adresse_id = null;
 
-                    if(session('0')['ville'] != null){
+                    if ((session('0')['ville'] ?? null) != null) {
 
                         $dataAdresse = [
                             'client_id' => $client->id,
@@ -3951,6 +4518,11 @@ class ClientController extends Controller
                         'tva' => $montantTva,
                         'cout_reduction' => session('remise'),
                         'cout_livraison' => session('0')['cout_livraison'],
+                        'tva_transport' => $tvaTransport,
+                        // AIRSI (10/09/2026) : HT net de remise + TVA.
+                        'airsi' => \Help::airsiPour($client, max(0, (float) session('0')['montantHT'] - (float) (session('remise') ?? 0)) + (float) $montantTva,
+                            max(0, (float) session('0')['montantHT'] - (float) (session('remise') ?? 0)), (float) Client::tva($client),
+                            (float) $cout_livraison, (float) $tvaTransport > 0 ? (float) Client::tvaTransport($client) : 0.0),
                         // 'montant' => session('0')['montantTTC'] - session('0')['tva'], //$totalPlusTva,
                         // 'montant' => session('0')['montantTTC'] , //$totalPlusTva,
                         'montant' => session('0')['montantHT'] , //$totalPlusTva,
@@ -3958,20 +4530,35 @@ class ClientController extends Controller
                         'service' => session('type') == 'commande' ? 1 : 2,
                     ];
 
-                    $devis = Help::creerAvecNumeroUnique(function ($numero) use ($dataDevis) {
-                        $dataDevis['numero'] = $numero;
-                        return Devis::create($dataDevis);
-                    });
-
-                    $devisId = $devis->id;
+                    // UNE COMMANDE NE CRÉE PAS DE DEVIS.
+                    //
+                    // Ce devis était ENREGISTRÉ, uniquement pour porter les
+                    // informations du panier jusqu'à la commande. Conséquence :
+                    // chaque vente ajoutait une ligne dans « Liste des devis »
+                    // et dans « Mes devis » côté client, alors que le client
+                    // n'en avait demandé aucun — il existe pour cela un
+                    // parcours dédié, « Demander un devis ».
+                    //
+                    // Il reste donc un simple PORTEUR, en mémoire, jamais écrit
+                    // en base. Comme il n'a pas d'identifiant, les branches
+                    // « sans devis » déjà présentes plus bas prennent le relais :
+                    // les lignes de la commande se construisent directement
+                    // depuis le panier, et rien ne va dans la table des devis.
+                    //
+                    // Le numéro, lui, doit être unique sur la COMMANDE — c'est
+                    // désormais sa création qui porte la reprise en cas de
+                    // collision (voir Commande::create plus bas).
+                    $devis = new Devis($dataDevis);
 
                     if(session('reduction_id')){
                         $reduction = Reduction::find(session('reduction_id'));
 
+                        // Le code promo est consommé par le CLIENT, pas par un
+                        // devis : il n'y en a plus. La colonne reste libre —
+                        // elle sert encore au parcours « Demander un devis ».
                         $reduction->update([
                             'est_utilise' => 1,
                             'client_id' => $client->id,
-                            'devis_id' => $devis->id
                         ]);
                     }
 
@@ -3985,16 +4572,8 @@ class ClientController extends Controller
                         ]);
                     }
 
-                    foreach(Cart::content() as $produit){
-                        DetailDevis::create([
-                            'produit_id' => $produit->id,
-                            'devis_id' => $devisId,
-                            'qte' => $produit->qty,
-                            'prix' => $produit->price,
-                            'cout_livraison' => $produit->options->cout_livraison
-                        ]);
-
-                    }
+                    // Les lignes du devis ne sont plus écrites non plus : celles
+                    // de la commande se construisent depuis le panier, plus bas.
                 }else{
 
                     $adresse_id = $devis->adresse_livraison_id;
@@ -4026,6 +4605,7 @@ class ClientController extends Controller
                     $cout_livraison = (float) ($devis->cout_livraison ?? 0);
                     $livrable = $devis->adresse_livraison_id != null ? 1 : 0;
                     $montantTva = (float) ($devis->tva ?? 0);
+                    $tvaTransport = (float) ($devis->tva_transport ?? 0);
 
                 }
 
@@ -4081,11 +4661,35 @@ class ClientController extends Controller
                 // plafond doit s'appliquer. Sans cette nuance, choisir « Wave » sur
                 // une installation sans passerelle aurait suffi à contourner la
                 // limite.
-                if (!$paiementEnLigneRequis && ($refus = $this->refusPlafondCredit($client, $montantCommande))) {
+                // Une avance disponible couvre d'abord la commande : seul le
+                // reliquat engage le crédit (point 19, réponse Q2 du 07/09/2026).
+                // Un mode en ligne ne touche pas à l'avance (réponse Q5).
+                $montantACredit = $modeEstEnLigne
+                    ? $montantCommande
+                    : max(0, $montantCommande - \App\Services\Avances::soldeDisponible($client));
+                if (!$paiementEnLigneRequis && ($refus = $this->refusPlafondCredit($client, $montantACredit))) {
                     return $this->retourApresRefusCommande($devis)->with('error', $refus);
                 }
 
-                $commande = Commande::create([
+                if ($this->devisSansArticle($devis)) {
+                    return redirect()->route('client.monPanier')->with('error',
+                        "Votre commande n'a pas pu être validée : elle ne contient plus aucun "
+                    . "article. Cela arrive lorsque la page est restée ouverte trop "
+                    . "longtemps. Reprenez vos articles dans le panier, puis validez "
+                    . "de nouveau.");
+                }
+
+                // LE NUMÉRO DOIT ÊTRE UNIQUE SUR LA COMMANDE.
+                //
+                // Il était tiré à la création du DEVIS, où la reprise en cas de
+                // collision était assurée. Le devis n'étant plus enregistré pour
+                // une commande directe, c'est ici que le numéro naît — et
+                // `commande.numero` porte un index UNIQUE. On reprend donc le
+                // même mécanisme : en cas de doublon, un autre numéro est tiré.
+                //
+                // Une commande née d'un devis garde le numéro de ce devis :
+                // les deux se lisent ensemble, et l'habitude est ancienne.
+                $donneesCommande = [
                     // DATE DE LA COMMANDE, explicitement renseignée.
                     //
                     // Aucun des points de création du site ne l'écrivait : la colonne
@@ -4106,11 +4710,28 @@ class ClientController extends Controller
                     // Ces trois colonnes sont NOT NULL en base : on garantit un nombre,
                     // quelle que soit la façon dont on est arrivé jusqu'ici.
                     'montant_total' => (float) ($devis->montant ?? 0),
-                    'remise' => (float) ($remise ?? 0),
+                    // Une remise est une somme en FCFA : elle s'écrit en francs
+                    // entiers, comme partout ailleurs.
+                    'remise' => \Help::arrondiFranc($remise ?? 0),
                     'type_livraison_id' => $type_livraison,
                     'cout_livraison_client' => (float) ($cout_livraison ?? 0),
+                    // TVA sur le transport (point 5), figée avec la commande.
+                    'tva_transport' => (float) ($tvaTransport ?? 0),
                     'est_livrable' => $livrable,
-                ]);
+                ];
+
+                // UN SEUL point de création, quel que soit l'origine du numéro :
+                // celui du devis quand il y en a un, un numéro tiré et repris en
+                // cas de collision sinon.
+                $creerLaCommande = function ($numero) use ($donneesCommande) {
+                    $donneesCommande['numero'] = $numero;
+
+                    return Commande::create($donneesCommande);
+                };
+
+                $commande = $devis->id
+                    ? $creerLaCommande($devis->numero)
+                    : Help::creerAvecNumeroUnique($creerLaCommande);
 
                 if (session('cheminFichier')) {
 
@@ -4148,9 +4769,24 @@ class ClientController extends Controller
                             'cout_livraison' => $detail->cout_livraison,
                         ]);
                     }
-                    $devis->update([
-                        'statut' => 2
-                    ]);
+                    // « COMMANDÉ » SEULEMENT QUAND LA COMMANDE TIENT.
+                    //
+                    // Le devis passait à 2 — « Commandé » sur l'écran des devis —
+                    // avant même le départ vers la passerelle. Un client qui
+                    // annulait son paiement laissait derrière lui un devis annoncé
+                    // commandé alors que rien n'avait été réglé et que la commande,
+                    // elle, restait « en attente de paiement ». Constaté le
+                    // 04/09/2026 sur le devis n° 429808.
+                    //
+                    // Tant qu'un règlement en ligne est attendu, le devis reste
+                    // « En attente ». marquerPaiementEffectue() le bascule quand le
+                    // paiement est confirmé — par le retour du client comme par le
+                    // callback ou la reprise planifiée.
+                    if (!$paiementEnLigneRequis) {
+                        $devis->update([
+                            'statut' => 2
+                        ]);
+                    }
 
                     // Consommer le code promo appliqué sur la page de paiement (flux
                     // devis existant) : le marquer utilisé pour qu'il ne resserve pas.
@@ -4189,10 +4825,32 @@ class ClientController extends Controller
 
                 $tva = TvaCommande::create([
                     'client_id' => $client->id,
-                    'montant' => $montantTva,
+                    // Une TVA est une somme en FCFA : elle s'ecrit en francs entiers.
+                    'montant' => \Help::arrondiFranc($montantTva),
                     'commande_id' => $commande->id,
                     'type_affaire' => 2
                 ]);
+
+                // AIRSI (10/09/2026) : figé sur la commande, sur le HT net de
+                // remise + TVA, pour le client sans régime réel. Avant l'avance :
+                // c'est le net à payer qui s'impute.
+                $commande->update(['airsi' => \Help::airsiPour($client,
+                    max(0, $commande->montantHT() - (float) ($commande->remise ?? 0)) + \Help::arrondiFranc($montantTva),
+                    max(0, $commande->montantHT() - (float) ($commande->remise ?? 0)), (float) Client::tva($client),
+                    (float) ($commande->cout_livraison_client ?? 0),
+                    (float) ($commande->tva_transport ?? 0) > 0 ? (float) Client::tvaTransport($client) : 0.0)]);
+
+                // AVANCE DU CLIENT (point 19, 07/09/2026) : une commande réglée
+                // « en agence » s'impute d'elle-même sur les avances disponibles,
+                // du dépôt le plus ancien au plus récent. Un mode en ligne n'y
+                // touche pas (réponse Q5). Les lignes et la TVA viennent d'être
+                // écrites : on recharge les relations avant de chiffrer le dû.
+                $imputationAvance = ['impute' => 0.0, 'reste' => 0.0, 'recus' => []];
+                if (!$modeEstEnLigne) {
+                    $commande->unsetRelation('detailCommande');
+                    $commande->unsetRelation('TvaCommande');
+                    $imputationAvance = \App\Services\Avances::imputerSurCommande($commande, Auth::id());
+                }
 
                 // $paiement = new Paiement();
                 // $paiement->client_id = $client->id;
@@ -4209,10 +4867,14 @@ class ClientController extends Controller
                 $ret = array();
 
                 if($devis->id){
-                    $total = ($devis->montant + $devis->cout_livraison + $devis->tva) - $devis->cout_reduction;
+                    $total = ($devis->montant + $devis->cout_livraison + $devis->tva + (float) ($devis->tva_transport ?? 0)) - $devis->cout_reduction;
                 }else{
-
-                    $total = (session('0')['montantTTC'] - session('0')['tva']) + (session('0') ? session('0')['cout_livraison'] : 0) + (session('0')['tva']);
+                    // montantTTC dit TOUT ce qui est dû (cf. infoLivraison). L'ancienne
+                    // formule lui rajoutait le transport ; or après une remise, il le
+                    // portait déjà : un client qui utilisait un code promo avec une
+                    // livraison partait vers la passerelle avec le transport compté
+                    // deux fois.
+                    $total = (float) (session('0')['montantTTC'] ?? 0);
                 }
 
                 // Journaliser pour diagnostic
@@ -4312,8 +4974,16 @@ class ClientController extends Controller
                 } catch (\Throwable $e) {
                     \Log::warning('Email commande non envoyé: '.$e->getMessage());
                 }
+                // La proforma part au client en PDF (lot 81, 15/09/2026) ; une commande
+                // payée en ligne recevra sa facture au paiement confirmé. Différé,
+                // jamais bloquant, une seule fois par document.
+                \App\Services\DocumentDeCommande::envoyerParCourriel($commande);
                 Cart::destroy();
-                return redirect()->route('client.commandeValidee',$commande->numero)->with('success','Votre commande a bien été enregistrée ! Rendez-vous dans la rubrique Mon Compte pour suivre votre commande');
+                $messageSucces = 'Votre commande a bien été enregistrée ! Rendez-vous dans la rubrique Mon Compte pour suivre votre commande';
+                if (($imputationAvance['impute'] ?? 0) >= 1) {
+                    $messageSucces .= '. ' . \App\Services\Avances::messageImputation($imputationAvance);
+                }
+                return redirect()->route('client.commandeValidee',$commande->numero)->with('success', $messageSucces);
             }else{
 
                 return redirect()->route('client.login');
@@ -4377,6 +5047,44 @@ class ClientController extends Controller
             $paiement->montant_restant = 0;
             $paiement->update();
 
+            // POINTS DE FIDELITE — LE CANAL EN LIGNE DU SITE N'EN DONNAIT AUCUN.
+            //
+            // Les deux guichets creditent a la validation de l'encaissement, et
+            // l'application mobile au retour de la passerelle. Le site, lui, ne
+            // creditait rien : un client qui reglait 500 000 F par carte depuis
+            // le site ne gagnait pas un point, quand le meme reglement au
+            // guichet lui en rapportait 500. Le canal decidait de la recompense.
+            //
+            // La regle est celle de partout : Help::pointsPour, sur le montant
+            // REELLEMENT encaisse. Le nombre attribue est inscrit sur le
+            // reglement, sans quoi une annulation obligerait a deviner ce qu'il
+            // faut reprendre.
+            //
+            // Le credit est pose ICI, une seule fois par reglement, avant
+            // l'aiguillage par type de service : une vente, une location, un
+            // transport ou une facture se valent au regard de la fidelite.
+            //
+            // Sans effet si la colonne n'existe pas encore en ligne : la
+            // migration du 25/08 la cree, et le garde-fou evite une page
+            // blanche sur une base en retard.
+            if ($paiement->client_id
+                && Schema::hasColumn('paiement', 'points_attribues')
+                && (float) $paiement->points_attribues <= 0) {
+
+                $points = Help::pointsPour((float) $paiement->montant_total);
+
+                if ($points > 0) {
+                    $leClient = Client::find($paiement->client_id);
+
+                    if ($leClient) {
+                        $leClient->update([
+                            'point' => (float) $leClient->point + $points,
+                        ]);
+                        $paiement->update(['points_attribues' => $points]);
+                    }
+                }
+            }
+
             // C'EST ICI que le panier est vidé, et nulle part ailleurs : le paiement
             // vient d'être confirmé. Il l'était auparavant AVANT même le départ vers
             // la passerelle, si bien qu'un client qui fermait la page de paiement
@@ -4411,10 +5119,15 @@ class ClientController extends Controller
                                 optional(ModePaiement::find($commande->mode_paiement_id))->libelle,
                                 $commande->montantHT()
                             ));
-                            Mail::send(new ConfirmPaiement($paiement, $commande, $commande->client->user->email ?? ''));
+                            // Le reçu de paiement (PDF, modèle du guichet) remplace
+                            // l'ancien courriel de confirmation sans pièce jointe.
+                            \App\Services\RecuPaiement::envoyerParCourriel($paiement);
                         } catch (\Throwable $e) {
                             \Log::warning('Email paiement commande non envoyé: '.$e->getMessage());
                         }
+                        // Commande payée en ligne : sa FACTURE part au client (lot 81, 15/09/2026),
+                        // une seule fois quel que soit le chemin (retour, rappel, vérification).
+                        \App\Services\DocumentDeCommande::envoyerParCourriel($commande);
                     }
                     break;
                 case Help::$LOCATION:
@@ -4434,6 +5147,7 @@ class ClientController extends Controller
                                 $location,
                                 intVal(max(0, $location->montant_total - $remiseLoc) + $tvaLoc + ($location->cout_livraison_client ?? 0))
                             ));
+                            \App\Services\RecuPaiement::envoyerParCourriel($paiement);
                         } catch (\Throwable $e) {
                             \Log::warning('Email paiement location non envoyé: '.$e->getMessage());
                         }
@@ -4515,8 +5229,8 @@ class ClientController extends Controller
         }else{
 
 
-            if(session('0')['ville'] != null){
-                $ville = Ville::find(session('0')['ville']);
+            if ((session('0')['ville'] ?? null) != null) {
+                $ville = Ville::find(session('0')['ville'] ?? null);
 
                 $dataAdresse = [
                     'client_id' => $client->id,
@@ -4554,7 +5268,7 @@ class ClientController extends Controller
                 $id = Auth::user()->id;
                 $etat = Help::listeStatutCommande();
 
-                // $ville = Ville::where('id',session('0')['ville'])->first();
+                // $ville = Ville::where('id', session('0')['ville'] ?? null)->first();
 
                 $client = Client::where('user_id',$id)->first();
 
@@ -4572,35 +5286,20 @@ class ClientController extends Controller
                     $config = Configuration::first();
 
 
-                    // On verifie s'il n'y a pas de devis on en crée un nouveau
+                    // UNE COMMANDE NE CREE PAS DE DEVIS.
+                    //
+                    // Sans devis d'origine, ce parcours en enregistrait un pour
+                    // porter les donnees du panier jusqu'a la commande : une
+                    // ligne de plus dans la liste des devis a chaque vente. Il
+                    // reste un simple porteur, en memoire. Quand le client vient
+                    // d'un VRAI devis, rien ne change.
                     if($devis->id == null){
-                        $dataDevis = [
+                        $devis = new Devis([
                             'client_id' => $client->id,
                             'adresse_livraison_id' => session('date_livraison'),
-                            'montant' => session('0')['montantTTC'] - session('0')['tva'] //$totalPlusTva,
-                        ];
-
-
-                        $devis = Help::creerAvecNumeroUnique(function ($numero) use ($dataDevis) {
-                            $dataDevis['numero'] = $numero;
-                            return Devis::create($dataDevis);
-                        });
-
-                        foreach(Cart::content() as $produit){
-                            DetailDevis::create([
-                                'produit_id' => $produit->id,
-                                'devis_id' => $devis->id,
-                                'qte' => $produit->qty,
-                                'prix' => $produit->price,
-                                'cout_livraison' => $produit->options->cout_livraison
-                            ]);
-                        }
-
-
+                            'montant' => session('0')['montantTTC'] - session('0')['tva'],
+                        ]);
                     }
-
-
-                    $devisId = $devis->id;
 
                     if(session('reduction_id')){
                         $reduction = Reduction::find(session('reduction_id'));
@@ -4620,24 +5319,50 @@ class ClientController extends Controller
                         return $this->retourApresRefusCommande($devis)->with('error', $refus);
                     }
 
-                    $commande = Commande::create([
-                        // Date réelle de la commande : sans elle, la colonne retombe sur
-                        // son horodatage figé par défaut (voir le premier appel).
-                        'date_commande' => now(),
-                        'numero' => $devis->numero,
-                        'etat_commande' => $etat[0],
-                        'devis_id' => $devis->id,
-                        'client_id' => $client->id,
-                        'adresse_livraison_id' => $adresse_id ? $adresse_id : null,
-                        'mode_paiement_id' => $mode_paiement_id,
-                        'montant_total' => $devis->montant,
-                        'remise' => $remise,
-                        'date_livraison' => $date_livraison,
-                        'type_livraison_id' => $type_livraison,
-                        'cout_livraison_client' => $cout_livraison,
-                        'est_livrable' => $livrable,
-                        // Type livraison
-                    ]);
+                    if ($this->porteDuMaterielDeLocation($devis)) {
+                        return redirect()->route('client.panierLocation')->with('error',
+                            "Ce matériel se LOUE, il ne s'achète pas. Nous vous avons ramené au "
+                            . "parcours de location : choisissez vos dates, puis validez.");
+                    }
+
+                    if ($this->devisSansArticle($devis)) {
+                        return redirect()->route('client.monPanier')->with('error',
+                            "Votre commande n'a pas pu être validée : elle ne contient plus aucun "
+                            . "article. Cela arrive lorsque la page est restée ouverte trop "
+                            . "longtemps. Reprenez vos articles dans le panier, puis validez "
+                            . "de nouveau.");
+                    }
+
+                    // Le numéro vient du devis quand il y en a un ; sinon la
+                    // commande le tire elle-même, avec reprise en cas de
+                    // collision — `commande.numero` porte un index UNIQUE.
+                    $creerLaCommande = function ($numero) use (
+                        $devis, $etat, $client, $adresse_id, $mode_paiement_id,
+                        $remise, $date_livraison, $type_livraison, $cout_livraison, $livrable
+                    ) {
+                        return Commande::create([
+                            // Date réelle de la commande : sans elle, la colonne retombe sur
+                            // son horodatage figé par défaut (voir le premier appel).
+                            'date_commande' => now(),
+                            'numero' => $numero,
+                            'etat_commande' => $etat[0],
+                            'devis_id' => $devis->id,
+                            'client_id' => $client->id,
+                            'adresse_livraison_id' => $adresse_id ? $adresse_id : null,
+                            'mode_paiement_id' => $mode_paiement_id,
+                            'montant_total' => $devis->montant,
+                            'remise' => \Help::arrondiFranc($remise),
+                            'date_livraison' => $date_livraison,
+                            'type_livraison_id' => $type_livraison,
+                            'cout_livraison_client' => $cout_livraison,
+                            'est_livrable' => $livrable,
+                            // Type livraison
+                        ]);
+                    };
+
+                    $commande = $devis->id
+                        ? $creerLaCommande($devis->numero)
+                        : Help::creerAvecNumeroUnique($creerLaCommande);
 
 
 
@@ -4670,23 +5395,44 @@ class ClientController extends Controller
                     }
 
 
-                    foreach($devis->detaildevis as $detail){
-                        $detailCommande = DetailCommande::create([
-                            'produit_id' => $detail->produit_id,
-                            'commande_id' => $commande->id,
-                            'qte' => $detail->qte,
-                            'prix' => $detail->prix,
-                            'prix_fournisseur' => $detail->prix_fournisseur,
-                            'cout_livraison' => $detail->cout_livraison,
+                    // LES ARTICLES VIENNENT DE LA OU ILS SONT.
+                    //
+                    // D'un vrai devis, ce sont ses lignes. D'une commande
+                    // directe, le devis n'est plus qu'un porteur sans ligne :
+                    // les articles se prennent alors dans le PANIER, sans quoi
+                    // la commande naitrait vide.
+                    if ($devis->id) {
+                        foreach($devis->detaildevis as $detail){
+                            $detailCommande = DetailCommande::create([
+                                'produit_id' => $detail->produit_id,
+                                'commande_id' => $commande->id,
+                                'qte' => $detail->qte,
+                                'prix' => $detail->prix,
+                                'prix_fournisseur' => $detail->prix_fournisseur,
+                                'cout_livraison' => $detail->cout_livraison,
+                            ]);
+                        }
+
+                        // Le devis demande par le client passe « Commande ».
+                        $devis->update([
+                            'statut' => 2
                         ]);
+                    } else {
+                        foreach(Cart::content() as $produit){
+                            $detailCommande = DetailCommande::create([
+                                'produit_id' => $produit->id,
+                                'commande_id' => $commande->id,
+                                'qte' => $produit->qty,
+                                'prix' => $produit->price,
+                                'prix_fournisseur' => $produit->options->prix_fournisseur,
+                                'cout_livraison' => $produit->options->cout_livraison,
+                            ]);
+                        }
                     }
-                    $devis->update([
-                        'statut' => 2
-                    ]);
 
                     $tva = TvaCommande::create([
                         'client_id' => $client->id,
-                        'montant' => $montantTva,
+                        'montant' => \Help::arrondiFranc($montantTva),
                         'commande_id' => $commande->id,
                         'type_affaire' => 2
                     ]);
@@ -4710,7 +5456,9 @@ class ClientController extends Controller
                     }
 
                     $location = [
-                        'numero' => uniqid(),
+                        // Le meme generateur que le mobile : un seul format
+                        // de numero de location, dictable au telephone.
+                        'numero' => \Help::genererNumeroUnique('location'),
                         'client_id' => $client->id,
                         'mode_paiement_id' => session('mode_paiement'),
                         'adresse_livraison_id' => isset($adresse) ? $adresse->id : null,
@@ -4761,6 +5509,12 @@ class ClientController extends Controller
                         'montant' => intVal(round(session('0')['tva'] ?? (session('totalLocation') * Client::tva($client)))),
                         'type_affaire' => Help::$LOCATION,
                     ]);
+                    // AIRSI figé (10/09/2026) : HT net de remise + TVA.
+                    $location->update(['airsi' => \Help::airsiPour($client,
+                        max(0, (float) $total - (float) $remise) + (float) $laTva->montant,
+                        max(0, (float) $total - (float) $remise), (float) Client::tva($client),
+                        (float) (session('0')['cout_livraison'] ?? 0),
+                        (float) (session('0')['tva_transport'] ?? 0) > 0 ? (float) Client::tvaTransport($client) : 0.0)]);
 
                     $service = Help::$LOCATION;
                     $service_id = $location->id;
@@ -4836,6 +5590,20 @@ class ClientController extends Controller
             return $this->retourApresRefusCommande($devis)->with('error', $refus);
         }
 
+        if ($this->porteDuMaterielDeLocation($devis)) {
+            return redirect()->route('client.panierLocation')->with('error',
+                "Ce matériel se LOUE, il ne s'achète pas. Nous vous avons ramené au "
+                . "parcours de location : choisissez vos dates, puis validez.");
+        }
+
+        if ($this->devisSansArticle($devis)) {
+            return redirect()->route('client.monPanier')->with('error',
+                "Votre commande n'a pas pu être validée : elle ne contient plus aucun "
+                . "article. Cela arrive lorsque la page est restée ouverte trop "
+                . "longtemps. Reprenez vos articles dans le panier, puis validez "
+                . "de nouveau.");
+        }
+
         $commande = Commande::create([
             // Date réelle de la commande : sans elle, la colonne retombe sur
             // son horodatage figé par défaut (voir le premier appel).
@@ -4899,6 +5667,8 @@ class ClientController extends Controller
         } catch (\Throwable $e) {
             \Log::warning('Email commande (devis) non envoyé: '.$e->getMessage());
         }
+        // La proforma part au client en PDF (lot 81, 15/09/2026) ; différé, jamais bloquant.
+        \App\Services\DocumentDeCommande::envoyerParCourriel($commande);
 
         session()->forget('type');
         return redirect()->route('client.commandeValidee',$commande->numero)->with('success','Votre commande a bien été enregistrée ! Rendez-vous dans la rubrique Mon Compte pour suivre votre commande');
@@ -4996,23 +5766,23 @@ class ClientController extends Controller
         if($client->type_client == 'ENTREPRISE'){
             // dd('rd');
             $request->validate([
-                'fichier' => 'nullable|mimes:pdf|max:2048',
+                'fichier' => \App\Support\BonDeCommandeJoint::regle(false),
                 'numero_bon' => 'required|max:255',
             ],
-            [
-                'fichier.required' => 'Le fichier est requis',
+            \App\Support\BonDeCommandeJoint::messages() + [
                 'numero_bon.required' => 'Le numéro de bon est requis',
-                'fichier.mimes' => 'Le fichier doit être au format PDF',
-                'fichier.max' => 'Le fichier ne doit pas dépasser 2 Mo',
             ]);
+            // Le numéro est retenu MÊME SANS pièce jointe (09/09/2026) : il est
+            // figé sur la location et reporté devant chaque désignation.
+            session()->put(['numero_bon_commande' => $request->numero_bon]);
 
             if ($request->hasFile('fichier')) {
 
-                // $destination = base_path('public/storage/productsImage');
                 $destination = Storage::disk('public')->path('temp_pdfs'); // racine reelle du disque (cf. config/filesystems.php)
-                $nomPdf = 'bon'.'-'.Auth::user()->client->display_name.'-'. date('YmdHis') .'.pdf'; // extension forcée : jamais l'extension d'origine (anti-upload de .php exécutable)
+                // L'extension vient de la LISTE BLANCHE, jamais du nom recu.
+                $nomPdf = \App\Support\BonDeCommandeJoint::nomDeFichier(
+                    $request->file('fichier'), Auth::user()->client->display_name);
                 $request->file('fichier')->move($destination, $nomPdf);
-                // $path = $request->file('fichier')->move($destination, 'public');
                 session()->put([
                     'cheminFichier' => 'temp_pdfs/'.$nomPdf,
                     'numero_bon_commande' => $request->numero_bon,
@@ -5049,7 +5819,7 @@ class ClientController extends Controller
 
 
         $mode = ModePaiement::find($request->mode);
-        $ville = Ville::find(session('0')['ville']);
+        $ville = Ville::find(session('0')['ville'] ?? null);
         $total = session('totalLocation');
         // $totalAvecReduction = $total;
 
@@ -5098,23 +5868,23 @@ class ClientController extends Controller
         if($client->type_client == 'ENTREPRISE'){
 
             $request->validate([
-                'fichier' => 'required|mimes:pdf|max:2048',
+                'fichier' => \App\Support\BonDeCommandeJoint::regle(),
                 'numero_bon' => 'required|max:255',
             ],
-            [
-                'fichier.required' => 'Le fichier est requis',
+            \App\Support\BonDeCommandeJoint::messages() + [
                 'numero_bon.required' => 'Le numéro de bon est requis',
-                'fichier.mimes' => 'Le fichier doit être au format PDF',
-                'fichier.max' => 'Le fichier ne doit pas dépasser 2 Mo',
             ]);
+            // Le numéro est retenu MÊME SANS pièce jointe (09/09/2026) : il est
+            // figé sur la location et reporté devant chaque désignation.
+            session()->put(['numero_bon_commande' => $request->numero_bon]);
 
             if ($request->hasFile('fichier')) {
 
-                // $destination = base_path('public/storage/productsImage');
                 $destination = Storage::disk('public')->path('temp_pdfs'); // racine reelle du disque (cf. config/filesystems.php)
-                $nomPdf = 'bon'.'-'.Auth::user()->client->display_name.'-'. date('YmdHis') .'.pdf'; // extension forcée : jamais l'extension d'origine (anti-upload de .php exécutable)
+                // L'extension vient de la LISTE BLANCHE, jamais du nom recu.
+                $nomPdf = \App\Support\BonDeCommandeJoint::nomDeFichier(
+                    $request->file('fichier'), Auth::user()->client->display_name);
                 $request->file('fichier')->move($destination, $nomPdf);
-                // $path = $request->file('fichier')->move($destination, 'public');
                 session()->put([
                     'cheminFichier' => 'temp_pdfs/'.$nomPdf,
                     'numero_bon_commande' => $request->numero_bon,
@@ -5141,7 +5911,7 @@ class ClientController extends Controller
 
 
         $mode = ModePaiement::find($request->mode);
-        $ville = Ville::find(session('0')['ville']);
+        $ville = Ville::find(session('0')['ville'] ?? null);
         $total = session('totalLocation');
         // $totalAvecReduction = $total;
 
@@ -5266,14 +6036,15 @@ class ClientController extends Controller
 
         if ($request->hasFile('fichier')) {
 
-                $request->validate(['fichier' => 'required|mimes:pdf|max:2048'], [
-                    'fichier.mimes' => 'Le fichier doit être au format PDF',
-                    'fichier.max' => 'Le fichier ne doit pas dépasser 2 Mo',
-                ]);
+                $request->validate(
+                    ['fichier' => \App\Support\BonDeCommandeJoint::regle()],
+                    \App\Support\BonDeCommandeJoint::messages()
+                );
 
-                // $destination = base_path('public/storage/productsImage');
                 $destination = Storage::disk('public')->path('temp_pdfs'); // racine reelle du disque (cf. config/filesystems.php)
-                $nomPdf = 'bon'.'-'.Auth::user()->client->display_name.'-'. date('YmdHis') .'.pdf'; // extension forcée : jamais l'extension d'origine (anti-upload de .php exécutable)
+                // L'extension vient de la LISTE BLANCHE, jamais du nom recu.
+                $nomPdf = \App\Support\BonDeCommandeJoint::nomDeFichier(
+                    $request->file('fichier'), Auth::user()->client->display_name);
                 $request->file('fichier')->move($destination, $nomPdf);
                 // $path = $request->file('fichier')->move($destination, 'public');
                 session()->put([
@@ -5336,7 +6107,7 @@ class ClientController extends Controller
             'client' => Auth::user() ? Client::where('user_id',Auth::user()->id)->first(): new Client,
             'categories' => Categorie::all(),
             'total' => $total,
-            'remise' => $remise,
+            'remise' => \Help::arrondiFranc($remise),
             'promo' => $promo,
             'reducPoint' => $reducPoint,
             'lieu' => session('infoSup'),
@@ -5373,109 +6144,9 @@ class ClientController extends Controller
                 ->with('error', "Votre fiche client est introuvable. Contactez-nous pour la régulariser.");
         }
 
-        if($etat =='effectues'){
-
-            $req  ="SELECT cde.id AS commande_id,
-                                        cde.numero AS num_commande,
-                                        cde.created_at AS date_commande,
-                                        cde.est_livrable,
-                                        li.id AS ligne_id,
-                                        li.reference AS code_paiement,
-                                        li.montant,
-                                        li.created_at AS date_paiement,
-                                        mp.description AS mode_paiement
-                                FROM ligne_paiement li
-                                JOIN commande cde ON li.service_id = cde.id
-                                JOIN paiement p ON p.id = li.paiement_id
-                                JOIN mode_paiement mp ON li.mode_paiement_id = mp.id
-                                WHERE p.client_id = $client->id AND p.statut <> 3
-                                ORDER BY li.created_at
-                                        ";
-
-         }else{
-
-            if($client->client_a_terme == 1){
-            // liste de paiement en attente pour les clients à terme
-                $req = "SELECT
-                            DISTINCT(f.id) AS facture_id,
-                            cde.id AS commande_id,
-                            cde.numero AS num_commande,
-                            cde.client_id,
-                            cde.numero AS num_commande,
-                            cde.created_at AS date_commande,
-                            -- Chaque ligne EST une facture, pas une commande. Sans son
-                            -- numéro ni sa date, une commande livrée en deux fois — donc
-                            -- facturée deux fois — produisait deux lignes rigoureusement
-                            -- identiques à l'écran : le client ne pouvait pas savoir
-                            -- laquelle il réglait.
-                            f.numero AS num_facture,
-                            f.created_at AS date_facture,
-                            f.montant AS montant_a_payer,
-                            p.montant_total AS total_paye,
-                            (f.montant - IFNULL((SELECT SUM(pf.montant_total) FROM paiement pf
-                                                  WHERE pf.facture_id = f.id
-                                                    AND pf.statut = " . Help::$STATUT_ACTIF . "
-                                                    AND pf.deleted_at IS NULL), 0)) AS montant_restant
-                        FROM facture f
-                        JOIN commande cde ON f.service_id = cde.id
-                        LEFT JOIN paiement p ON p.facture_id = f.id AND p.statut = 2
-                        WHERE cde.client_id = $client->id
-                        -- « Paiements en attente » listait TOUTES les factures du client,
-                        -- soldées comprises : le filtre était désactivé et le client voyait
-                        -- des lignes à « reste à payer : 0 ».
-                        --
-                        -- Le reste se calcule PAR FACTURE, en sommant les paiements qui lui
-                        -- sont rattachés — la formule qui fait déjà foi à l'encaissement
-                        -- (CreanceClientTermeController::enregistrerPaiement). L'ancienne
-                        -- colonne lisait le dernier paiement de la COMMANDE : avec une
-                        -- facturation fractionnée, un règlement soldant la première facture
-                        -- faisait passer les suivantes pour payées.
-                        HAVING montant_restant > 0
-                        ORDER BY cde.created_at
-                        ";
-            }else{
-                // liste de paiement en attente pour les clients ordinaire
-                // Le HT est recalculé depuis les lignes (detail_commande) et non lu dans
-                // cde.montant_total : cette colonne contient le HT pour une commande créée
-                // sur le site mais le NET pour une commande créée depuis l'application
-                // mobile. Y ajouter TVA et livraison double-comptait donc pour le mobile,
-                // et la commande restait affichée « en attente de paiement » alors qu'elle
-                // était soldée.
-                $req = "SELECT IFNULL(SUM(li.montant), 0) AS paye,
-                                (COALESCE(NULLIF(ht.montant_ht, 0), cde.montant_total, 0) + cde.cout_livraison_client + tva.montant - cde.remise) AS montant_a_payer,
-                                ((COALESCE(NULLIF(ht.montant_ht, 0), cde.montant_total, 0) + cde.cout_livraison_client + tva.montant - cde.remise) - IFNULL(SUM(li.montant), 0) ) AS montant_restant,
-                                cde.numero AS num_commande,
-                                cde.created_at AS date_commande,
-                                cde.id as commande_id
-
-                        FROM commande cde
-                        LEFT JOIN ligne_paiement li ON li.service_id = cde.id
-                        LEFT JOIN tva_commande tva ON tva.commande_id = cde.id
-                        LEFT JOIN (SELECT d.commande_id, SUM(d.prix * d.qte) AS montant_ht
-                                     FROM detail_commande d
-                                    WHERE d.deleted_at IS NULL
-                                 GROUP BY d.commande_id) ht ON ht.commande_id = cde.id
-                        WHERE cde.client_id = $client->id
-                        GROUP BY cde.id,
-                                tva.montant,
-                                ht.montant_ht,
-                                -- cde.montant_total est utilisé dans le COALESCE ci-dessus mais
-                                -- ne figurait pas ici. MySQL 8 l'accepte : il déduit que toutes
-                                -- les colonnes de « commande » dépendent de cde.id, sa clé
-                                -- primaire. MariaDB, qui fait tourner la production, n'a PAS
-                                -- cette déduction : la page tombait en erreur
-                                -- « 1055 'cde.montant_total' isn't in GROUP BY », donc en 500,
-                                -- alors qu'elle s'affichait sans broncher en local.
-                                cde.montant_total,
-                                cde.cout_livraison_client,
-                                cde.remise,
-                                cde.numero,
-                                cde.created_at
-                        HAVING montant_restant > 0";
-            }
-         }
-
-         $lignes = DB::select($req);
+        // La liste est calculée par PaiementsDuClient (lot 89, 16/09/2026) : la même
+        // règle sert à la page web et à l'application, par la route interne.
+        $lignes = \App\Services\PaiementsDuClient::lignes($client, $etat);
 
         return view('client.listePaiement',[
             'lignes' => $lignes,
@@ -5539,13 +6210,24 @@ class ClientController extends Controller
             ]);
 
             if($client->type_client == 'ENTREPRISE'){
+                // LE NUMÉRO DE BON DE COMMANDE INTERNE EST OBLIGATOIRE (09/09/2026).
+                // L'écran l'exige déjà ; ce contrôle-ci fait foi. Le numéro est
+                // retenu même sans pièce jointe : il est reporté devant chaque
+                // désignation de la proforma, puis de la facture.
+                $request->validate(
+                    [
+                        'numero_bon' => 'required|max:255',
+                        'fichier'    => \App\Support\BonDeCommandeJoint::regle(false),
+                    ],
+                    \App\Support\BonDeCommandeJoint::messages()
+                        + ['numero_bon.required' => 'Le numéro de bon de commande interne est obligatoire.']
+                );
+                session()->put(['numero_bon_commande' => $request->numero_bon]);
                 if ($request->hasFile('fichier')) {
-                    $request->validate(['fichier' => 'required|mimes:pdf|max:2048'], [
-                        'fichier.mimes' => 'Le fichier doit être au format PDF',
-                        'fichier.max' => 'Le fichier ne doit pas dépasser 2 Mo',
-                    ]);
                     $destination = Storage::disk('public')->path('temp_pdfs'); // racine reelle du disque (cf. config/filesystems.php)
-                    $nomPdf = 'bon'.'-'.Auth::user()->client->display_name.'-'. date('YmdHis') .'.pdf'; // extension forcée : jamais l'extension d'origine (anti-upload de .php exécutable)
+                    // L'extension vient de la LISTE BLANCHE, jamais du nom recu.
+                    $nomPdf = \App\Support\BonDeCommandeJoint::nomDeFichier(
+                        $request->file('fichier'), Auth::user()->client->display_name);
                     $request->file('fichier')->move($destination, $nomPdf);
                     session()->put([
                         'cheminFichier' => 'temp_pdfs/'.$nomPdf,
@@ -5639,6 +6321,7 @@ class ClientController extends Controller
                     'montant' => $total,
                     'tva' => $livraison['tva'] ?? null,
                     'cout_livraison' => $cout_livraison,
+                    'tva_transport' => (float) ($livraison['tva_transport'] ?? 0),
                     'mode_paiement' => session('mode'),
                     'mode_paiement_id' => session('mode'),
                     'cout_reduction' => $remise,
@@ -5647,6 +6330,8 @@ class ClientController extends Controller
                     'type_livraison_id' => session('type_livraison_id'),
                     'service' => 1,
                     'date_livraison' => session('date_livraison'),
+                    // Numéro de bon de commande interne (09/09/2026), reporté sur le devis.
+                    'numero_bon_commande' => session('numero_bon_commande'),
                 ];
 
                 $devis = Help::creerAvecNumeroUnique(function ($numero) use ($dataDevis) {
@@ -5751,12 +6436,11 @@ class ClientController extends Controller
                     'montant' => $totalPlusTva,
                 ];
 
-                $devis = Help::creerAvecNumeroUnique(function ($numero) use ($dataDevis) {
-                    $dataDevis['numero'] = $numero;
-                    return Devis::create($dataDevis);
-                });
-
-                $devisId = $devis->id;
+                // UNE COMMANDE NE CREE PAS DE DEVIS — ici comme sur le parcours
+                // principal. Ce devis n'etait qu'un porteur de donnees, mais il
+                // etait enregistre : chaque vente ajoutait une ligne dans la
+                // liste des devis, que le client n'avait jamais demandee.
+                $devis = new Devis($dataDevis);
 
                 if(session('reduction_id')){
                     $reduction = Reduction::find(session('reduction_id'));
@@ -5765,24 +6449,15 @@ class ClientController extends Controller
 
             $total = Cart::total() - (Cart::total() * $reduction->taux_reduction)/100;
 
+                    // Le code promo est consomme par le CLIENT, pas par un devis.
                     $reduction->update([
                         'est_utilise' => 1,
                         'client_id' => $client->id,
-                        'devis_id' => $devis->id
                     ]);
                 }
 
-                foreach(Cart::content() as $produit){
-
-                    DetailDevis::create([
-                        'produit_id' => $produit->id,
-                        'devis_id' => $devisId,
-                        'qte' => $produit->qty,
-                        'prix' => $produit->price,
-                        'prix_fournisseur' => $produit->options->prix_fournisseur
-                    ]);
-
-                }
+                // Les lignes de la commande se construisent depuis le PANIER,
+                // plus bas : il n'y a plus de ligne de devis pour les porter.
 
 
 
@@ -5796,20 +6471,34 @@ class ClientController extends Controller
                     return $this->retourApresRefusCommande($devis)->with('error', $refus);
                 }
 
-                $commande = Commande::create([
-                    // Date réelle de la commande : sans elle, la colonne retombe sur
-                    // son horodatage figé par défaut (voir le premier appel).
-                    'date_commande' => now(),
-                    'numero' => $devis->numero,
-                    'etat_commande' => $etat[0],
-                    'devis_id' => $devis->id,
-                    'client_id' => $client->id,
-                    'adresse_livraison_id' => $adresseId,
-                    'mode_paiement_id' => session('mode'),
-                    'montant_total' => $devis->montant,
-                    'remise' => $promo,
-                    'est_livrable' => session('0')['estLivrable'] == 'oui' ? 1 : 0,
-                ]);
+                // Appelée depuis la CONNEXION : personne ne lit sa valeur de
+                // retour, on s'abstient simplement de créer la commande.
+                if ($this->devisSansArticle($devis)
+                    || $this->porteDuMaterielDeLocation($devis)) {
+                    return null;
+                }
+
+                // Le numéro venait du devis, qui n'est plus enregistré : c'est
+                // maintenant la commande qui le tire, avec reprise en cas de
+                // collision — `commande.numero` porte un index UNIQUE.
+                $commande = Help::creerAvecNumeroUnique(function ($numero) use (
+                    $devis, $etat, $client, $adresseId, $promo
+                ) {
+                    return Commande::create([
+                        // Date réelle de la commande : sans elle, la colonne retombe sur
+                        // son horodatage figé par défaut (voir le premier appel).
+                        'date_commande' => now(),
+                        'numero' => $numero,
+                        'etat_commande' => $etat[0],
+                        'devis_id' => $devis->id,
+                        'client_id' => $client->id,
+                        'adresse_livraison_id' => $adresseId,
+                        'mode_paiement_id' => session('mode'),
+                        'montant_total' => $devis->montant,
+                        'remise' => \Help::arrondiFranc($promo),
+                        'est_livrable' => session('0')['estLivrable'] == 'oui' ? 1 : 0,
+                    ]);
+                });
 
                 // ********************************
 
@@ -5871,22 +6560,19 @@ class ClientController extends Controller
 
                 $commandeId = $commande->id;
 
-                foreach($devis->detaildevis as $detail){
+                foreach(Cart::content() as $produit){
                     $detailCommande = DetailCommande::create([
-                        'produit_id' => $detail->produit_id,
+                        'produit_id' => $produit->id,
                         'commande_id' => $commandeId,
-                        'qte' => $detail->qte,
-                        'prix' => $detail->prix,
-                        'prix_fournisseur' => $detail->prix_fournisseur
+                        'qte' => $produit->qty,
+                        'prix' => $produit->price,
+                        'prix_fournisseur' => $produit->options->prix_fournisseur
                     ]);
                 }
-                $devis->update([
-                    'statut' => 2
-                ]);
 
                 $tva = TvaCommande::create([
                     'client_id' => $client->id,
-                    'montant' => $laTva,
+                    'montant' => \Help::arrondiFranc($laTva),
                     'commande_id' => $commande->id,
                     'type_affaire' => 2
                 ]);
@@ -5906,7 +6592,21 @@ class ClientController extends Controller
                 $paiement->save();
 
                 $ret = array();
-                if ($client->client_a_terme == false) {
+
+                // LE PLAFOND VAUT AUSSI ICI.
+                //
+                // Ce parcours-ci est celui du panier rempli AVANT de se
+                // connecter : à la connexion, la commande part directement vers
+                // la passerelle, sans que le client ait choisi de mode et sans
+                // qu'aucun plafond soit vérifié. Un panier de plus de deux
+                // millions y échappait à la règle annoncée sur toutes les autres
+                // pages. Au-delà, la commande reste enregistrée — elle se règle
+                // en agence, comme le dit le message.
+                $plafondFranchi = \App\Support\PlafondPaiementEnLigne::depasse(
+                    $commande->montantAPayer()
+                );
+
+                if ($client->client_a_terme == false && !$plafondFranchi) {
                     $codePaiement = Help::getCommandeNo();
                     $nomPrenoms = $client->nom;
                     $arrNoms = explode(" ", $nomPrenoms);
@@ -5982,6 +6682,8 @@ class ClientController extends Controller
                     } catch (\Throwable $e) {
                         \Log::warning('Email commande (panier) non envoyé: '.$e->getMessage());
                     }
+                    // La proforma part au client en PDF (lot 81, 15/09/2026) ; différé, jamais bloquant.
+                    \App\Services\DocumentDeCommande::envoyerParCourriel($commande);
                 }
 
                 // *************************************
@@ -6069,7 +6771,9 @@ class ClientController extends Controller
                 }
 
                 $location = [
-                    'numero' => uniqid(),
+                    // Le meme generateur que le mobile : un seul format
+                    // de numero de location, dictable au telephone.
+                    'numero' => \Help::genererNumeroUnique('location'),
                     'client_id' => $client->id,
                     'mode_paiement_id' => session('mode_paiement'),
                     'adresse_livraison_id' => $adresse->id,
@@ -6081,10 +6785,30 @@ class ClientController extends Controller
                     'cout_livraison_client' => session('0')? session('0')['cout_livraison_client'] : 0,
                     // « Retrait sur place » : aucun livreur n'interviendra. Repli sur livrable.
                     'est_livrable' => (session('0')['estLivrable'] ?? 'oui') == 'oui' ? 1 : 0,
+                    // Numéro de bon de commande interne (09/09/2026), comme sur une vente.
+                    'numero_bon_commande' => session('numero_bon_commande'),
                     // 'remise' =>
                 ];
 
                 $location = Location::create($location);
+
+                // La pièce jointe du bon rejoint bl_client, rattachée à la LOCATION
+                // (09/09/2026) — même rangement que pour une vente.
+                if (session('cheminFichier')) {
+                    $sourcePath = session('cheminFichier');
+                    $destinationPath = 'lesBons/' . basename($sourcePath);
+                    if (Storage::disk('public')->exists($sourcePath)) {
+                        Storage::disk('public')->move($sourcePath, $destinationPath);
+                    }
+                    BlClient::create([
+                        'numero'      => session('numero_bon_commande'),
+                        'client_id'   => $client->id,
+                        'fichier'     => $destinationPath,
+                        'location_id' => $location->id,
+                    ]);
+                }
+                // Purge : un numéro resté en session serait repris par l'affaire suivante.
+                session()->forget(['cheminFichier', 'numero_bon_commande', 'fichier']);
 
                 $i=0;
 

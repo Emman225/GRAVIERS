@@ -690,7 +690,7 @@
                     }
                 },
                 error: function () {
-                    alert('Une erreur est survenue.');
+                    alerte('Une erreur est survenue.');
                 }
             });
         }
@@ -792,7 +792,7 @@
                     if (response.success) {
                         console.log("Response:", response.qte);
                         if (response.qte < 0.1) {
-                            alert('La quantité doit être supérieure à 0.1 !');
+                            alerte('La quantité doit être supérieure à 0.1 !');
                             return;
                         }
                         console.log("Response:", response);
@@ -826,7 +826,7 @@
                     }
                 },
                 error: function () {
-                    alert('Une erreur est survenue lors de la mise à jour du total.');
+                    alerte('Une erreur est survenue lors de la mise à jour du total.');
                 }
             });
         }
@@ -876,7 +876,7 @@
                     }
                 },
                 error: function () {
-                    alert('Une erreur est survenue lors de la mise à jour du panier.');
+                    alerte('Une erreur est survenue lors de la mise à jour du panier.');
                 }
             });
         });

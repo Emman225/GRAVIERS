@@ -80,3 +80,11 @@ Thumbs.db
 .DS_Store
 desktop.ini
 ~$*
+
+# --- Outils de recette locaux -------------------------------------------------
+# Connexion sans mot de passe et pages authentifiees sauvegardees : jamais en ligne.
+graviers/public/captures-manuel/
+# Polices compilees par DomPDF : cache propre a la machine.
+*/storage/fonts/
+# Cache Gradle isole des compilations.
+.gradle-*/

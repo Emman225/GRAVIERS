@@ -37,7 +37,7 @@
             <header class="card-header bg-warning-subtle">
                 <p class="d-flex justify-content-between align-items-center mb-0">
                     <span class="h5 mb-0">
-                        <i class="material-icons md-outbox"></i>
+                        <i class="material-icons md-send"></i>
                         Demandes de paiement initiées par les fournisseurs
                     </span>
                     <a href="{{ route('show.listeDeDemandeFournisseur') }}" class="btn btn-sm btn-warning">
@@ -59,7 +59,7 @@
                         <thead style="background-color: #b8860b; color: white;">
                             <tr>
                                 <th class="text-center">Date</th>
-                                <th class="text-center">Code Fourn.</th>
+                                <th class="text-center">Code fourn.</th>
                                 <th>Fournisseur</th>
                                 <th class="text-end">Montant demandé</th>
                                 <th class="text-center">Mode de paiement</th>
@@ -75,7 +75,7 @@
                             @foreach ($demandesFournisseurs as $d)
                                 <tr>
                                     <td class="text-center">
-                                        {{ $d->date ? Carbon::parse($d->date)->format('d/m/Y H:i') : '-' }}
+                                        {{ $d->date ? Carbon::parse($d->date)->format('d/m/Y H:i:s') : '-' }}
                                     </td>
                                     <td class="text-center">{{ $d->code_fournisseur }}</td>
                                     <td>{{ $d->fournisseur_nom }}</td>
@@ -116,9 +116,7 @@
                                         @elseif ($d->attend_1re)
                                             <a href="{{ $lienValidation('accepter') }}"
                                                class="btn btn-sm btn-success"
-                                               onclick="return confirm('Donner la 1re validation à cette demande ?');">
-                                                <i class="material-icons md-check"></i> 1re validation
-                                            </a>
+                                               onclick="return confirm('Donner la 1re validation à cette demande ?');" title="1re validation"><i class="material-icons md-check"></i></a>
                                         @elseif ($d->attend_2e && $d->est_initiateur)
                                             <span class="text-muted small">
                                                 <em>En attente d'un autre administrateur</em>
@@ -126,14 +124,10 @@
                                         @elseif ($d->attend_2e)
                                             <a href="{{ $lienValidation('accepter') }}"
                                                class="btn btn-sm btn-success"
-                                               onclick="return confirm('Accepter et payer cette demande ?');">
-                                                <i class="material-icons md-check"></i> 2e validation
-                                            </a>
+                                               onclick="return confirm('Accepter et payer cette demande ?');" title="2e validation"><i class="material-icons md-check"></i></a>
                                             <a href="{{ $lienValidation('refuser') }}"
                                                class="btn btn-sm btn-danger"
-                                               onclick="return confirm('Refuser cette demande ? Le montant sera restitué au solde du fournisseur.');">
-                                                <i class="material-icons md-denied"></i> Rejeter
-                                            </a>
+                                               onclick="return confirm('Refuser cette demande ? Le montant sera restitué au solde du fournisseur.');" title="Rejeter"><i class="material-icons md-block"></i></a>
                                         @endif
                                     </td>
                                 </tr>
@@ -165,23 +159,25 @@
                 <table class="table table-striped" id="liste">
                     <thead style="background-color: #1c57a3; color: white;">
                         <tr>
-                            <th class="text-center">Date Paiement</th>
-                            <th class="text-center">N° Bon Enlèvement</th>
-                            <th class="text-center">Code Fourn.</th>
+                            <th class="text-center">Date paiement</th>
+                            <th class="text-center">N° Bon enlèvement</th>
+                            <th class="text-center">Code fourn.</th>
                             <th class="text-center">Fournisseur</th>
-                            <th class="text-end">Montant Payé</th>
+                            <th class="text-end">Montant payé</th>
                             <th class="text-center">Mode de paiement</th>
                             <th class="text-center">Référence</th>
                             <th>Notes</th>
                             <th class="text-center">Initié par</th>
                             <th class="text-center">Validé par</th>
-                            <th class="text-center">Reçu</th>
+                            <th class="text-center">3e validateur</th>
+                            <th class="text-center">État</th>
+                            <th class="text-center">Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse ($lignes as $l)
                             <tr @if($l->en_attente ?? false) style="background-color: #fff8e1;" @endif>
-                                <td class="text-center">{{ $l->date_paiement ? Carbon::parse($l->date_paiement)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date_paiement ? \Help::dateHeure($l->date_paiement) : '-' }}</td>
                                 <td class="text-center">{{ $l->numero_be }}</td>
                                 <td class="text-center">{{ $l->code_fournisseur }}</td>
                                 <td>
@@ -201,7 +197,9 @@
                                 <td>{{ $l->notes ?? '-' }}</td>
                                 <td class="text-center small">{{ $l->initie_par ?? '-' }}</td>
                                 <td class="text-center small">{{ $l->valide_par ?? '-' }}</td>
-                                <td class="text-center">
+                                <td class="text-center small">{{ $l->troisieme_par ?? '-' }}</td>
+                                <td class="text-center">@include('admin.shared._circuit_preuve_reglement', ['partie' => 'etat'])</td>
+                                <td class="text-nowrap text-center">
                                     @if ($l->peut_valider ?? false)
                                         <form action="{{ route('show.fournisseurs.paiements.valider', $l->paiement_id) }}"
                                               method="POST"
@@ -211,17 +209,21 @@
                                               data-confirm-text="Confirmez-vous la validation de ce paiement fournisseur ? Le reçu deviendra définitif."
                                               data-confirm-button="Oui, valider">
                                             @csrf
-                                            <button type="submit" class="btn btn-sm btn-success" title="Valider">
-                                                <i class="material-icons md-check_circle"></i> Valider
-                                            </button>
+                                            <button type="submit" class="btn btn-sm btn-success" title="Valider"><i class="material-icons md-check_circle"></i></button>
                                         </form>
                                     @elseif (!($l->en_attente ?? false))
+                                        {{-- Le reçu n'est visible qu'une fois le règlement FINALISÉ (effectué)
+                                             (09/09/2026) ; un règlement d'avant le circuit, sans preuve, le garde. --}}
+                                        @if ((($l->etat_reglement ?? null) === \App\Models\DemandePaiement::EFFECTUEE) || empty($l->etat_reglement ?? null))
                                         <a href="{{ route('show.fournisseurs.recu', $l->paiement_id) }}" target="_blank" class="btn btn-sm btn-info" title="Voir reçu">
                                             <i class="material-icons md-receipt"></i>
                                         </a>
                                         <a href="{{ route('show.fournisseurs.recuPdf', $l->paiement_id) }}" class="btn btn-sm btn-secondary" title="PDF">
                                             <i class="material-icons md-picture_as_pdf"></i>
                                         </a>
+                                        @endif
+                                        @include('admin.shared._circuit_preuve_reglement', ['partie' => 'actions', 'prefixe' => 'fournisseurs',
+                                            'libellePreuve' => $l->fournisseur_nom . ' — ' . Help::formatNombre($l->montant, true)])
                                     @else
                                         <span class="text-muted small"><em>En attente d'un autre admin</em></span>
                                     @endif
@@ -229,7 +231,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="11" class="text-center text-muted">
+                                <td colspan="13" class="text-center text-muted">
                                     Aucun paiement enregistré.
                                 </td>
                             </tr>
@@ -240,7 +242,7 @@
                             <tr>
                                 <td colspan="4" class="text-end">TOTAL</td>
                                 <td class="text-end text-success">{{ Help::formatNombre($totalPaye, true) }}</td>
-                                <td colspan="6"></td>
+                                <td colspan="8"></td>
                             </tr>
                         </tfoot>
                     @endif
@@ -275,6 +277,8 @@
                                         return (object) [
                                             'fournisseur_id'  => $bons->first()->fournisseur_id,
                                             'fournisseur_nom' => $bons->first()->fournisseur_nom,
+                                            'code'            => $bons->first()->code_fournisseur ?? '',
+                                            'email'           => $bons->first()->fournisseur_email ?? '',
                                             'nb'              => $bons->count(),
                                             'total_reste'     => $bons->sum('reste'),
                                         ];
@@ -284,11 +288,14 @@
                             {{-- Étape 1 : le fournisseur --}}
                             <div class="col-md-12">
                                 <label for="filtreFournisseur" class="form-label fw-bold">Fournisseur <span class="text-danger">*</span></label>
-                                <select class="form-control" id="filtreFournisseur">
-                                    <option value="">— Sélectionner un fournisseur —</option>
+                                {{-- Liste avec recherche (08/09/2026) : code fournisseur, raison
+                                     sociale ou courriel — tout est dans le libellé de l'option. --}}
+                                <select class="form-control" id="filtreFournisseur"
+                                        data-placeholder="— Sélectionner un fournisseur : tapez un code, une raison sociale ou un courriel —">
+                                    <option value=""></option>
                                     @foreach ($fournisseursNonSoldes as $f)
                                         <option value="{{ $f->fournisseur_id }}">
-                                            {{ $f->fournisseur_nom }} — {{ $f->nb }} bon(s) non soldé(s) — Total : {{ Help::formatNombre($f->total_reste, true) }}
+                                            {{ $f->code ? $f->code . ' — ' : '' }}{{ $f->fournisseur_nom }}{{ $f->email ? ' — ' . $f->email : '' }} — {{ $f->nb }} bon(s) non soldé(s) — Total : {{ Help::formatNombre($f->total_reste, true) }}
                                         </option>
                                     @endforeach
                                 </select>
@@ -306,24 +313,61 @@
                                     <input class="form-check-input" type="checkbox" id="toutCocher">
                                     <label class="form-check-label fw-bold" for="toutCocher">Tout cocher (payer tous les bons de ce fournisseur)</label>
                                 </div>
-                                <div id="listeBons" class="border rounded p-2" style="max-height:220px; overflow-y:auto;">
-                                    @foreach ($enlevementsNonSoldes as $e)
-                                        <div class="form-check bon-item" data-fournisseur-id="{{ $e->fournisseur_id }}" style="display:none;">
-                                            <input class="form-check-input bon-check" type="checkbox"
-                                                   name="enlevement_ids[]" value="{{ $e->id }}"
-                                                   id="bon{{ $e->id }}"
-                                                   data-fournisseur-id="{{ $e->fournisseur_id }}"
-                                                   data-fournisseur="{{ $e->fournisseur_nom }}"
-                                                   data-code-fournisseur="{{ $e->code_fournisseur }}"
-                                                   data-produit="{{ $e->produit }}"
-                                                   data-ttc="{{ $e->montant_ttc }}"
-                                                   data-reste="{{ $e->reste }}">
-                                            <label class="form-check-label" for="bon{{ $e->id }}">
-                                                {{ $e->code_be }} — {{ $e->produit }}
-                                                — Reste : <strong>{{ Help::formatNombre($e->reste, true) }}</strong>
-                                            </label>
-                                        </div>
-                                    @endforeach
+                                {{-- UN TABLEAU, PAS UNE LISTE BRUTE (07/09/2026).
+                                     Chaque bon garde sa case ; les lignes portent les mêmes
+                                     classes et attributs qu'avant (.bon-item / .bon-check),
+                                     le script de sélection ne change pas. Les en-têtes se
+                                     trient d'un clic — date et échéance d'abord. --}}
+                                <div id="listeBons" class="border rounded" style="max-height:260px; overflow-y:auto;">
+                                    <table class="table table-sm table-hover mb-0" id="tableBons">
+                                        <thead style="background:#1c57a3; color:#fff; position:sticky; top:0;">
+                                            <tr>
+                                                <th style="width:44px"></th>
+                                                <th class="tri" data-tri="texte" style="cursor:pointer">N° bon</th>
+                                                <th class="tri" data-tri="texte" style="cursor:pointer">Produit</th>
+                                                <th class="tri" data-tri="date" style="cursor:pointer" title="Trier par date">Date <span class="tri-fleche"></span></th>
+                                                <th class="tri text-end" data-tri="nombre" style="cursor:pointer">Montant</th>
+                                                <th class="tri" data-tri="date" style="cursor:pointer" title="Trier par échéance">Échéance <span class="tri-fleche"></span></th>
+                                                <th class="tri text-end" data-tri="nombre" style="cursor:pointer">Reste</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach ($enlevementsNonSoldes as $e)
+                                                <tr class="bon-item" data-fournisseur-id="{{ $e->fournisseur_id }}" style="display:none;">
+                                                    <td class="text-center">
+                                                        <input class="form-check-input bon-check" type="checkbox"
+                                                               name="enlevement_ids[]" value="{{ $e->id }}"
+                                                               id="bon{{ $e->id }}"
+                                                               data-fournisseur-id="{{ $e->fournisseur_id }}"
+                                                               data-fournisseur="{{ $e->fournisseur_nom }}"
+                                                               data-code-fournisseur="{{ $e->code_fournisseur }}"
+                                                               data-produit="{{ $e->produit }}"
+                                                               data-ttc="{{ $e->montant_ttc }}"
+                                                               data-reste="{{ $e->reste }}">
+                                                    </td>
+                                                    <td data-valeur="{{ $e->code_be }}"><label class="form-check-label mb-0" for="bon{{ $e->id }}">{{ $e->code_be }}</label></td>
+                                                    <td data-valeur="{{ $e->produit }}"><label class="form-check-label mb-0" for="bon{{ $e->id }}">{{ $e->produit }}</label></td>
+                                                    <td data-valeur="{{ $e->date ?? '' }}">{{ $e->date ? \Help::dateHeure($e->date) : '-' }}</td>
+                                                    <td class="text-end" data-valeur="{{ $e->montant_ttc }}">{{ Help::formatNombre($e->montant_ttc, true) }}</td>
+                                                    <td data-valeur="{{ $e->echeance ?? '' }}">
+                                                        @if ($e->echeance)
+                                                            @php $enRetard = $e->echeance < now()->format('Y-m-d'); @endphp
+                                                            <span class="{{ $enRetard ? 'text-danger fw-bold' : '' }}">{{ \Help::dateHeure($e->echeance) }}</span>
+                                                        @else
+                                                            -
+                                                        @endif
+                                                    </td>
+                                                    <td class="text-end" data-valeur="{{ $e->reste }}"><strong>{{ Help::formatNombre($e->reste, true) }}</strong></td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                        <tfoot style="background:#f0f0f0;">
+                                            <tr>
+                                                <td colspan="6" class="text-end fw-bold">Total des bons cochés</td>
+                                                <td class="text-end fw-bold text-primary" id="totalBonsCoches">0 FCFA</td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
                                 </div>
                             </div>
 
@@ -416,14 +460,19 @@
             </div>
         </div>
     </div>
+    @include('admin.shared._circuit_preuve_reglement', ['partie' => 'modal'])
 @endsection
 
 @section('cssParts')
     <link rel="stylesheet" href="{{ asset('backend/plugins/DataTables/datatables.min.css') }}">
+    <link rel="stylesheet" href="{{ asset('backend/assets/css/vendors/select2.min.css') }}">
 @endsection
 
 @section('jsParts')
     <script src="{{ asset('backend/plugins/DataTables/datatables.min.js') }}"></script>
+    {{-- Plusieurs jQuery se succèdent dans le pied de page : select2 doit
+         s'attacher à celui que la page utilise (même règle que les guichets). --}}
+    <script src="{{ asset('backend/assets/js/vendors/select2.min.js') }}"></script>
     <script type="text/javascript">
         // Construite par Laravel : une URL écrite en dur casserait si
         // l'application était servie depuis un sous-dossier.
@@ -467,6 +516,17 @@
             var fmt = function (n) {
                 return new Intl.NumberFormat('fr-FR').format(Math.round(n)) + ' FCFA';
             };
+
+            // Liste des fournisseurs avec recherche : code, raison sociale, courriel.
+            if ($.fn.select2) {
+                $('#filtreFournisseur').select2({
+                    placeholder: $('#filtreFournisseur').data('placeholder'),
+                    allowClear: true,
+                    width: '100%',
+                    dropdownParent: $('#modalPaiementFourn'),
+                    language: { noResults: function () { return 'Aucun fournisseur ne correspond'; } }
+                });
+            }
 
             // Étape 1 : le fournisseur choisi filtre la liste de SES bons.
             $('#filtreFournisseur').on('change', function () {
@@ -562,7 +622,7 @@
                                 '<td class="text-end text-success"><strong>' + fmt(h.montant) + '</strong></td>' +
                                 '<td class="text-center">' + (h.mode || '-') + '</td>' +
                                 '<td class="text-center">' + (h.reference || '-') + '</td>' +
-                                '<td class="text-center">' +
+                                '<td class="text-nowrap text-center">' +
                                     '<a href="' + h.recu_url + '" target="_blank" class="btn btn-sm btn-info" title="Voir le recu">' +
                                         '<i class="material-icons md-visibility"></i></a> ' +
                                     '<a href="' + h.recu_pdf_url + '" class="btn btn-sm btn-secondary" title="Telecharger le recu">' +
@@ -593,6 +653,37 @@
                 });
             }
 
+            // Total des bons cochés, recalculé à chaque changement.
+            var fmtTotal = function (n) { return new Intl.NumberFormat('fr-FR').format(Math.round(n)) + ' FCFA'; };
+            var majTotalCoches = function () {
+                var total = 0;
+                $('.bon-check:checked').each(function () { total += parseFloat($(this).data('reste') || 0); });
+                $('#totalBonsCoches').text(fmtTotal(total));
+            };
+            $(document).on('change', '.bon-check, #toutCocher', majTotalCoches);
+            $('#filtreFournisseur').on('change', majTotalCoches);
+
+            // Tri d'un clic sur l'en-tête : date, échéance, montant, reste, texte.
+            $('#tableBons th.tri').on('click', function () {
+                var $th = $(this);
+                var index = $th.index();
+                var type = $th.data('tri');
+                var sens = $th.data('sens') === 'asc' ? 'desc' : 'asc';
+                $('#tableBons th.tri').data('sens', '').find('.tri-fleche').text('');
+                $th.data('sens', sens).find('.tri-fleche').text(sens === 'asc' ? '▲' : '▼');
+                var $tbody = $('#tableBons tbody');
+                var lignes = $tbody.find('tr').get();
+                lignes.sort(function (a, b) {
+                    var va = $(a).children().eq(index).data('valeur'), vb = $(b).children().eq(index).data('valeur');
+                    if (type === 'nombre') { va = parseFloat(va || 0); vb = parseFloat(vb || 0); }
+                    else { va = String(va || ''); vb = String(vb || ''); }
+                    if (va < vb) return sens === 'asc' ? -1 : 1;
+                    if (va > vb) return sens === 'asc' ? 1 : -1;
+                    return 0;
+                });
+                $.each(lignes, function (_, l) { $tbody.append(l); });
+            });
+
             $(document).on('change', '.bon-check', function () {
                 var $visibles = $('.bon-item:visible .bon-check');
                 $('#toutCocher').prop('checked', $visibles.length > 0 && $visibles.length === $visibles.filter(':checked').length);
@@ -601,11 +692,11 @@
 
             $('#formPaiementFourn').on('submit', function (e) {
                 var n = $('.bon-check:checked').length;
-                if (n === 0) { e.preventDefault(); alert("Cochez au moins un bon d'enlèvement."); return false; }
+                if (n === 0) { e.preventDefault(); alerte("Cochez au moins un bon d'enlèvement."); return false; }
                 var montant = parseFloat($('#montant').val() || 0);
                 var max = parseFloat($('#montant').attr('max') || 0);
-                if (montant <= 0) { e.preventDefault(); alert('Le montant doit être supérieur à 0.'); return false; }
-                if (max > 0 && montant > max + 0.01) { e.preventDefault(); alert('Le montant dépasse le reste à payer (' + fmt(max) + ').'); return false; }
+                if (montant <= 0) { e.preventDefault(); alerte('Le montant doit être supérieur à 0.'); return false; }
+                if (max > 0 && montant > max + 0.01) { e.preventDefault(); alerte('Le montant dépasse le reste à payer (' + fmt(max) + ').'); return false; }
             });
 
             // Arrivée depuis l'écran des dettes : le tiers est passé en

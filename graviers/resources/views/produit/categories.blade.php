@@ -1,5 +1,5 @@
 @extends('layout.main')
-@section('title','Ajout de catégorie')
+@section('title','Catégories')
 @section('contenu')
 
                 <div class="content-header">
@@ -8,79 +8,28 @@
                         <p>Ajoutez, modifiez ou supprimez une categorie</p>
                     </div>
                     <div>
-                        <a href="{{route('product.category')}}" class="btn btn-primary"> + Catégorie </a>
+                        {{-- La création se fait sur SA page : cet écran ne sert plus qu'à consulter. --}}
+                        <a href="{{ route('product.nouvelleCategorie') }}" class="btn btn-sm btn-primary">
+                            <i class="material-icons md-add align-middle"></i> Nouvelle catégorie
+                        </a>
                     </div>
                 </div>
+                {{-- Le message de création s'affichait DANS le formulaire, donc
+                     jamais : l'enregistrement renvoie sur cette liste. Et
+                     « succes » n'est pas « success » : Flasher ne le capte pas,
+                     il faut donc l'afficher soi-même. --}}
+                @if (session('succes'))
+                    <div class="alert alert-success">{{ session('succes') }}</div>
+                @endif
                 <div class="card">
                     <div class="card-body">
                         <div class="row">
-                            <div class="col-md-3">
-                                <form method="post" action="" enctype="multipart/form-data">
-                                    @csrf
-                                    <div class="mb-4">
-                                        @if(session('succes'))
-                                            <div class="alert alert-success text-center">
-                                                {{session('succes')}}
-                                            </div>
-                                        @endif
-                                        <label for="product_name" class="form-label">Nom</label>
-                                        <input type="text"  value="{{$categorie->nom}}" name="nom" class="form-control" id="product_name" />
-                                        <span class="text-danger">
-                                            @error('nom')
-                                                {{$message}}
-                                            @enderror
-                                        </span>
-                                    </div>
-                                    <div class="mb-4">
-                                        {{-- <label for="product_name" class="form-label">Parent</label> --}}
-                                        <select name="parent" class="form-control" id="product_name">
-                                            <option value="">Parent</option>
-                                            @foreach ($lists as $cat )
-                                                <option @selected($categorie->parent_id == $cat->id) value="{{$cat->id}}"> {{$cat->nom}} </option>
-                                            @endforeach
-                                        </select>
-                                        <span class="text-danger">
-                                            @error('parent')
-                                                {{$message}}
-                                            @enderror
-                                        </span>
-                                    </div>
-                                    <div class="mb-4">
-                                        <label class="form-label">Choisissez une image</label>
-                                        <input type="file" {{$categorie->id > 0 ? '' : 'required'}}  class="form-control" name="image" id="product_name" />
-                                        <span class="text-danger">
-                                            @error('image')
-                                                {{$message}}
-                                            @enderror
-                                        </span>
-                                    </div>
-                                    {{-- <div class="mb-4">
-                                        <label class="form-label">Choisissez une icon <small class="text-mutted fw-bold">(Facultatif)</small> </label>
-                                        <input type="file"  class="form-control" name="icon" id="product_name" />
-                                        <span class="text-danger">
-                                            @error('icon')
-                                                {{$message}}
-                                            @enderror
-                                        </span>
-                                    </div> --}}
-
-                                    <div class="mb-4">
-                                        <label class="form-label">Description</label>
-                                        <textarea name="description"  placeholder="Type here" class="form-control">{{$categorie->description}}</textarea>
-                                        <span class="text-danger">
-                                            @error('description')
-                                                {{$message}}
-                                            @enderror
-                                        </span>
-                                    </div>
-                                    <div class="d-grid">
-                                        <button class="btn btn-primary">Valider</button>
-                                    </div>
-                                </form>
-                            </div>
-                            <div class="col-md-9">
+                            <div class="col-12">
+                                <x-export-buttons table-id="listeCategories"
+                                                  filename="liste-des-categories"
+                                                  title="Liste des catégories" />
                                 <div class="table-responsive">
-                                    <table class="table table-striped">
+                                    <table class="table table-striped" id="listeCategories">
                                         <thead>
                                             <tr>
                                                 <th class="text-center">
@@ -109,16 +58,20 @@
 
                                                 <td> {{$list->description}} </td>
 
-                                                <td class="text-end">
-                                                    <div class="dropdown">
-                                                        <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm"> <i class="material-icons md-more_horiz"></i> </a>
-                                                        <div class="dropdown-menu">
-                                                            {{-- <a class="dropdown-item" href="#">Voir les details</a> --}}
-                                                            <a class="dropdown-item" href="{{route('product.editCategory',$list)}}">Modifier les informations</a>
-                                                            <a class="dropdown-item text-danger" href="{{route('product.deleteCategory',$list)}}">Supprimer</a>
-                                                        </div>
-                                                    </div>
+                                                <td class="text-nowrap text-end">
+                                                    {{-- DES ICONES, COMME SUR LA LISTE DES GESTIONNAIRES.
 
+                                                         Le menu déroulant demandait deux gestes pour une
+                                                         action et cachait ce qu'on pouvait faire. --}}
+                                                    <a href="{{route('product.editCategory',$list)}}"
+                                                       class="btn btn-sm btn-primary" title="Modifier les informations">
+                                                        <i class="material-icons md-edit"></i>
+                                                    </a>
+                                                    <a href="{{route('product.deleteCategory',$list)}}"
+                                                       class="btn btn-sm btn-danger" title="Supprimer"
+                                                       data-confirm-msg="Voulez-vous vraiment supprimer la catégorie {{ $list->nom }} ?">
+                                                        <i class="material-icons md-delete"></i>
+                                                    </a>
                                                 </td>
                                             </tr>
 

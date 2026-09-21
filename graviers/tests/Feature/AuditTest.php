@@ -78,7 +78,14 @@ class AuditTest extends TestCase
         if (!$admin) { $this->markTestSkipped('Aucun administrateur actif.'); }
 
         URL::forceRootUrl('');
-        $this->actingAs($admin)->get(route('show.audit.index'))->assertOk();
+
+        // Depuis le 29/08/2026, le journal est l'onglet « Audit » de
+        // « Paramètre » et « /audit » y renvoie. Ce qui compte reste que
+        // l'administrateur l'ATTEIGNE — et qu'il y lise bien le journal.
+        $reponse = $this->actingAs($admin)->followingRedirects()->get(route('show.audit.index'));
+
+        $reponse->assertOk();
+        $reponse->assertSee('id="journalAudit"', false);
     }
 
     public function test_l_ecran_est_refuse_au_gestionnaire(): void

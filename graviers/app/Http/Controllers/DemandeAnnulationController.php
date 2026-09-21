@@ -127,6 +127,44 @@ class DemandeAnnulationController extends Controller
                 }
             }
 
+            // ANNULER UNE AFFAIRE REPREND LES POINTS QU'ELLE A RAPPORTÉS.
+            //
+            // Les points étaient attribués au règlement et JAMAIS repris : un
+            // client pouvait payer, gagner sa remise, annuler avant traitement,
+            // se faire rembourser — et garder les points.
+            //
+            // On retire EXACTEMENT ce qui a été donné, lu sur les règlements de
+            // cette affaire. Les règlements antérieurs à cette traçabilité
+            // portent zéro : ils ne retirent donc rien, ce qui vaut mieux que
+            // de reprendre un nombre inventé.
+            // Seule une annulation ACCEPTÉE reprend les points. Un refus laisse
+            // l'affaire vivante : la reprise serait une double peine.
+            if ((int) $request->rep === 1 && $service) {
+                $pointsRendus = (float) \App\Models\Paiement::where('service', $estLocation ? \Help::$LOCATION : 'COMMANDE')
+                    ->where('service_id', $service->id)
+                    ->whereNull('deleted_at')
+                    ->sum('points_attribues');
+
+                if ($pointsRendus > 0 && $service->client) {
+                    // PLANCHER À ZÉRO : si le client a déjà dépensé ces points,
+                    // on reprend ce qu'on peut. Un solde négatif serait plus
+                    // juste comptablement, mais incompréhensible pour lui.
+                    $avant = (float) $service->client->point;
+                    // Transtypage : max(0, -18.0) rend l'ENTIER 0, et la colonne
+                    // recevrait tantot un entier tantot un flottant.
+                    $service->client->update(['point' => (float) max(0, $avant - $pointsRendus)]);
+
+                    if ($avant < $pointsRendus) {
+                        \Log::info('Points de fidélité : reprise partielle sur annulation.', [
+                            'client'   => $service->client->id,
+                            'affaire'  => $service->numero ?? $service->id,
+                            'a_rendre' => $pointsRendus,
+                            'reprises' => $avant,
+                        ]);
+                    }
+                }
+            }
+
             $demande->update([
                 'est_traite' => true,
                 'decision'   => (int) $request->rep,

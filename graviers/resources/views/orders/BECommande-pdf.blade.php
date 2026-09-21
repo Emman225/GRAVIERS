@@ -118,7 +118,7 @@
                 </td>
                 <td style="text-align: right; vertical-align: top; width: 200px;">
                     <p class="subtitle" style="margin: 0;">
-                        Édité le {{ now()->format('d/m/Y à H:i') }}
+                        Édité le {{ now()->format('d/m/Y à H:i:s') }}
                     </p>
                 </td>
             </tr>
@@ -227,7 +227,11 @@
             <td class="label">Statut paiement :</td>
             <td class="value">
                 {{-- fcfa sans décimales : restant < 1 = soldé (résidu d'arrondi TVA). --}}
-                @if ($restant >= $montantAPayer)
+                @if ($restant >= $montantAPayer && ($montantEnAttente ?? 0) > 0)
+                    {{-- Le bon imprime ne doit pas contredire l ecran : un reglement
+                         saisi attend seulement sa seconde validation. --}}
+                    <span class="badge badge-warning">Paiement en attente de validation</span>
+                @elseif ($restant >= $montantAPayer)
                     <span class="badge badge-danger">Aucun paiement</span>
                 @elseif ($restant >= 1)
                     <span class="badge badge-warning">Paiement en cours</span>
@@ -346,7 +350,7 @@
     @endif
 
     <div class="footer">
-        Bon d'enlèvement généré le {{ now()->format('d/m/Y à H:i') }} • {{ strtoupper($entreprise) }}
+        Bon d'enlèvement généré le {{ now()->format('d/m/Y à H:i:s') }} • {{ strtoupper($entreprise) }}
     </div>
 </div>
 </body>

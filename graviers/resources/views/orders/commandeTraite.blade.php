@@ -18,6 +18,37 @@
         </div>
     </div>
 
+    <div class="card mb-4">
+        {{-- Formulaire en GET : pas de @csrf, le jeton se retrouverait dans l'URL. --}}
+        <form method="GET" action="{{ route('orders.commandesTraitees') }}" class="row gx-3 p-3 align-items-center">
+            <div class="col-md-3 col-lg-2">
+                <label for="du" class="form-label mb-1 small text-muted">Du</label>
+                <input type="date" class="form-control" name="du" id="du" value="{{ $du ?? '' }}">
+            </div>
+            <div class="col-md-3 col-lg-2">
+                <label for="au" class="form-label mb-1 small text-muted">Au</label>
+                <input type="date" class="form-control" name="au" id="au" value="{{ $au ?? '' }}">
+            </div>
+            <div class="col-md-6 col-lg-4 pt-4">
+                <button type="submit" class="btn btn-primary">Rechercher</button>
+                @if (!empty($du) || !empty($au))
+                    <a href="{{ route('orders.commandesTraitees') }}" class="btn btn-light">Tout l'historique</a>
+                @endif
+            </div>
+            <div class="col-md-12 col-lg-4 pt-lg-4 text-lg-end">
+                <span class="text-muted small">
+                    @if (!empty($du) || !empty($au))
+                        {{ count($commandes) }} commande{{ count($commandes) > 1 ? 's' : '' }}
+                        {{ !empty($du) ? 'du ' . \Carbon\Carbon::parse($du)->format('d/m/Y') : '' }}
+                        {{ !empty($au) ? 'au ' . \Carbon\Carbon::parse($au)->format('d/m/Y') : '' }}
+                    @else
+                        Tout l'historique — {{ count($commandes) }} commande{{ count($commandes) > 1 ? 's' : '' }}
+                    @endif
+                </span>
+            </div>
+        </form>
+    </div>
+
     <div class="row">
         <div class="col-md-12">
             <div class="card mb-4">
@@ -76,7 +107,7 @@
                                         </td>
 
 
-                                        <td  class="text-center">{{ Carbon::parse($commande->updated_at)->format('d-m-Y à H:i') }}</td>
+                                        <td  class="text-center">{{ Carbon::parse($commande->updated_at)->format('d/m/Y à H:i:s') }}</td>
 
 
                                         {{-- <td  class="text-center">
@@ -90,13 +121,13 @@
                                         </td> --}}
 
 
-                                        <td  class="text-end">
-                                            <a href="{{ route('orders.details', $commande->numero) }}" class="btn btn-md rounded font-sm">Detail</a>
+                                        <td  class="text-nowrap text-end">
+                                            <a href="{{ route('orders.details', $commande->numero) }}" class="btn btn-info btn-md rounded font-sm" title="Detail"><i class="material-icons md-visibility"></i></a>
                                         </td>
 
 
-                                        <td class="text-end">
-                                            <a href="{{ route('orders.BECommande', $commande->numero) }}" class="btn btn-md rounded font-sm">Les enlèvements</a>
+                                        <td class="text-nowrap text-end">
+                                            <a href="{{ route('orders.BECommande', $commande->numero) }}" class="btn btn-info btn-md rounded font-sm" title="Les enlèvements"><i class="material-icons md-local_shipping"></i></a>
                                         </td>
 
                                     </tr>

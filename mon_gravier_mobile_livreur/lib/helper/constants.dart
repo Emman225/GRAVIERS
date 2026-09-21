@@ -382,11 +382,7 @@ CrossAxisAlignment crossCenter = CrossAxisAlignment.center;
 CrossAxisAlignment crossEnd = CrossAxisAlignment.end;
 CrossAxisAlignment crossStretch = CrossAxisAlignment.stretch;
 
-/// VERSION DE L'APPLICATION, affichée sur l'écran de connexion.
-///
-/// Rien n'indiquait à l'écran quelle version était installée : deux APK
-/// portant le même numéro et un contenu différent étaient impossibles à
-/// distinguer, et personne ne pouvait dire ce qu'il testait.
-///
-/// À tenir en accord avec le champ `version:` du pubspec.yaml.
-const String kVersionApplication = '1.0.5';
+// La VERSION affichée vit désormais dans un seul endroit :
+// `versionApplication` (globale.dart). Deux constantes coexistaient, et les
+// deux écrans qui les affichaient annonçaient donc deux versions différentes
+// pour la même application — aucune ne pouvait servir de repère en recette.

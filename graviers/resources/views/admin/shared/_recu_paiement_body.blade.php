@@ -152,6 +152,12 @@
         </div>
     @endif
 
+    @if (!empty($mention))
+        {{-- Avance client (point 19) : le reçu dit au client que l'avance
+             n'est pas remboursable, elle s'utilise. --}}
+        <p style="font-size: 10px; color: #b45309; margin: 8px 0; padding: 6px; border: 1px dashed #b45309;"><strong>Important :</strong> {{ $mention }}</p>
+    @endif
+
     <div class="recu-signatures">
         <div class="recu-sign">{{ $signatureGauche ?? "Signature Émetteur" }}</div>
         <div class="recu-sign">{{ $signatureDroite ?? "Signature Bénéficiaire" }}</div>

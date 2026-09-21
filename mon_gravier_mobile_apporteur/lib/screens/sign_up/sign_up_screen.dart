@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../components/bouton_retour.dart';
 import '../../constants.dart';
 import '../../helper/constants.dart';
 import 'components/sign_up_form.dart';
@@ -12,19 +13,13 @@ class SignUpScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: const BoutonRetour(),
         title: const Text("Inscription apporteur d'affaire"),
       ),
       body: SafeArea(
         child: Container(
           width: double.infinity,
           height: heightOfScreen(context),
-          decoration: const BoxDecoration(
-            image: DecorationImage(
-              image: AssetImage("assets/images/bg.jpg"),
-              fit: BoxFit.cover,
-              opacity: 0.2,
-            ),
-          ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: SingleChildScrollView(

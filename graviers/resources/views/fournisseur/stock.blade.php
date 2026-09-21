@@ -21,7 +21,7 @@
             </div>
             <div class="dash-welcome-actions d-none d-md-flex">
                 <div class="dash-time-pill">
-                    <i class="material-icons md-inventory"></i>
+                    <i class="material-icons md-assignment"></i>
                     <span>{{ $totalProduits }} produit{{ $totalProduits > 1 ? 's' : '' }}</span>
                 </div>
             </div>
@@ -45,7 +45,7 @@
 
         <div class="col-xl-3 col-lg-6 col-md-6">
             <div class="kpi-card kpi-card-success">
-                <div class="kpi-card-icon"><i class="material-icons md-inventory_2"></i></div>
+                <div class="kpi-card-icon"><i class="material-icons md-assignment"></i></div>
                 <div class="kpi-card-body">
                     <div class="kpi-card-label">Quantité totale</div>
                     <div class="kpi-card-value">{{ rtrim(rtrim(number_format($totalQuantite, 2, ',', ' '), '0'), ',') }}</div>
@@ -89,6 +89,9 @@
             </h5>
         </div>
         <div class="card-body">
+            <x-export-buttons table-id="stockTable"
+                              filename="stock-fournisseur"
+                              title="Stock du fournisseur" />
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0" id="stockTable" style="width:100%">
                     <thead class="table-light">
@@ -127,16 +130,14 @@
                                         <span class="badge bg-success">Disponible</span>
                                     @endif
                                 </td>
-                                <td class="text-center">
-                                    <a href="{{ route('sellers.edit', $produit->id) }}" class="btn btn-sm btn-outline-primary">
-                                        <i class="material-icons md-edit"></i> Modifier
-                                    </a>
+                                <td class="text-nowrap text-center">
+                                    <a href="{{ route('sellers.edit', $produit->id) }}" class="btn btn-sm btn-primary" title="Modifier"><i class="material-icons md-edit"></i></a>
                                 </td>
                             </tr>
                         @empty
                             <tr>
                                 <td colspan="7" class="text-center text-muted py-5">
-                                    <i class="material-icons md-inventory_2" style="font-size:48px;opacity:0.3"></i>
+                                    <i class="material-icons md-assignment" style="font-size:48px;opacity:0.3"></i>
                                     <p class="mb-0 mt-2">Aucun produit dans votre catalogue.</p>
                                 </td>
                             </tr>

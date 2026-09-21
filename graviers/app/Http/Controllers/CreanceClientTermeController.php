@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 class CreanceClientTermeController extends Controller
 {
     use DoubleValidationPaiement;
+    use \App\Traits\PreuveDeReglementPartenaire;
 
     /**
      * Liste les factures des clients à terme avec calcul du statut créance,
@@ -105,7 +106,8 @@ class CreanceClientTermeController extends Controller
             }
 
             $totalPaye   = $f->montantPaye();
-            $reste       = max(0, $totalAPayer - $totalPaye);
+            // Voir la note sur l'arrondi au franc, plus bas dans ce contrôleur.
+            $reste       = Help::arrondiFranc(max(0, $totalAPayer - $totalPaye));
             $joursRetard = $f->joursRetard();
 
             return (object) [
@@ -211,6 +213,16 @@ class CreanceClientTermeController extends Controller
                 'notes'                 => $p->libelle,
                 'en_attente'            => $enAttente,
                 'peut_valider'          => $peutValider,
+                // Point 20 (09/09/2026) : « À payer » après la 2e validation, preuve, « Effectuée ».
+                // Le TROISIÈME administrateur : celui qui a finalisé, sinon celui qui a joint la preuve.
+                'troisieme_par'         => \Help::compteAvecIdentifiant($p->agentEffectuee ?? $p->agentPreuve),
+                'etat_reglement'        => $p->etat_reglement,
+                'libelle_etat'          => $p->libelleReglement(),
+                'a_preuve'              => !empty($p->preuve_paiement),
+                'peut_joindre'          => $p->peutJoindrePreuve() && $p->troisiemeAdministrateur(Auth::user()),
+                'peut_finaliser'        => $p->peutFinaliser() && $p->troisiemeAdministrateur(Auth::user()),
+                // Sécurité : un TROISIÈME administrateur téléverse et finalise ; les validateurs voient pourquoi ils ne peuvent pas.
+                'attend_troisieme'      => ($p->peutJoindrePreuve() || $p->peutFinaliser()) && !$p->troisiemeAdministrateur(Auth::user()),
             ];
         });
 
@@ -220,17 +232,66 @@ class CreanceClientTermeController extends Controller
         // Même règle que l'encaissement comptant : l'agent saisit l'instrument réel,
         // pas « en agence ».
         $modesPaiement = ModePaiement::listePourAgent();
+        $soldesAvance  = \App\Models\AvanceClient::soldesParClient();
         $facturesNonSoldees = Facture::with(['commande', 'commande.client', 'paiements'])
             ->whereIn('client_id', $clientsTerme)
             ->orderByDesc('created_at')
             ->limit(300)
             ->get()
             ->map(function (Facture $f) {
-                $client = $f->commande?->client;
-                $totalPaye = (float) $f->paiements->where('statut', 1)->sum('montant_total');
-                $reste = max(0, (float) $f->montant - $totalPaye);
+                // Une facture de location ou de livraison n'a pas de commande :
+                // son client se lit sur la facture elle-même (10/09/2026).
+                $client = $f->commande?->client ?: $f->client;
+                // Même règle que le garde-fou : les règlements de guichet ne
+                // portent pas `facture_id`, la relation `paiements` les ignore.
+                $totalPaye = $f->montantDejaRegle();
+        // LE FRANC N'A PAS DE CENTIMES — NI LA FACTURE, NI CE QU'IL EN RESTE.
+        //
+        // Une facture de 4 259,6 s'affichait « 4 260 » (l'affichage arrondit)
+        // mais remplissait le champ Montant avec 4 259,6. Le champ n'accepte
+        // que des francs entiers (`step="1"`) : le navigateur refusait
+        // l'enregistrement, sans que rien n'explique pourquoi.
+        //
+        // La convention existait déjà (Help::arrondiFranc) mais n'avait été
+        // appliquée qu'aux commissions, TVA et remises. Le montant facturé et
+        // le reste dû y échappaient : ce qu'on affiche et ce qu'on préremplit
+        // doivent être LE MÊME nombre.
+                $reste = Help::arrondiFranc(max(0, (float) $f->montant - $totalPaye));
+
+                // CE QUE L'AVANCE A DÉJÀ RÉGLÉ SUR LA COMMANDE (10/09/2026). Une facture
+                // d'enlèvement émise après une avance ne couvre que le reste à
+                // facturer : son « Total » est inférieur au total de la commande, et
+                // le caissier cherchait où étaient passés les 912 385 F de l'avance.
+                // On le dit sous le numéro : total de la commande, avance imputée.
+                // Même lecture pour les trois affaires : commande, location, demande
+                // de livraison (l'avance s'impute sur les trois depuis le 10/09/2026).
+                $affaire = match ($f->service) {
+                    Help::$LOCATION  => \App\Models\Location::find($f->service_id),
+                    Help::$LIVRAISON => \App\Models\DemandeLivraison::find($f->service_id),
+                    default          => $f->commande,
+                };
+                $totalCommande  = $affaire ? (float) $affaire->montantAPayer() : null;
+                $serviceAffaire = empty($f->service) ? Help::$COMMANDE : $f->service;
+                $avanceImputee  = $affaire ? (float) Paiement::where('service', $serviceAffaire)
+                    ->where('service_id', $f->service_id)
+                    ->where('statut', Help::$STATUT_ACTIF)
+                    ->where('numero_recu', 'like', 'AV-%')
+                    ->sum('montant_total') : 0.0;
+                $libelleAffaire = match ($f->service) {
+                    Help::$LOCATION  => 'Location',
+                    Help::$LIVRAISON => 'Livraison',
+                    default          => 'Commande',
+                } . ' ' . ($affaire?->numero ?? '');
+
                 return (object) [
-                    'numero'       => $f->numero,
+                    'numero'         => $f->numero,
+                    'total_commande' => $totalCommande,
+                    'avance_imputee' => $avanceImputee,
+                    'numero_commande'=> $affaire?->numero,
+                    'libelle_affaire'=> $libelleAffaire,
+                    'client_id'    => $f->client_id ?? $client?->id,
+                    'date'         => $f->created_at,
+                    'solde_avance' => (float) ($soldesAvance[$f->client_id ?? $client?->id ?? 0] ?? 0),
                     'client_nom'   => $client?->display_name ?? '-',
                     'total_a_payer'=> (float) $f->montant,
                     'reste'        => $reste,
@@ -248,6 +309,11 @@ class CreanceClientTermeController extends Controller
             // d'office. Elle n'est plus choisie dans une liste — voir
             // storePaiement() et le commentaire de la migration.
             'monAgence'          => Auth::user()?->agence,
+            // Dépôt d'avance depuis ce guichet (point 19).
+            'clientsPourAvance'  => AvanceClientController::clientsPourDepot(),
+            // Liste des clients À TERME pour le filtre du guichet (08/09/2026).
+            'clientsPourFiltre'  => AvanceClientController::clientsPourFiltre(true),
+            'mentionAvance'      => \App\Services\Avances::MENTION,
         ]);
     }
 
@@ -309,12 +375,35 @@ class CreanceClientTermeController extends Controller
         $aujourdHui = Carbon::today();
         $seuilDateRelance = (clone $aujourdHui)->subDays($delaiRelance);
 
+        // L'ÉCHÉANCE SE CALCULE, ELLE NE SE LIT PAS.
+        //
+        // La sélection exigeait une `date_echeance` non nulle. Or cette colonne
+        // n'est écrite NULLE PART : aucun écran, aucun service ne la renseigne.
+        // Aucune facture ne passait donc ce filtre, et la liste « À relancer
+        // aujourd'hui » était vide en permanence — non pas parce que les
+        // clients payaient, mais parce que la requête ne pouvait rien trouver.
+        // Aucune relance n'a jamais été proposée depuis la mise en service.
+        //
+        // L'échéance est désormais celle que calcule Facture::echeance() :
+        // la date de facture augmentée du délai de paiement accordé au client.
+        // C'est déjà la règle appliquée par la balance âgée et par l'état des
+        // créances ; les trois écrans disent enfin la même chose.
+        //
+        // Le tri se fait en PHP et non en SQL : une valeur calculée à partir du
+        // délai porté par le client ne s'exprime pas dans un WHERE.
         $clientsTermeIds = Client::where('client_a_terme', 1)->pluck('id');
+        $limiteRetard    = (clone $aujourdHui)->subDays($delaiRelance);
+
         $facturesEnRetard = Facture::with(['client', 'paiements'])
             ->whereIn('client_id', $clientsTermeIds)
-            ->whereNotNull('date_echeance')
-            ->whereDate('date_echeance', '<=', (clone $aujourdHui)->subDays($delaiRelance))
-            ->get();
+            ->get()
+            ->filter(function (Facture $f) use ($limiteRetard) {
+                $echeance = $f->echeance();
+
+                // Sans délai de paiement connu, aucune échéance ne peut être
+                // établie : on ne relance pas sur une date inventée.
+                return $echeance !== null && $echeance->lessThanOrEqualTo($limiteRetard);
+            });
 
         $aRelancer = $facturesEnRetard->filter(function (Facture $f) use ($seuilDateRelance) {
                 if ($f->resteAPayer() <= 0) return false;
@@ -328,8 +417,11 @@ class CreanceClientTermeController extends Controller
                     'facture_id'    => $f->id,
                     'numero'        => $f->numero,
                     'client_id'     => $f->client_id,
+                    'date'          => $f->created_at,
                     'client_nom'    => $f->client?->display_name ?? '-',
-                    'date_echeance' => $f->date_echeance,
+                    // L'échéance CALCULÉE : la colonne est vide sur toutes les
+                    // factures, et l'afficher laisserait la colonne à blanc.
+                    'date_echeance' => optional($f->echeance())->format('Y-m-d'),
                     'jours_retard'  => $f->joursRetard(),
                     'reste'         => $f->resteAPayer(),
                 ];
@@ -389,7 +481,8 @@ class CreanceClientTermeController extends Controller
         }
 
         $totalAPayer = (float) $f->montant;
-        $totalPaye   = (float) $f->paiements->where('statut', 1)->sum('montant_total');
+        // Même règle que le garde-fou (voir Facture::montantDejaRegle).
+        $totalPaye   = $f->montantDejaRegle();
         $reste       = max(0, $totalAPayer - $totalPaye);
 
         $client = $f->commande?->client;
@@ -417,7 +510,7 @@ class CreanceClientTermeController extends Controller
                 'client_id'     => $f->client_id,
                 'total_a_payer' => $totalAPayer,
                 'total_paye'    => $totalPaye,
-                'reste_a_payer' => $reste,
+                'reste_a_payer' => Help::arrondiFranc($reste),
             ],
             'historique' => $historique,
         ]);
@@ -428,13 +521,19 @@ class CreanceClientTermeController extends Controller
      */
     public function storePaiement(Request $request)
     {
+        // PLUSIEURS FACTURES EN UN SEUL ENCAISSEMENT (point 22, 07/09/2026) :
+        // voir CommandeComptantController::storeEncaissement, même règle.
         $validated = $request->validate([
-            'numero_facture'   => 'required|string|exists:facture,numero',
+            'numero_facture'    => 'nullable|string|exists:facture,numero',
+            'numeros_facture'   => 'nullable|array',
+            'numeros_facture.*' => 'string|exists:facture,numero',
             'mode_paiement_id' => 'required|integer|exists:mode_paiement,id',
             'montant'          => 'required|numeric|min:1',
             'date_paiement'    => 'nullable|date',
             'reference'        => 'nullable|string|max:80',
-            'notes'            => 'nullable|string|max:500',
+            // Obligatoire depuis le 08/09/2026, comme au guichet des ventes.
+            'notes'            => 'required|string|max:500',
+            'surplus_en_avance' => 'nullable|boolean',
         ]);
 
         // L'agence n'est plus CHOISIE : c'est celle de la personne connectée.
@@ -450,21 +549,58 @@ class CreanceClientTermeController extends Controller
                 "Vous n'êtes rattaché à aucune agence : un administrateur doit vous affecter à un guichet avant que vous puissiez encaisser.");
         }
 
-        $f = Facture::where('numero', $validated['numero_facture'])->firstOrFail();
-        $totalAPayer = (float) $f->montant;
-        $totalPaye   = (float) Paiement::where('facture_id', $f->id)->where('statut', 1)->sum('montant_total');
-        $reste       = max(0, $totalAPayer - $totalPaye);
-
-        if ($validated['montant'] > $reste + 0.01) {
-            return back()->withInput()
-                ->with('error', "Le montant ({$validated['montant']}) dépasse le reste à payer ({$reste}).");
+        $numeros = array_values(array_unique(array_filter(array_merge(
+            (array) ($validated['numeros_facture'] ?? []),
+            [$validated['numero_facture'] ?? null]
+        ))));
+        if (empty($numeros)) {
+            return back()->withInput()->with('error', 'Cochez au moins une facture à encaisser.');
         }
 
+        $factures = Facture::whereIn('numero', $numeros)->get()
+            ->sortBy(fn (Facture $x) => ($x->created_at ?? '') . '-' . $x->id)
+            ->values();
+
+        $clientsConcernes = $factures->map(fn (Facture $x) => $x->client_id ?? $x->commande?->client_id)->unique();
+        if ($clientsConcernes->count() > 1) {
+            return back()->withInput()->with('error',
+                "Les factures cochées appartiennent à des clients différents : "
+                . "un encaissement se fait pour un seul client à la fois.");
+        }
+
+        $restes  = $factures->mapWithKeys(fn (Facture $x) => [$x->id => (float) $x->resteAEncaisser()]);
+        $plafond = $restes->sum();
+        // LE SURPLUS DEVIENT UNE AVANCE (point 19, réponse Q3 du 07/09/2026) :
+        // même règle que le guichet des ventes, voir
+        // CommandeComptantController::storeEncaissement.
+        $surplus = Help::arrondiFranc(max(0, (float) $validated['montant'] - $plafond));
+        if ($surplus >= 1 && !$request->boolean('surplus_en_avance')) {
+            return back()->withInput()
+                ->with('error', "Le montant ({$validated['montant']}) dépasse le reste à payer ({$plafond}). "
+                    . "Pour enregistrer l'excédent de {$surplus} FCFA comme avance du client, cochez « Enregistrer le surplus comme avance ».");
+        }
+
+        $f = $factures->first();
+        // CE QUI A DÉJÀ ÉTÉ RÉGLÉ, PAR TOUS LES CHEMINS.
+        //
+        // Ce contrôle ne comptait que les règlements portant `facture_id` —
+        // ceux de cet écran. Les GUICHETS, eux, rattachent le règlement à
+        // l'affaire et laissent `facture_id` vide : une facture déjà encaissée
+        // au guichet apparaissait ici ENTIÈREMENT DUE, et se réglait une
+        // seconde fois.
         $modePaiement = ModePaiement::find($validated['mode_paiement_id']);
         $caissier     = Auth::user();
 
         DB::beginTransaction();
         try {
+          $restant = (float) $validated['montant'];
+          $recus   = [];
+          foreach ($factures as $f) {
+            $part = min((float) $restes[$f->id], $restant);
+            if ($part <= 0) {
+                continue;
+            }
+
             // Numéro reçu RC-CT-YYYY-XXX
             $year = date('Y');
             $lastNum = (int) Paiement::where('numero_recu', 'like', "RC-CT-{$year}-%")
@@ -476,11 +612,29 @@ class CreanceClientTermeController extends Controller
                 'client_id'      => $f->client_id ?? $f->commande?->client_id,
                 'code'           => 'PCT-' . strtoupper(substr(md5(uniqid()), 0, 8)),
                 'libelle'        => $validated['notes'] ?? ('Paiement facture ' . $f->numero),
-                'montant_total'  => $validated['montant'],
+                'montant_total'  => $part,
                 'montant_restant'=> 0,
                 // statut=2 = en attente de la 2e validation
                 'statut'         => 2,
-                'service'        => 'COMMANDE',
+                // LE SERVICE VIENT DE LA FACTURE, IL NE S'INVENTE PAS.
+                //
+                // Cet écran encaisse la facture de N'IMPORTE QUEL service — vente,
+                // location, transport. Le règlement était pourtant estampillé
+                // 'COMMANDE' EN DUR, avec le `service_id` de la facture.
+                //
+                // Régler une facture de LOCATION créait donc un règlement
+                // désignant une COMMANDE qui n'existe pas. Plus rien ne
+                // l'absorbait : il ressortait en « Versé en trop » sur l'espace
+                // client, et la facture restait due de son côté — la même somme
+                // comptée deux fois en faveur du client.
+                //
+                // Constaté le 02/09/2026 sur DA1 TECHNOLOGIE : 33 960 F annoncés
+                // à son crédit, soit un règlement de location (29 960) et un de
+                // transport (4 000), tous deux rangés en COMMANDE.
+                //
+                // Repli sur 'COMMANDE' seulement si la facture ne dit rien : une
+                // facture sans service est une anomalie à part, pas une vente.
+                'service'        => $f->service ?: 'COMMANDE',
                 'service_id'     => $f->service_id,
                 'facture_id'     => $f->id,
                 'agence_id'      => $agenceId,
@@ -496,11 +650,13 @@ class CreanceClientTermeController extends Controller
                 'reference'        => $validated['reference'] ?? null,
                 'moyen_paiement'   => $modePaiement?->libelle,
                 'date_paiement'    => $validated['date_paiement'] ?? now(),
-                'montant'          => $validated['montant'],
+                'montant'          => $part,
                 'statut'           => 2,
                 'user_id'          => $caissier?->id,
                 'code_paiement'    => $paiement->code,
-                'service'          => 'COMMANDE',
+                // Même règle que le règlement lui-même : la ligne doit désigner
+                // le service réellement facturé.
+                'service'          => $f->service ?: 'COMMANDE',
                 'service_id'       => $f->service_id,
                 'created_at'       => $validated['date_paiement'] ?? now(),
                 'updated_at'       => now(),
@@ -509,6 +665,25 @@ class CreanceClientTermeController extends Controller
             // Note : la mise à jour du statut "Soldée" se fera seulement après
             // la 2e validation. On NE modifie PAS la facture ici.
 
+            $restant -= $part;
+            $recus[]  = $numeroRecu;
+          }
+
+          if ($surplus >= 1) {
+              $clientSurplus = Client::find($clientsConcernes->first());
+              if ($clientSurplus) {
+                  $avance = \App\Services\Avances::deposer($clientSurplus, $surplus, array_merge([
+                      'mode_paiement_id' => $validated['mode_paiement_id'],
+                      'reference'        => $validated['reference'] ?? null,
+                      'libelle'          => 'Surplus de l\'encaissement ' . implode(', ', $recus),
+                      'date_depot'       => $validated['date_paiement'] ?? now(),
+                      'origine'          => 'SURPLUS',
+                      'origine_recu'     => implode(', ', $recus),
+                  ], $this->initierValidation()), $caissier, $agenceId);
+                  $recus[] = $avance->numero_recu . ' (avance)';
+              }
+          }
+
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -516,7 +691,8 @@ class CreanceClientTermeController extends Controller
         }
 
         return redirect()->route('show.creancesTerme.paiements')
-            ->with('success', "Paiement {$numeroRecu} créé. En attente de validation par un autre administrateur.");
+            ->with('success', (count($recus) > 1 ? 'Paiements ' : 'Paiement ') . implode(', ', $recus)
+                . (count($recus) > 1 ? ' créés' : ' créé') . '. En attente de validation par un autre administrateur.');
     }
 
     /**
@@ -532,14 +708,15 @@ class CreanceClientTermeController extends Controller
         }
 
         LignePaiement::where('paiement_id', $paiement->id)->update(['statut' => 1]);
-        $paiement->update(['statut' => 1]);
+        // Validé deux fois : la preuve du versement reste à joindre (point 20, 09/09/2026).
+        $paiement->update(['statut' => 1, 'etat_reglement' => \App\Models\DemandePaiement::A_PAYER]);
 
         // Vérifier si la facture est soldée maintenant que le paiement compte
         if ($paiement->facture_id) {
             $f = Facture::find($paiement->facture_id);
             if ($f) {
-                $totalPayeFacture = Paiement::where('facture_id', $f->id)
-                    ->where('statut', 1)->sum('montant_total');
+                // Même règle que partout : un règlement de guichet compte aussi.
+                $totalPayeFacture = $f->montantDejaRegle();
                 $totalAPayer = (float) $f->montant;
                 if ($totalAPayer > 0 && $totalPayeFacture >= $totalAPayer - 0.01) {
                     $f->statut_creance = 'Soldée';
@@ -572,6 +749,12 @@ class CreanceClientTermeController extends Controller
                 'defaultFont' => 'DejaVu Sans',
             ]);
         return $pdf->download('recu-client-terme-' . ($p->numero_recu ?? $p->id) . '.pdf');
+    }
+
+    /** Les données du reçu, pour son envoi par courriel (App\Services\RecuDeReglement). */
+    public function donneesDuRecu($paiement): array
+    {
+        return $this->buildRecuData($paiement);
     }
 
     private function buildRecuData(Paiement $p): array
@@ -620,6 +803,9 @@ class CreanceClientTermeController extends Controller
             'contexteInfos'      => [
                 'N° Facture'  => $f?->numero,
                 'Date facture'=> optional($f?->created_at)->format('d/m/Y'),
+                // Point 16 (07/09/2026) : le bon de commande du client sur le reçu.
+                'Bon de commande' => ($f && $f->service === Help::$COMMANDE)
+                    ? ($f->commande?->blClient?->numero ?: '-') : null,
             ],
             'resumeFinancier'    => [
                 'totalLabel' => 'Total facture',
@@ -719,5 +905,21 @@ class CreanceClientTermeController extends Controller
             'topDebiteurs'          => $topDebiteurs,
             'config'                => $config,
         ]);
+    }
+
+    // Point 20 (09/09/2026) : preuve du versement, puis « Effectuée ».
+    public function preuve($paiementId, \Illuminate\Http\Request $request)
+    {
+        return $this->joindrePreuveReglement(Paiement::find($paiementId), $request);
+    }
+
+    public function voirPreuve($paiementId)
+    {
+        return $this->voirPreuveReglement(Paiement::find($paiementId));
+    }
+
+    public function effectuer($paiementId)
+    {
+        return $this->effectuerReglement(Paiement::find($paiementId));
     }
 }

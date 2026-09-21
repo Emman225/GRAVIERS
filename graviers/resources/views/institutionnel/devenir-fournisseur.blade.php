@@ -29,7 +29,7 @@
                     <span>Particuliers et entreprises du bâtiment, déjà en recherche de matériaux.</span>
                 </div>
                 <div class="page-inst__tuile">
-                    <i class="material-icons md-inventory"></i>
+                    <i class="material-icons md-assignment"></i>
                     <strong>Vos stocks maîtrisés</strong>
                     <span>Vous déclarez vos quantités et vos prix ; le catalogue se met à jour.</span>
                 </div>
@@ -47,7 +47,7 @@
         </div>
 
         <div class="page-inst__carte">
-            <h2><i class="material-icons md-checklist"></i> Ce qu'il faut réunir</h2>
+            <h2><i class="material-icons md-playlist_add_check"></i> Ce qu'il faut réunir</h2>
             <ul>
                 <li>Une entreprise enregistrée : registre du commerce (RCCM) et numéro de compte contribuable (NCC).</li>
                 <li>Une capacité d'approvisionnement régulière sur au moins un matériau : sable, gravier, ciment, fer, briques…</li>

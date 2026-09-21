@@ -34,7 +34,7 @@ class EnteteBonLivraisonTest extends TestCase
         // Les images sont embarquées en base64 : dompdf ne va pas chercher une
         // URL, et c'est ce format qui garantit qu'elles s'impriment.
         $this->assertStringContainsString('data:image/png;base64,', $html);
-        $this->assertStringContainsString('alt="GRAVIER.COM"', $html);
+        $this->assertStringContainsString('alt="Mon Gravier"', $html); // nouveau logo de la plateforme (19/09/2026)
         $this->assertStringContainsString('DALAKOUN', $html);
     }
 

@@ -80,6 +80,9 @@
             </h5>
         </div>
         <div class="card-body p-0">
+            <x-export-buttons table-id="livraisonsTable"
+                              filename="livraisons-validees"
+                              title="Livraisons validées" />
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0" id="livraisonsTable">
                     <thead class="table-light">
@@ -120,8 +123,8 @@
                                 <td><small>{{ $livraison->AdresseLivraison->affichage ?? '—' }}</small></td>
                                 <td>
                                     <small>
-                                        {{ Carbon::parse($livraison->updated_at)->format('d/m/Y') }}
-                                        <span class="text-muted">{{ Carbon::parse($livraison->updated_at)->format('H:i') }}</span>
+                                        {{ \Help::dateHeure($livraison->updated_at) }}
+                                        <span class="text-muted">{{ Carbon::parse($livraison->updated_at)->format('H:i:s') }}</span>
                                     </small>
                                 </td>
                             </tr>

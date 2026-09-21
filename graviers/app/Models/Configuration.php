@@ -14,7 +14,13 @@ class Configuration extends Model
     protected $fillable = [
         'taux_commission',
         'tva',
+        // La TVA s'applique-t-elle au transport ? Décision de gestion, pas taux.
+        'tva_transport',
+        // Taux de l'AIRSI (10/09/2026), 5 % par défaut.
+        'taux_airsi',
         'montant_point',
+        'montant_pour_un_point',
+        'montant_minimum_a_payer',
         'email_tresorier',
         'email_directeur_marketing',
         'devise',
@@ -49,7 +55,23 @@ class Configuration extends Model
         'taux_commission_standard',
         'delai_paiement_commission',
         'termes_conditions',
+        // Mode « site en construction » (lot 114, 19/09/2026).
+        'site_en_construction',
     ];
+
+    /**
+     * LE SITE EST-IL EN CONSTRUCTION ? (lot 114, 19/09/2026)
+     * Lu à chaque requête du site public : jamais d'exception ici — tant que la migration
+     * n'est pas passée (colonne absente), le mode est simplement inactif.
+     */
+    public static function siteEnConstruction(): bool
+    {
+        try {
+            return (bool) static::query()->value('site_en_construction');
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
 
     public function gestionnaire1(){
         return $this->belongsTo(User::class, 'gestionnaire1_id')->withTrashed();

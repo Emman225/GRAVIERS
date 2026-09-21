@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:camera_camera/camera_camera.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:mon_gravier_com/helper/constants.dart';
@@ -36,6 +36,30 @@ class _SignUpFormState extends State<SignUpForm> {
   String? confirm_password;
   String? rccm;
   String? ncc;
+
+  /// Regime d'imposition de l'entreprise cliente.
+  ///
+  /// Il figure sur sa facture, et la DGI l'attend sur une facture entre
+  /// entreprises. La colonne existait cote serveur et FneService la lisait
+  /// depuis toujours ; faute de saisie, la mention sortait vide.
+  String? regimeImposition;
+  // La nature de l'organisation pour la DGI (lot 100, 16/09/2026).
+  String natureFne = 'B2B';
+  static const Map<String, String> naturesFne = {
+    'B2B': 'Entreprise privée',
+    'B2G': 'Administration ou institution publique',
+    'B2F': "Client établi à l'étranger",
+  };
+
+  /// Valeur envoyée = code court ; texte affiché = intitulé complet. Les
+  /// intitulés sont ceux du site (App\Support\RegimeImposition) : un client
+  /// inscrit depuis le téléphone porte le même régime qu'un client du site.
+  static const Map<String, String> regimesImposition = {
+    'RNI': "Réel normal d'imposition",
+    'RSI': "Réel simplifié d'imposition",
+    'RME': 'Régime des micro-entreprises',
+    'RE': "Taxe d'État de l'Entreprenant (TEE)",
+  };
   bool remember = false;
   final List<String?> errors = [];
   bool _isPasswordVisible1 = false;
@@ -44,6 +68,11 @@ class _SignUpFormState extends State<SignUpForm> {
   List<Ville> villesTot = [];
   List<Ville> villes = [];
   TextEditingController paysController = TextEditingController();
+
+  // Les deux pieces s'affichent dans un champ en lecture seule : il lui faut
+  // un controleur pour porter le nom du document retenu.
+  final TextEditingController dfeController = TextEditingController();
+  final TextEditingController rcController = TextEditingController();
   TextEditingController villeController = TextEditingController();
   int pays_id = 1, ville_id = 1;
   File? dfeFile;
@@ -54,8 +83,212 @@ class _SignUpFormState extends State<SignUpForm> {
   @override
   void dispose() {
     paysController.dispose();
+    dfeController.dispose();
+    rcController.dispose();
     villeController.dispose();
     super.dispose();
+  }
+
+  /// CHOISIR UN FICHIER : DEPUIS LE TELEPHONE, OU EN LE PHOTOGRAPHIANT.
+  ///
+  /// Les deux pieces — DFE et registre de commerce — n'ouvraient que le
+  /// selecteur de fichiers. Un client qui a le document en papier devait donc
+  /// le photographier a part, retrouver le cliche, puis revenir : trois gestes
+  /// la ou l'application apporteur en propose un.
+  ///
+  /// Cette fenetre reprend celle de l'apporteur, a l'identique — memes deux
+  /// choix, meme disposition — pour que les trois applications se ressemblent.
+  /// Aucune dependance nouvelle : `camera_camera`, `file_picker` et le rognage
+  /// sont deja dans le projet.
+  Future<void> choisirPiece({required bool estLeDfe}) {
+    return showDialog(
+      barrierDismissible: true,
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(kRadiusXl),
+          ),
+          elevation: 5.0,
+          content: SizedBox(
+            height: 100,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Column(
+                  children: [
+                    const SizedBox(height: 2),
+                    IconButton(
+                      iconSize: 40,
+                      tooltip: 'Choisir un fichier deja enregistre',
+                      onPressed: () async {
+                        Navigator.of(context).pop();
+
+                        final FilePickerResult? resultat =
+                            await FilePicker.platform.pickFiles(
+                          type: FileType.custom,
+                          allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+                          dialogTitle: 'Choisir le document',
+                        );
+
+                        final String? chemin = resultat?.files.single.path;
+                        if (chemin == null) return;
+
+                        setState(() {
+                          if (estLeDfe) {
+                            dfeFile = File(chemin);
+                            dfeFileName = resultat!.files.single.name;
+                            dfeController.text = dfeFileName!;
+                          } else {
+                            rcFile = File(chemin);
+                            rcFileName = resultat!.files.single.name;
+                            rcController.text = rcFileName!;
+                          }
+                        });
+                      },
+                      icon: const Icon(Icons.image, color: kPrimaryColor),
+                    ),
+                    const Text(
+                      'Existante',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: kTextColor,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 50),
+                Column(
+                  children: [
+                    const SizedBox(height: 2),
+                    IconButton(
+                      iconSize: 40,
+                      tooltip: 'Photographier le document',
+                      onPressed: () async {
+                        // LES DEUX NAVIGATEURS SONT CAPTURES AVANT L'ATTENTE.
+                        //
+                        // Celui de la FENETRE la referme, celui de l'ECRAN
+                        // ferme l'appareil photo. Les reprendre apres l'await
+                        // par `context` reviendrait a lire un contexte qui peut
+                        // avoir disparu entre-temps — c'est le piege que
+                        // l'analyse signale, et il produit une exception opaque
+                        // si l'utilisateur quitte l'ecran pendant la prise.
+                        final NavigatorState fenetre = Navigator.of(context);
+                        final NavigatorState ecran = Navigator.of(this.context);
+                        final BuildContext contexteEcran = this.context;
+
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => CameraCamera(
+                              onFile: (fichier) async {
+                                // Rogne comme ailleurs dans l'application : une
+                                // photo prise a main levee porte toujours du
+                                // decor autour du document.
+                                final File rogne = await rognerImage(
+                                    contexteEcran, fichier.path);
+
+                                if (!mounted) return;
+
+                                setState(() {
+                                  if (estLeDfe) {
+                                    dfeFile = rogne;
+                                    dfeFileName = 'Photo du DFE';
+                                    dfeController.text = dfeFileName!;
+                                  } else {
+                                    rcFile = rogne;
+                                    rcFileName = 'Photo du registre';
+                                    rcController.text = rcFileName!;
+                                  }
+                                });
+
+                                ecran.pop();
+                              },
+                            ),
+                          ),
+                        );
+
+                        if (!mounted) return;
+                        fenetre.pop();
+                      },
+                      icon: const Icon(Icons.camera, color: kPrimaryColor),
+                    ),
+                    const Text(
+                      'Nouvelle',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: kTextColor,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// LA DECORATION DES AUTRES CHAMPS DU FORMULAIRE, A L'IDENTIQUE.
+  ///
+  /// « Pays », « Ville », RCCM et NCC sont tous des `TextFormField` portant
+  /// cette meme decoration : le theme fournit la bordure, la hauteur et les
+  /// couleurs. Quatre champs y echappaient — le type de client, le regime
+  /// d'imposition et les deux pieces — dessines a la main en `Container`
+  /// arrondi a 30, d'une autre forme et d'une autre taille au milieu des
+  /// autres.
+  ///
+  /// Le suffixe reprend la geometrie de `CustomSurffixIcon` — 20 de marge
+  /// autour d'une icone de 16 — car c'est LUI qui fixe la hauteur du champ.
+  /// Une icone posee sans cette marge donnerait un champ plus court, et
+  /// l'alignement se verrait aussitot.
+  InputDecoration _decorationCommune({
+    required String libelle,
+    required String invite,
+    required IconData icone,
+    Color? couleurIcone,
+  }) {
+    return InputDecoration(
+      labelText: libelle,
+      hintText: invite,
+      floatingLabelBehavior: FloatingLabelBehavior.always,
+      suffixIcon: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Icon(icone, size: 16, color: couleurIcone ?? kPrimaryColor),
+      ),
+    );
+  }
+
+  /// Un champ de piece jointe, au MEME dessin que les champs de saisie.
+  ///
+  /// En lecture seule : le toucher ouvre la fenetre de choix. Le nom du
+  /// document remplace le texte d'invite une fois la piece retenue, et la
+  /// bordure passe au vert — le formulaire dit ainsi ce qui est fait sans
+  /// changer de forme.
+  Widget _champPiece({
+    required String libelle,
+    required TextEditingController controleur,
+    required bool renseigne,
+    required VoidCallback onTap,
+  }) {
+    return TextFormField(
+      controller: controleur,
+      readOnly: true,
+      showCursor: false,
+      keyboardType: TextInputType.none,
+      onTap: onTap,
+      decoration: _decorationCommune(
+        libelle: libelle,
+        invite: 'Toucher pour choisir le document',
+        icone: renseigne ? Icons.check_circle : Icons.upload_file,
+        couleurIcone: renseigne ? kSuccessColor : kPrimaryColor,
+      ),
+    );
   }
 
   List<DropdownMenuItem<String>> get comboTypeClient {
@@ -123,26 +356,25 @@ class _SignUpFormState extends State<SignUpForm> {
       child: Column(
         children: [
 
-          Container(
-            width: double.infinity,
-            height: 65,
-            decoration: BoxDecoration(
-                color: Colors.transparent,
-                border: Border.all(color: blackColor, width: 1),
-                borderRadius: BorderRadius.circular(30)),
-            padding: const EdgeInsets.all(20 * 0.3),
-            child: DropdownButton(
-              icon: const Icon(Icons.person_add_outlined, color: kPrimaryColor),
-              alignment: AlignmentDirectional.bottomStart,
-              isExpanded: true,
-              value: type_client,
-              items: comboTypeClient,
-              onChanged: (String? value) {
-                setState(() {
-                  type_client = value!;
-                });
-              },
+          DropdownButtonFormField<String>(
+            // `value` est deprecie depuis Flutter 3.33 au profit de
+            // `initialValue`. Le remplacement est sans consequence ici : la
+            // valeur ne change QUE par le champ lui-meme, jamais de l'exterieur.
+            initialValue: type_client,
+            items: comboTypeClient,
+            isExpanded: true,
+            // L'icone de la liste est retiree : le suffixe de la decoration en
+            // tient lieu, comme sur « Pays ». Deux icones se seraient
+            // superposees a droite du champ.
+            icon: const SizedBox.shrink(),
+            decoration: _decorationCommune(
+              libelle: 'Type de client',
+              invite: 'Particulier ou Entreprise',
+              icone: Icons.person_add_outlined,
             ),
+            onChanged: (String? valeur) {
+              setState(() => type_client = valeur!);
+            },
           ),
 
           const SizedBox(height: 10),
@@ -150,7 +382,7 @@ class _SignUpFormState extends State<SignUpForm> {
             padding: const EdgeInsets.all(5.0),
             child: DropDownTextField(
               textEditingController: paysController,
-              title: 'Pays',
+              title: 'Pays *',
               hint: 'Choisir votre pays',
               options: {for (var p in pays) p.id ?? 0: p.nom.toString()},
               multiple: false,
@@ -168,7 +400,7 @@ class _SignUpFormState extends State<SignUpForm> {
             padding: const EdgeInsets.all(5.0),
             child: DropDownTextField(
               textEditingController: villeController,
-              title: 'Ville',
+              title: 'Ville *',
               hint: 'Choisir votre ville',
               options: {for (var p in villes) p.id ?? 0: p.nom.toString()},
               multiple: false,
@@ -201,7 +433,7 @@ class _SignUpFormState extends State<SignUpForm> {
               return null;
             },
             decoration: InputDecoration(
-              labelText: type_client == '1' ? "Nom & Prénoms" : "Raison social",
+              labelText: type_client == '1' ? "Nom & Prénoms *" : "Raison sociale *",
               hintText: type_client == '1' ? "Entrez votre nom & prénoms" : "Entrez votre raison social",
               // If  you are using latest version of flutter then lable text and hint text shown like this
               // if you r using flutter less then 1.20.* then maybe this is not working properly
@@ -229,7 +461,7 @@ class _SignUpFormState extends State<SignUpForm> {
               return null;
             },
             decoration: const InputDecoration(
-              labelText: "Téléphone",
+              labelText: "Téléphone *",
               hintText: "Entrez votre téléphone",
               // If  you are using latest version of flutter then lable text and hint text shown like this
               // if you r using flutter less then 1.20.* then maybe this is not working properly
@@ -262,7 +494,7 @@ class _SignUpFormState extends State<SignUpForm> {
               return null;
             },
             decoration: const InputDecoration(
-              labelText: "Email",
+              labelText: "Email *",
               hintText: "Entrez votre adresse mail",
               // If  you are using latest version of flutter then lable text and hint text shown like this
               // if you r using flutter less then 1.20.* then maybe this is not working properly
@@ -277,8 +509,13 @@ class _SignUpFormState extends State<SignUpForm> {
             TextFormField(
               textInputAction: TextInputAction.next,
               onSaved: (newValue) => rccm = newValue,
+              // Obligatoires pour une entreprise (lot 100, 16/09/2026) : la DGI
+              // exige le NCC du client sur une facture entre entreprises.
+              validator: (valeur) => (valeur == null || valeur.trim().isEmpty)
+                  ? "Le RCCM est obligatoire pour une entreprise"
+                  : null,
               decoration: const InputDecoration(
-                labelText: "RCCM",
+                labelText: "RCCM *",
                 hintText: "Entrez RCCM",
                 // If  you are using latest version of flutter then lable text and hint text shown like this
                 // if you r using flutter less then 1.20.* then maybe this is not working properly
@@ -290,56 +527,79 @@ class _SignUpFormState extends State<SignUpForm> {
             const SizedBox(height: 10),
             TextFormField(
               onSaved: (newValue) => ncc = newValue,
+              validator: (valeur) => (valeur == null || valeur.trim().isEmpty)
+                  ? "Le NCC (numéro de compte contribuable) est obligatoire : il figure sur vos factures"
+                  : null,
               decoration: const InputDecoration(
-                labelText: "NCC",
+                labelText: "NCC *",
                 hintText: "Entrez NCC",
                 floatingLabelBehavior: FloatingLabelBehavior.always,
                 suffixIcon: CustomSurffixIcon(svgIcon: "assets/icons/Cart Icon.svg"),
               ),
             ),
-            const SizedBox(height: 15),
-            // Upload DFE
-            OutlinedButton.icon(
-              onPressed: () async {
-                FilePickerResult? result = await FilePicker.platform.pickFiles(
-                  type: FileType.custom,
-                  allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
-                );
-                if (result != null) {
-                  setState(() {
-                    dfeFile = File(result.files.single.path!);
-                    dfeFileName = result.files.single.name;
-                  });
-                }
-              },
-              icon: const Icon(Icons.upload_file),
-              label: Text(dfeFileName ?? "DFE (obligatoire) *"),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 50),
-                foregroundColor: dfeFile != null ? Colors.green : kPrimaryColor,
+            const SizedBox(height: 10),
+            // REGIME D'IMPOSITION — il figure sur la facture du client, et la
+            // DGI l'attend sur une facture entre entreprises.
+            DropdownButtonFormField<String>(
+              initialValue: regimeImposition,
+              isExpanded: true,
+              icon: const SizedBox.shrink(),
+              decoration: _decorationCommune(
+                libelle: "Régime d'imposition *",
+                invite: 'Choisir le régime',
+                icone: Icons.account_balance_outlined,
               ),
+              items: regimesImposition.entries
+                  .map((r) => DropdownMenuItem(
+                        value: r.key,
+                        child: Text(r.value, overflow: TextOverflow.ellipsis),
+                      ))
+                  .toList(),
+              onChanged: (String? valeur) {
+                setState(() => regimeImposition = valeur);
+              },
             ),
             const SizedBox(height: 10),
-            // Upload Registre de commerce
-            OutlinedButton.icon(
-              onPressed: () async {
-                FilePickerResult? result = await FilePicker.platform.pickFiles(
-                  type: FileType.custom,
-                  allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
-                );
-                if (result != null) {
-                  setState(() {
-                    rcFile = File(result.files.single.path!);
-                    rcFileName = result.files.single.name;
-                  });
-                }
-              },
-              icon: const Icon(Icons.upload_file),
-              label: Text(rcFileName ?? "Registre de commerce (obligatoire) *"),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 50),
-                foregroundColor: rcFile != null ? Colors.green : kPrimaryColor,
+            DropdownButtonFormField<String>(
+              initialValue: natureFne,
+              isExpanded: true,
+              icon: const SizedBox.shrink(),
+              decoration: _decorationCommune(
+                libelle: "Nature de l'organisation *",
+                invite: 'Entreprise, administration…',
+                icone: Icons.domain_outlined,
               ),
+              items: naturesFne.entries
+                  .map((n) => DropdownMenuItem(
+                        value: n.key,
+                        child: Text(n.value, overflow: TextOverflow.ellipsis),
+                      ))
+                  .toList(),
+              onChanged: (String? valeur) {
+                setState(() => natureFne = valeur ?? 'B2B');
+              },
+            ),
+
+            // LES DEUX PIECES REPRENNENT LE DESSIN DES AUTRES CHAMPS.
+            //
+            // Elles etaient dessinees en boutons a bord fin, larges et plats,
+            // au milieu de champs arrondis : elles ne ressemblaient a rien
+            // d'autre dans le formulaire. Ce sont desormais des champs de meme
+            // forme, en lecture seule, dont le toucher ouvre le choix
+            // « Existante / Nouvelle ».
+            const SizedBox(height: 10),
+            _champPiece(
+              libelle: 'DFE *',
+              controleur: dfeController,
+              renseigne: dfeFile != null,
+              onTap: () => choisirPiece(estLeDfe: true),
+            ),
+            const SizedBox(height: 10),
+            _champPiece(
+              libelle: 'Registre de commerce *',
+              controleur: rcController,
+              renseigne: rcFile != null,
+              onTap: () => choisirPiece(estLeDfe: false),
             ),
           ],
 
@@ -367,7 +627,7 @@ class _SignUpFormState extends State<SignUpForm> {
               return null;
             },
             decoration: InputDecoration(
-              labelText: "Mot de passe",
+              labelText: "Mot de passe *",
               hintText: "Entrez votre mot de passe",
               // If  you are using latest version of flutter then lable text and hint text shown like this
               // if you r using flutter less then 1.20.* then maybe this is not working properly
@@ -410,7 +670,7 @@ class _SignUpFormState extends State<SignUpForm> {
               return null;
             },
             decoration: InputDecoration(
-              labelText: "Confirmation mot de passe",
+              labelText: "Confirmation mot de passe *",
               hintText: "Confirmez votre mot de passe",
               // If  you are using latest version of flutter then lable text and hint text shown like this
               // if you r using flutter less then 1.20.* then maybe this is not working properly
@@ -455,6 +715,12 @@ class _SignUpFormState extends State<SignUpForm> {
                 afficherErreur("Veuillez choisir votre pays et votre ville");
               } else if (type_client == "2" && (dfeFile == null || rcFile == null)) {
                 afficherErreur("Veuillez uploader le DFE et le Registre de commerce");
+              } else if (type_client == "2" &&
+                  (regimeImposition == null || regimeImposition!.isEmpty)) {
+                // Exige comme les deux pieces : le regime figure sur la facture
+                // du client, et la DGI l'attend sur une facture entre
+                // entreprises. Le laisser vide ferait sortir la mention vide.
+                afficherErreur("Veuillez choisir le régime d'imposition");
               } else {
                 if (_formKey.currentState!.validate()) {
                   _formKey.currentState!.save();
@@ -496,6 +762,8 @@ class _SignUpFormState extends State<SignUpForm> {
           request.fields['type_client'] = type_client;
           request.fields['rccm'] = rccm ?? '';
           request.fields['ncc'] = ncc ?? '';
+          request.fields['regime_imposition'] = regimeImposition ?? '';
+          request.fields['nature_fne'] = natureFne;
           request.fields['pays_id'] = pays_id.toString();
           request.fields['ville_id'] = ville_id.toString();
           request.files.add(await http.MultipartFile.fromPath('dfe', dfeFile!.path));
@@ -510,6 +778,7 @@ class _SignUpFormState extends State<SignUpForm> {
             'contact': telephone,
             'password': password,
             'type_client': type_client,
+            'nature_fne': natureFne,
             'rccm': rccm,
             'ncc': ncc,
             'pays_id': pays_id,

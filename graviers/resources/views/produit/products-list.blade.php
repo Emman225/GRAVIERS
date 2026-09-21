@@ -17,17 +17,14 @@
                     </div>
                 </div>
                 <div class="card mb-4">
-                    <header class="card-header">
-                        <div class="row gx-3">
-                            <div class="col col-check flex-grow-0">
-                                <div class="form-check ms-2">
-                                    <input class="form-check-input" type="checkbox" value="" />
-                                </div>
-                            </div>
-
-                        </div>
-                    </header>
+                    {{-- L en-tete ne contenait qu une case a cocher sans nom, sans
+                         valeur et sans script : un « tout selectionner » herite du
+                         gabarit, qui n a jamais rien selectionne. Un controle qui ne
+                         fait rien use la confiance dans ceux qui font quelque chose. --}}
                     <div class="card-body">
+                        <x-export-buttons table-id="liste"
+                                          filename="catalogue-produits"
+                                          title="Catalogue des produits" />
                         <div class="table-responsive">
                             <table id="liste" class="table table-striped">
                                 <thead>
@@ -81,15 +78,15 @@
                                                     <span>{{ Carbon::parse($produit->created_at)->format('d-m-Y'); }}</span>
 
                                             </td>
-                                            <td class="text-end">
+                                            <td class="text-nowrap text-end">
 
                                                     @if ($produit->statut == \Help::$STATUT_ACTIF)
-                                                        <a href="{{route('product.toggle',$produit)}}" class="btn btn-sm font-sm btn-warning rounded" onclick="return confirm('Désactiver ce produit ? Il sera masqué du catalogue.')"> <i class="material-icons md-visibility_off"></i> Désactiver </a>
+                                                        <a href="{{route('product.toggle',$produit)}}" class="btn btn-sm font-sm btn-warning rounded" onclick="return confirm('Désactiver ce produit ? Il sera masqué du catalogue.')" title="Désactiver"><i class="material-icons md-visibility_off"></i></a>
                                                     @else
-                                                        <a href="{{route('product.toggle',$produit)}}" class="btn btn-sm font-sm btn-success rounded" onclick="return confirm('Activer ce produit ? Il sera visible au catalogue.')"> <i class="material-icons md-visibility"></i> Activer </a>
+                                                        <a href="{{route('product.toggle',$produit)}}" class="btn btn-sm font-sm btn-success rounded" onclick="return confirm('Activer ce produit ? Il sera visible au catalogue.')" title="Activer"><i class="material-icons md-visibility"></i></a>
                                                     @endif
-                                                    <a href="{{route('product.edit',$produit->id)}}" class="btn btn-sm font-sm rounded btn-brand"> <i class="material-icons md-edit"></i> Modifier </a>
-                                                    <a href="{{route('product.delete',$produit)}}" class="btn btn-sm font-sm btn-light rounded" onclick="return confirm('Voulez vous supprimer ce produit??')"> <i class="material-icons md-delete_forever"></i> Supprimer </a>
+                                                    <a href="{{route('product.edit',$produit->id)}}" class="btn btn-sm font-sm rounded btn-primary" title="Modifier"><i class="material-icons md-edit"></i></a>
+                                                    <a href="{{route('product.delete',$produit)}}" class="btn btn-sm font-sm btn-danger rounded" onclick="return confirm('Voulez vous supprimer ce produit??')" title="Supprimer"><i class="material-icons md-delete_forever"></i></a>
 
                                             </td>
                                         </tr>

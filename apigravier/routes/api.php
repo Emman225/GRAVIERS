@@ -86,3 +86,8 @@ Route::post('liste-facture', [PaiementController::class, 'listeFacture'])->name(
 Route::post('liste-paiement', [PaiementController::class, 'listePaiement'])->name("listePaiement");
 Route::post('obtenir-lien-paiement', [PaiementController::class, 'obtenirLienPaiement'])->name("obtenirLienPaiement");
 Route::post('liste-ligne-paiement-sur-code', [PaiementController::class, 'listeLignePaiementSurCode'])->name("listeLignePaiementSurCode");
+// Le PDF du reçu, celui du site (lot 88, 15/09/2026).
+Route::post('recu-paiement-pdf', [PaiementController::class, 'recuPaiementPdf'])->name("recuPaiementPdf");
+// Factures DGI du client et leur PDF, ceux du site (lot 95, 16/09/2026).
+Route::post('liste-factures-dgi', [PaiementController::class, 'listeFacturesDgi'])->name("listeFacturesDgi");
+Route::post('facture-dgi-pdf', [PaiementController::class, 'factureDgiPdf'])->name("factureDgiPdf");

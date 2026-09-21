@@ -85,9 +85,9 @@ $devis = null;
                                     {{-- Choix de la ville (en premier pour permettre l'auto-selection de la region) --}}
                                     <div class="custom_select mb-3" style="z-index: 9999">
                                         <label class="checkout-field-label">
-                                            <i class="fi-rs-marker"></i> Ville de livraison
+                                            <i class="fi-rs-marker"></i> Ville de livraison <span class="text-danger">*</span>
                                         </label>
-                                        <select id="ville" class="form-control select-active form-bordered checkout-select" name="ville">
+                                        <select id="ville" required class="form-control select-active form-bordered checkout-select" name="ville">
                                             <option value="" selected>Selectionnez votre ville de livraison...</option>
                                             @foreach ($villes as $ville)
                                                 <option value="{{ $ville->id }}">{{ $ville->nom }}</option>
@@ -104,13 +104,27 @@ $devis = null;
                                         <label class="checkout-field-label">
                                             <i class="fi-rs-globe"></i> Région
                                         </label>
-                                        <select id="region" class="form-control select-active form-bordered checkout-select" name="region">
+                                        {{-- Lecture seule : la région se déduit de la ville. Un
+                                             <select disabled> ne serait pas envoyé au serveur ; on
+                                             le fige donc par le style et le clavier, et sa valeur
+                                             part avec le formulaire. --}}
+                                        <select id="region" class="form-control select-active form-bordered checkout-select champ-fige" name="region"
+                                                tabindex="-1" aria-readonly="true" style="background:#e9ecef; pointer-events:none;">
                                             <option value="-1">Selectionnez une region...</option>
                                             @foreach ($regions as $region)
                                                 <option value="{{ $region->id }}">{{ $region->nom }}</option>
                                             @endforeach
                                         </select>
-                                        <small class="text-muted">Se remplit automatiquement en selectionnant une ville</small>
+                                        <small class="text-muted">Déduite automatiquement de la ville choisie</small>
+                                        <style>
+                                            /* Grisé visible sur l'habillage Select2 (09/09/2026). */
+                                            /* Sélecteurs plus précis que ceux du thème (.select2-container--default ...),
+                                               qui posent eux aussi un fond blanc. */
+                                            .select2-container.select2-fige { pointer-events: none; }
+                                            body .select2-container.select2-fige .select2-selection,
+                                            body .select2-container--default.select2-fige .select2-selection--single { background: #e9ecef !important; background-color: #e9ecef !important; color: #6c757d !important; cursor: not-allowed; }
+                                            body .select2-container.select2-fige .select2-selection__rendered { color: #6c757d !important; }
+                                        </style>
                                         @error('region')
                                             <div class="text-danger mt-1">{{ $message }}</div>
                                         @enderror
@@ -119,9 +133,9 @@ $devis = null;
                                     {{-- Adresse precise --}}
                                     <div class="mb-3">
                                         <label class="checkout-field-label">
-                                            <i class="fi-rs-home"></i> Adresse précise (quartier, rue, repère)
+                                            <i class="fi-rs-home"></i> Adresse précise (quartier, rue, repère) <span class="text-danger">*</span>
                                         </label>
-                                        <input name="infoSup" type="text" class="form-control checkout-input"
+                                        <input name="infoSup" type="text" required class="form-control checkout-input"
                                                placeholder="Ex: Cocody Angré, près du supermarché..."
                                                id="adressePrecise">
                                         @error('infoSup')
@@ -138,7 +152,7 @@ $devis = null;
                                             <div class="text-danger mt-2">{{ $message }}</div>
                                         @enderror
                                         <label class="checkout-field-label">
-                                            <i class="fi-rs-marker"></i> Veuillez préciser sur la carte
+                                            <i class="fi-rs-marker"></i> Veuillez préciser sur la carte <span class="text-danger">*</span>
                                         </label>
                                         <div id="map" style="height: 500px; width: 100%; margin: auto; background: #1c57a3"></div>
                                     </div>
@@ -699,6 +713,27 @@ $devis = null;
 document.addEventListener('DOMContentLoaded', function() {
 
     $(function () {
+        // LE CHAMP « RÉGION » GRISÉ (09/09/2026). Le style « lecture seule » était
+        // posé sur le <select> natif, que Select2 (.select-active, main.js)
+        // remplace par son propre habillage : rien n'apparaissait grisé. C'est
+        // l'habillage Select2 qui reçoit le grisé ; la valeur, déduite de la
+        // ville, part toujours avec le formulaire.
+        $('#region').next('.select2-container').addClass('select2-fige');
+        // Le thème pose son fond blanc avec « !important » : seul un style en ligne
+        // marqué « important » lui passe devant. Réappliqué à chaque changement de
+        // région (Select2 redessine la valeur affichée).
+        function griserRegion() {
+            $('#region').next('.select2-container').addClass('select2-fige')
+                .find('.select2-selection, .select2-selection__rendered').each(function () {
+                    this.style.setProperty('background-color', '#e9ecef', 'important');
+                    this.style.setProperty('color', '#6c757d', 'important');
+                    this.style.setProperty('cursor', 'not-allowed', 'important');
+                });
+        }
+        griserRegion();
+        $('#region').on('change', griserRegion);
+        $(document).on('select2:opening', '#region', function (e) { e.preventDefault(); });
+
         let villeID = -1;
         let regionID = -1;
         let longitude = 0;
@@ -743,7 +778,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     },
                     error: function () {
-                        alert('Une erreur est survenue.');
+                        alerte('Une erreur est survenue.');
                     },
                     complete: function(){
                         console.log("Ajax region terminé");
@@ -786,7 +821,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     },
                     error: function () {
-                        alert('Une erreur est survenue.');
+                        alerte('Une erreur est survenue.');
                     },
                     complete : function(){
                         console.log("Ajax ville terminé");
@@ -844,7 +879,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
         // INITIALISATION DE LA BARRE DE RECHERCHE
-        var geocoder = L.Control.geocoder({
+        var geocoder = creerRechercheLieu({
             title: 'Barre de recherche',
             placeholder: 'Entrez votre adresse',
             collapsed: false,
@@ -878,7 +913,10 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         // RETABLIR L'AFFICHAGE PAR DEFAUT
-        geocoder.on('startgeocode', function() {
+        // « startsuggest » s'ajoute a « startgeocode » : depuis que les suggestions
+        // apparaissent des la frappe, c'est lui qui est emis. Sans cette ligne, la
+        // liste refermee apres un premier choix ne serait plus jamais rouverte.
+        geocoder.on('startgeocode startsuggest', function() {
             var resultsContainer = geocoder.getContainer().querySelector('.leaflet-control-geocoder-alternatives');
             if (resultsContainer) {
                 resultsContainer.style.display = 'block'; // Rétablir l'affichage par défaut
@@ -900,7 +938,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.log('response:', response)
 
                     $('#cout_livraison').text('0');
-                    $('#cout_livraison').text('('+response.km+' km) '+ formatNumber(response.cout_livraison)+' fcfa')
+                    $('#cout_livraison').text('('+response.km+' km) '+ formatNumber(response.cout_livraison)+' fcfa'
+                        + ((response.tva_transport || 0) > 0 ? ' + TVA transport ' + formatNumber(response.tva_transport) + ' fcfa' : ''))
 
 
                     let tva = parseInt($('#tva').text().replace(/\s/g, ''))
@@ -910,7 +949,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     let montantHT = parseInt($('#montantHT').text().replace(/\s/g, ''))
                     console.log('montantHT:', montantHT)
 
-                    let total = tva + response.cout_livraison+montantHT
+                    let total = tva + response.cout_livraison + (response.tva_transport || 0) + montantHT
                     console.log('voila le totall', total)
                     $('#montantTTC').text('');
                     $('#montantTTC').text(formatNumber(total));
@@ -970,8 +1009,27 @@ document.addEventListener('DOMContentLoaded', function() {
         let livrer = document.getElementById('radio1');
         let recuperer = document.getElementById('radio2');
 
+        // L'OBLIGATION SUIT LA VISIBILITÉ (16/09/2026). Les champs d'adresse sont
+        // obligatoires quand on se fait livrer ; avec « Retrait sur place » le bloc
+        // est masqué et un champ `required` invisible et vide bloque l'envoi du
+        // formulaire en silence (le navigateur ne peut pas montrer son message) :
+        // « Choisir le mode de paiement » ne répondait plus.
+        function ajusterChampsObligatoires() {
+            const visible = form.style.display !== 'none';
+            form.querySelectorAll('[required], [data-obligatoire]').forEach(function (champ) {
+                if (visible) {
+                    if (champ.dataset.obligatoire === '1') { champ.setAttribute('required', 'required'); }
+                } else {
+                    champ.dataset.obligatoire = '1';
+                    champ.removeAttribute('required');
+                }
+            });
+        }
+        window.ajusterChampsObligatoires = ajusterChampsObligatoires;
+
         livrer.addEventListener('click', function() {
             form.style.display = 'block';
+            ajusterChampsObligatoires();
             $('#cout_livraison').text(formatNumber(<?php echo $conf->cout_livraison_min; ?>) +' fcfa');
 
             let ttc = parseInt($('#montantTTC').text().replace(/\s/g, ''));
@@ -993,6 +1051,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         recuperer.addEventListener('click', function() {
             form.style.display = 'none';
+            ajusterChampsObligatoires();
 
             let livraison = $('#cout_livraison').text()
             const livraisonInt = parseInt(livraison.replace(/\s/g, ''))
@@ -1017,6 +1076,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
            resetMap();
         });
+
+        if (recuperer.checked) {
+            form.style.display = 'none';
+            ajusterChampsObligatoires();
+        }
 
         $('#ville').on('change', function () {
             const nomVille = $('#ville option:selected').text();

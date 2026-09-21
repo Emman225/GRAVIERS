@@ -35,6 +35,31 @@ int entierTransition = 0;
 int idNotification = 1;
 User user = User();
 
+/// RETOUR DEPUIS UN ÉCRAN D'ONGLET.
+///
+/// Les écrans de la barre du bas ne sont pas empilés : ils sont tous portés par
+/// le MÊME écran (InitScreen). Il n'y a donc rien à dépiler — `Navigator.pop`
+/// y remonterait à l'écran de connexion, ce qui n'est pas un « retour ».
+///
+/// Leur bouton retour ramène à l'ACCUEIL, ce qui est le seul sens utile ici.
+/// InitScreen renseigne ce pointeur tant qu'il est affiché.
+void Function(int)? allerAOnglet;
+
+/// RECHARGE L'ACCUEIL, SANS VOILE NI BRUIT.
+///
+/// Pose par `HomeScreen` lui-meme, comme `allerAOnglet` l'est par la barre du
+/// bas. Depuis que les onglets restent vivants, une action faite ailleurs ne
+/// recharge plus l'accueil en y revenant : ses chiffres resteraient ceux
+/// d'avant. On l'appelle donc apres ce qui les change — une livraison close,
+/// une demande de paiement.
+///
+/// Nul si l'accueil n'a jamais ete ouvert : il chargera de lui-meme.
+Future<void> Function()? rafraichirAccueil;
+
+
+/// Ramène sur l'onglet Accueil. Sans effet hors des onglets.
+void retourAccueil() => allerAOnglet?.call(0);
+
 /// Version de l'application, affichée sur l'écran Profil.
 ///
 /// À incrémenter à CHAQUE build livré, en même temps que `version:` dans
@@ -42,8 +67,10 @@ User user = User();
 /// indiscernables une fois installés : on ne sait plus lequel s'exécute, et
 /// tout diagnostic devient une conjecture. C'est ce qui a coûté une journée
 /// entière sur l'application client.
-const String versionApplication = '1.0.3 (4)';
-
+// La version AFFICHEE doit etre celle du paquet : elle etait restee sur
+// 1.0.3 (4) alors que le paquet portait 1.0.4+5 — l'ecran annoncait donc
+// une version qui n'etait pas celle installee.
+const String versionApplication = '1.0.0 (1)';
 DateTime? currentBackPressTime;
 List<Cart> paniers = [];
 DemandeLivraison demandeLivraison = DemandeLivraison();
@@ -151,7 +178,7 @@ String lienAPI() {
     'http://192.168.100.79:8002/mon_gravier_apporteur/'; //Local (dev PC sur LAN)
   } else {
     url =
-    'https://apigravier.fneconnect.net/mon_gravier_apporteur/';
+    'https://apigravier.mongravier.com/mon_gravier_apporteur/';
   }
   if (kDebugMode) {
     print(url);
@@ -464,6 +491,41 @@ appelerNumero(String phoneNumber) async {
     path: phoneNumber,
   );
   await launchUrl(launchUri);
+}
+
+/// L'ADRESSE DU SITE PUBLIC.
+///
+/// Elle se deduit de celle de l'API, qui distingue deja le poste de
+/// developpement de la production : ecrire l'adresse une seconde fois en dur,
+/// c'etait s'exposer a n'en corriger qu'une le jour d'un changement.
+String lienSitePublic() {
+  return env == 'local'
+      ? 'http://192.168.100.79:8000/'
+      : 'https://mongravier.com/';
+}
+
+/// PARTAGER SON CODE PARRAIN PAR WHATSAPP.
+///
+/// Le code s'affichait avec un bouton « copier », et c'etait tout : l'apporteur
+/// devait ouvrir WhatsApp, coller, puis expliquer ou saisir le code. Chaque
+/// etape recopiee est une occasion de se tromper — et un filleul perdu est une
+/// commission perdue.
+///
+/// Le lien PORTE le code : la page d'inscription le pre-remplit, le filleul n'a
+/// rien a retaper. C'est ce qui distingue un partage utile d'un copier-coller.
+Future<bool> partagerCodeParrain(String code) async {
+  final lien = '${lienSitePublic()}client/register?code_promo=$code';
+
+  final message = "Bonjour ! Commandez sable, gravier, ciment et location "
+      "d'engins sur MON GRAVIER.\n\n"
+      "Utilisez mon code parrain *$code* a l'inscription :\n$lien";
+
+  // wa.me est l'adresse officielle : elle ouvre l'application si elle est
+  // installee, et bascule sur le site sinon. Le schema « whatsapp:// » echoue
+  // en silence quand l'application est absente.
+  final adresse = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(message)}');
+
+  return launchUrl(adresse, mode: LaunchMode.externalApplication);
 }
 
 lancerIfram(BuildContext context, String url) async {

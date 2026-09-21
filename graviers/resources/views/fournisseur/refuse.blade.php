@@ -14,8 +14,11 @@
 
                 <!-- card-header end// -->
                 <div class="card-body">
+                    <x-export-buttons table-id="listeBonsRefuses"
+                                      filename="bons-refuses"
+                                      title="Bons refusés" />
                     <div class="table-responsive">
-                        <table class="table table-striped">
+                        <table id="listeBonsRefuses" class="table table-striped">
                             <thead>
                                 <tr>
                                     <th>ID</th>

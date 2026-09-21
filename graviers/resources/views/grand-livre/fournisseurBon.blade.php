@@ -21,7 +21,7 @@
                         <table class="table table-striped" id="table">
                             <thead>
                                 <tr>
-                                    <th class="text-center" style="background-color: #1c57a3; color: white">Code enlevement</th>
+                                    <th class="text-center" style="background-color: #1c57a3; color: white">N° enlèvement</th>
                                     <th class="text-center" style="background-color: #1c57a3; color: white">Nom du livreur</th>
                                     <th class="text-center" style="background-color: #1c57a3; color: white">Produit</th>
                                     <th class="text-center" style="background-color: #1c57a3; color: white">Quantité à récuperer</th>
@@ -43,7 +43,8 @@
                                                 $env->put($i,$enlevement);
                                             @endphp
                                         <tr>
-                                            <td class="text-center"> {{ $enlevement->code_enleve }} </td>
+                                            {{-- N° public du bon ; le code d'enlèvement n'est montré qu'au client et au fournisseur (14/18). --}}
+                                            <td class="text-center"> {{ $enlevement->id }} </td>
                                              @if ($enlevement->livraison?->livre_par  == 1)
                                                 <td class="text-center"><b> {{ $enlevement->livraison?->livreur?->nom.' '.$enlevement->livraison?->livreur?->prenom }} </b></td>
                                             @else
@@ -53,7 +54,7 @@
                                             <td class="text-center">{{ $enlevement->produit?->nom }}</td>
                                             <td class="text-center">{{ $enlevement->qte }}</td>
                                             <td class="text-center">{{ $enlevement->qte_servi }}</td>
-                                            <td class="text-center">{{ Carbon::parse($enlevement->fournisseur_validation)->format('d-m-Y') }} à {{ Carbon::parse($enlevement->updated_at)->format('H:i') }}</td>
+                                            <td class="text-center">{{ Carbon::parse($enlevement->fournisseur_validation)->format('d-m-Y') }} à {{ Carbon::parse($enlevement->updated_at)->format('H:i:s') }}</td>
 
                                         </tr>
                                     @endif

@@ -160,7 +160,6 @@ input:focus::-moz-placeholder {
 }
 
 .capitalize {
-  text-transform: capitalize;
 }
 
 .uppercase {
@@ -3977,7 +3976,6 @@ footer.main-footer {
   .table-responsive table td::before {
     content: attr(data-title) " ";
     float: left;
-    text-transform: capitalize;
     margin-right: 15px;
     font-weight: bold;
   }

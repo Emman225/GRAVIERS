@@ -45,7 +45,7 @@ class EnvoieCommandeMail extends Mailable
                 'email' => $this->email,
                 'contact' => $this->contact,
                 'typeAffaire' => $this->typeAffaire,
-                'logo' => 'https://graviers.fneconnect.net/frontend/assets/imgs/logo/dalakoun-blanc.png',
+                'logo' => rtrim((string) config('constantes.url_site'), '/') . '/frontend/assets/imgs/logo/dalakoun-blanc.png',
             ],
         );
     }

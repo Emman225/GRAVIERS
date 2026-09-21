@@ -1,18 +1,51 @@
 import 'dart:convert';
+import '../../helper/libelle_commission.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
-import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
-import 'package:mon_gravier_com_apporteur/constants.dart';
 import 'package:mon_gravier_com_apporteur/globale.dart';
 import 'package:mon_gravier_com_apporteur/models/retour_liste_commission.dart';
-import 'package:mon_gravier_com_apporteur/models/retour_liste_filleule.dart';
-import 'package:mon_gravier_com_apporteur/screens/filleule/paiements/paiement_screen.dart';
 import 'package:searchable_listview/searchable_listview.dart';
 
-import '../../helper/constants.dart';
+import '../../components/carte_operation.dart';
+import '../../components/etat_vide.dart';
+import '../../../components/bouton_retour.dart';
+import '../../constants.dart';
+
+/// UNE COMMISSION.
+///
+/// La carte alignait trois lignes de trois COULEURS différentes — rouge, bleu,
+/// vert — autour d'une image animée de 80 px, décorative, redécodée à chaque
+/// défilement, et la commission — la seule chose qu'on vient chercher — n'y
+/// était pas plus visible que le reste. Elle prend la présentation des
+/// paiements de l'accueil : le montant domine, l'état porte la seule couleur.
+Widget carteCommission(UneCommission c) {
+  final bool connue = affaireConnue(c);
+
+  return Padding(
+    padding: const EdgeInsets.only(bottom: kSpaceMd),
+    child: CarteOperation(
+      icone: connue ? Icons.savings_outlined : Icons.help_outline,
+      numero: libelleClient(c),
+      montant: formaterMontant(c.montant ?? 0),
+      mention: libelleMontantAffaire(c, formaterMontant,
+          formaterDate: (d) => formaterDate(d, format: 'd MMMM y')),
+      lignes: [
+        if ((c.typeAffaire ?? '').trim().isNotEmpty)
+          "Affaire : ${c.typeAffaire}",
+      ],
+      date: (c.createdAt ?? '').trim().isEmpty
+          ? null
+          : "Acquise le ${formaterDate(c.createdAt!, format: 'd MMMM y')}",
+      // Une commission dont l'affaire n'a pas été retrouvée est DUE quand
+      // même : on le signale sans la faire passer pour une anomalie.
+      statut: connue ? null : "À vérifier",
+      couleurStatut: connue ? kPrimaryColor : kWarningColor,
+      fondStatut: connue ? kPrimarySoftColor : kWarningSoftColor,
+    ),
+  );
+}
 
 class CommissionScreen extends StatefulWidget {
   // Cet écran déclarait la même route que FilleuleScreen ("/filleule") : une
@@ -30,9 +63,13 @@ class _CommissionScreenState extends State<CommissionScreen> {
   RetourListeCommission retCommission = RetourListeCommission();
   List<UneCommission> commissions = [];
 
-  chargerCommission() async {
+  chargerCommission({bool sansLoader = false}) async {
     if (await verifierConnexion()) {
-      afficherChargement();
+      // Au glisser, l'indicateur du geste suffit : le voile par-dessus
+      // masquerait justement ce qu'on vient de tirer pour voir.
+      if (sansLoader == false) {
+        afficherChargement();
+      }
 
       var param = {
         "access": user.token.toString(),
@@ -57,7 +94,7 @@ class _CommissionScreenState extends State<CommissionScreen> {
           if (kDebugMode) {
             print(retourHttp.body);
           }
-          setState(() {
+          if (mounted) setState(() {
             retCommission = RetourListeCommission.fromJson(datas);
             commissions = retCommission.data ?? [];
 
@@ -68,21 +105,23 @@ class _CommissionScreenState extends State<CommissionScreen> {
             }
           });
         } else {
-          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
+          if (mounted) afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez réessayer.");
         }
       } catch (e) {
         user.code = 500;
         user.message = "Une erreur s'est produite veuillez reesayer plus tard";
         // Ce bloc de secours n.affichait RIEN : l.ecran restait muet en cas de
         // coupure reseau ou de reponse illisible.
-        afficherErreur("Impossible de contacter le serveur. Verifiez votre connexion et reessayez.");
+        if (mounted) afficherErreur("Impossible de contacter le serveur. Verifiez votre connexion et reessayez.");
         if (kDebugMode) {
           print(e.toString());
         }
       }
-      fermerChargement();
+      if (sansLoader == false) {
+        fermerChargement();
+      }
     } else {
-      afficherInfo("Veuillez vérifier votre connexion internet");
+      if (mounted) afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -94,124 +133,93 @@ class _CommissionScreenState extends State<CommissionScreen> {
     });
   }
 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        // Onglet de la barre du bas : rien à dépiler, le retour
+        // ramène à l'accueil.
+        leading: BoutonRetour(
+          onTap: retourAccueil,
+          tooltip: "Retour à l'accueil",
+        ),
         title: const Text("Liste de mes commissions"),
-        backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
         automaticallyImplyLeading: false,
       ),
-      body: SafeArea(
-        child: Container(
-          width: double.infinity,
-          height: heightOfScreen(context),
-          decoration: const BoxDecoration(
-            image: DecorationImage(
-              image: AssetImage("assets/images/bg.jpg"),
-              fit: BoxFit.cover,
-              opacity: 0.2,
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(15.0),
-            child: SearchableList<UneCommission>(
-              searchFieldEnabled: true,
-              shrinkWrap: true,
-              sortWidget: const Icon(Icons.sort),
-              sortPredicate: (a, b) {
-                int mtna = a.id ?? 0;
-                int mtnb = b.id ?? 0;
-                return mtna.compareTo(mtnb);
-              },
-              physics: const BouncingScrollPhysics(),
-              builder: (list, index, c) => Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Container(
-                  height: 150,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 15),
-                    child: Row(
-                      children: [
-                        const SizedBox(
-                          width: 10,
-                        ),
-                        Container(
-                            width: 80,
-                            height: 80,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(30),
-                              image: const DecorationImage(
-                                  image: AssetImage("assets/images/commande.gif"),
-                                  fit: BoxFit.cover,
-                                  opacity: 0.6),
-                            ),
-                            child: Container()),
-                        const SizedBox(
-                          width: 10,
-                        ),
-                        Flexible(
-                          child:  Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text('${c.nom} ${c.prenom} (# ${c.clientId})',
-                                style: const TextStyle(
-                                  color: Colors.red,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Text(
-                                'Total: ${formaterMontant(c.montantTotal ?? 0)}',
-                                style: const TextStyle(
-                                  color: Colors.blueAccent,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Text(
-                                'Com.: ${formaterMontant(c.montant ?? 0)}',
-                                style: const TextStyle(
-                                  color: Colors.green,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              initialList: commissions,
-              filter: (p0) {
-                return commissions
-                    .where((c) => (c.nom.toString().contains(p0) ||
-                    c.prenom.toString().contains(p0) ||
-                    c.id.toString().contains(p0) ||
-                    c.montant.toString().contains(p0) ||
-                    c.montantTotal.toString().contains(p0)))
-                    .toList();
-              },
-              inputDecoration: InputDecoration(
-                labelText: "Recherchez...",
-                fillColor: Colors.white,
-                focusedBorder: OutlineInputBorder(
-                  borderSide: const BorderSide(
-                    color: kPrimaryColor,
-                    width: 1.0,
-                  ),
-                  borderRadius: BorderRadius.circular(10.0),
-                ),
-              ),
-            ),
-          ),
+      body: SafeArea(child: _corps()),
+    );
+  }
+
+  static const _vide = EtatVide(
+    compact: true,
+    icone: Icons.savings_outlined,
+    titre: "Aucune commission",
+    message:
+        "Vos commissions apparaîtront ici dès qu'un filleul aura commandé.",
+  );
+
+  Future<void> _rafraichir() => chargerCommission(sansLoader: true);
+
+  Widget _corps() {
+    // LISTE VIDE : LE GESTE DOIT MARCHER QUAND MÊME. `SearchableList` remplace
+    // la liste par l'état vide, et son indicateur de rafraîchissement avec —
+    // or une liste vide est justement celle qu'on veut recharger.
+    if (commissions.isEmpty) {
+      return RefreshIndicator(
+        color: kPrimaryColor,
+        onRefresh: _rafraichir,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics()),
+          padding: const EdgeInsets.all(kSpaceLg),
+          children: const [SizedBox(height: kSpaceXxl), _vide],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(kSpaceLg),
+      child: SearchableList<UneCommission>(
+        searchFieldEnabled: true,
+        shrinkWrap: true,
+        // LE CLAVIER NE S'OUVRE PLUS TOUT SEUL. Il masquait la moitié de la
+        // liste dès l'arrivée, et il fallait le refermer pour voir ce qu'on
+        // était venu consulter.
+        autoFocusOnSearch: false,
+        sortWidget: const Icon(Icons.sort),
+        sortPredicate: (a, b) {
+          int mtna = a.id ?? 0;
+          int mtnb = b.id ?? 0;
+          return mtna.compareTo(mtnb);
+        },
+        // Sans `AlwaysScrollable`, une liste plus courte que l'écran ne défile
+        // pas, et le glisser n'atteint jamais l'indicateur.
+        physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics()),
+        onRefresh: _rafraichir,
+        builder: (list, index, c) => carteCommission(c),
+        emptyWidget: _vide,
+        initialList: commissions,
+        filter: (p0) {
+          // La recherche porte sur le texte AFFICHÉ : chercher sur
+          // `c.nom` brut faisait remonter toutes les lignes non
+          // rattachées dès qu'on tapait « null ».
+          final q = p0.toLowerCase();
+          return commissions
+              .where((c) => (libelleClient(c).toLowerCase().contains(q) ||
+                  c.id.toString().contains(q) ||
+                  c.montant.toString().contains(q) ||
+                  (affaireConnue(c) &&
+                      c.montantTotal.toString().contains(q))))
+              .toList();
+        },
+        inputDecoration: const InputDecoration(
+          hintText: "Rechercher...",
+          floatingLabelBehavior: FloatingLabelBehavior.never,
+          prefixIcon: Icon(Icons.search, size: 20),
         ),
       ),
     );

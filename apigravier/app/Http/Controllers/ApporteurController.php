@@ -76,6 +76,12 @@ class ApporteurController extends Controller
                 'paiement_apporteur.created_at',
                 'mode_paiement.libelle as mode_paiement',
             ])
+            // Point 20 (09/09/2026) : l'état du circuit « À payer → Effectuée »
+            // du règlement, quand la colonne existe (migration du back-office).
+            ->when(
+                Schema::hasColumn('paiement_apporteur', 'etat_reglement'),
+                fn ($q) => $q->addSelect('paiement_apporteur.etat_reglement')
+            )
             ->get();
 
         foreach ($regles as $r) {
@@ -96,6 +102,9 @@ class ApporteurController extends Controller
                 'user_valide2_id'  => null,
                 'date_validation'  => $r->date_paiement,
                 'paye'             => 1,
+                // L'application lit etat_reglement : EFFECTUEE → « Effectué »,
+                // autre valeur → « Validé — paiement en cours », vide → « Payé: OUI ».
+                'etat_reglement'   => $r->etat_reglement ?? null,
                 'statut'           => Help::$STATUT_ACTIF,
                 'deleted_at'       => null,
                 'created_at'       => $r->created_at,

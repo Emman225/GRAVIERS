@@ -81,7 +81,7 @@
         <div class="col-xl-3 col-lg-6 col-md-6">
             <div class="kpi-card kpi-card-success">
                 <div class="kpi-card-icon">
-                    <i class="material-icons md-paid"></i>
+                    <i class="material-icons md-payment"></i>
                 </div>
                 <div class="kpi-card-body">
                     <div class="kpi-card-label">Reçus</div>
@@ -118,7 +118,7 @@
             <div class="card dash-card h-100">
                 <div class="card-header dash-card-header">
                     <h5 class="dash-card-title">
-                        <i class="material-icons md-edit_note text-primary"></i>
+                        <i class="material-icons md-edit text-primary"></i>
                         Nouvelle demande
                     </h5>
                 </div>
@@ -180,8 +180,11 @@
                     </h5>
                 </div>
                 <div class="card-body p-0">
+                    <x-export-buttons table-id="listeDemandesDePaie"
+                                      filename="demandes-de-paie"
+                                      title="Demandes de paie" />
                     <div class="table-responsive">
-                        <table class="table table-striped mb-0">
+                        <table id="listeDemandesDePaie" class="table table-striped mb-0">
                             <thead>
                                 <tr>
                                     <th>Référence</th>
@@ -211,7 +214,7 @@
                                             <strong class="text-primary">{{ $m->reference }}</strong>
                                             <br><small class="text-muted">{{ $m->detail }}</small>
                                         </td>
-                                        <td>{{ $m->date ? \Carbon\Carbon::parse($m->date)->format('d/m/Y') : '—' }}</td>
+                                        <td>{{ $m->date ? \Help::dateHeure($m->date) : '—' }}</td>
                                         <td>
                                             {{-- Qui a lancé le versement : vous, ou l'entreprise
                                                  de sa propre initiative. Les seconds n'étaient

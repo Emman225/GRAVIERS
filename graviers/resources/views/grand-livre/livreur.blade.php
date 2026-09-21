@@ -15,6 +15,9 @@
         </header>
         <!-- card-header end// -->
         <div class="card-body">
+            <x-export-buttons table-id="liste"
+                              filename="grand-livre-livreurs"
+                              title="Grand livre — livreurs" />
             <div class="table-responsive">
                 <table class="table table-striped" id="liste">
                     <thead>
@@ -48,8 +51,8 @@
                             {{-- <td>{{number_format($livreur->prix_livraison,'0','',' ')}}fcfa</td> --}}
                             <!-- <td><span class="badge rounded-pill text-success">Activé</span></td> -->
                             <td> {{$livreur->created_at}} </td>
-                            <td class="text-end">
-                                <a href="{{route('show.profile',$livreur->id)}}" class="btn btn-sm btn-brand rounded font-sm mt-15">Voir les details</a>
+                            <td class="text-nowrap text-end">
+                                <a href="{{route('show.profile',$livreur->id)}}" class="btn btn-sm btn-info rounded font-sm mt-15" title="Voir les details"><i class="material-icons md-visibility"></i></a>
                             </td>
                         </tr>
                         @endforeach

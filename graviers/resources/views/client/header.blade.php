@@ -30,14 +30,23 @@
             align-items: center;
             justify-content: flex-start;
             gap: 12px;
+            /* 17/09/2026 : 8 px d'air au-dessus et au-dessous — le logo de 46 px touchait
+               les bords d'une barre de 48 px. */
+            padding-top: 8px;
+            padding-bottom: 8px;
         }
         /* Sécurité : masquer les éléments "mobile" sur grand écran */
         .header-wrap > .header-action-icon-2.d-lg-none,
         .header-wrap > .header-action-right.d-lg-none { display: none !important; }
 
         .header-wrap > .logo { flex: 0 0 auto; }
-        /* Logo un peu plus compact pour libérer de la largeur */
-        .header-wrap > .logo a img { height: 46px !important; max-width: 120px !important; }
+        /* Logo un peu plus compact pour libérer de la largeur.
+           17/09/2026 (lot 106) : main.css impose min-width:135px à l'image (.logo.logo-width-1 a img) —
+           le logo carré de 46 px flottait, centré, dans une boîte de 135 px, donc décalé de 44 px
+           du bord ; et l'image en ligne laissait 6 px de descendante sous elle, d'où 3 px trop haut.
+           Largeur naturelle, image en bloc : le logo est collé au bord et centré verticalement. */
+        .header-wrap > .logo a { display: block; line-height: 0; }
+        .header-wrap > .logo a img { display: block; height: 46px !important; width: auto !important; min-width: 0 !important; max-width: 120px !important; }
         /* Le thème pose 70px de marge à droite du logo (.logo-width-1, main.css) — un
            réglage hérité d'un en-tête sur deux lignes, où le logo était seul à gauche.
            Ici le rang est saturé : ces 70px sont pris à la barre de recherche, qui
@@ -46,6 +55,21 @@
            Le conteneur applique déjà un gap de 12px ; 16px suffisent à détacher le
            logo du menu. Le thème réinitialise déjà cette marge sous 768px. */
         .header-wrap > .logo.logo-width-1 { margin-right: 16px !important; }
+        /* Lot 109 : la page courante en jaune dans le menu (couleur seule, sans soulignement). */
+        .main-menu > nav > ul > li > a.active { color: var(--premium-secondary, #FFB300) !important; }
+        /* Lot 107 : menu « Mon compte » au survol (Profil, Devenir un client à terme, Déconnexion). */
+        .menu-compte-entete { width: 240px !important; padding: 8px 0 !important; text-align: left; }
+        .menu-compte-entete ul { list-style: none; margin: 0; padding: 0; }
+        .menu-compte-entete ul li { display: block; margin: 0; }
+        .menu-compte-entete ul li + li { border-top: 1px solid #f0f0f0; }
+        .menu-compte-entete ul li a, .menu-compte-entete ul li button {
+            display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 18px !important;
+            font-size: 14px !important; font-weight: 600; color: #253D4E !important; background: none !important; border: 0 !important;
+            border-radius: 0 !important; box-shadow: none !important; text-align: left; cursor: pointer; line-height: 1.3; font-family: inherit;
+            /* !important : le thème habille tout <button> en bouton bleu (premium-client.css). */
+        }
+        .menu-compte-entete ul li a:hover, .menu-compte-entete ul li button:hover { color: #1C57A3 !important; background: #f2f6fb !important; }
+        .menu-compte-entete ul li i { font-size: 16px; width: 18px; text-align: center; }
         /* Menu : toujours sur UNE seule ligne (ne s'enroule pas, ne se compresse pas) */
         .header-wrap > .header-nav { flex: 0 0 auto !important; }
         .header-nav .main-menu { width: auto; }
@@ -118,6 +142,12 @@
         }
     }
 </style>
+{{-- Lot 114 (19/09/2026) : rappel visible des seules personnes connectées tant que le mode est actif. --}}
+@if (Auth::check() && \App\Models\Configuration::siteEnConstruction())
+    <div class="rappel-site-en-construction" style="background:#FFB300; color:#0A2540; text-align:center; font-weight:700; font-size:13px; padding:6px 12px;">
+        Site en construction : seules les personnes connectées voient ces pages.
+    </div>
+@endif
 <header class="header-area header-style-1 header-height-2" style="z-index: 99999;">
     <div class="mobile-promotion">
         <span>Grande ouverture, <strong>- 15%</strong> Sur nos article. Juste <strong>3 jours</strong> </span>
@@ -170,19 +200,24 @@
 
                     <div class="main-menu d-none d-lg-block font-heading">
                         <nav>
+                            @php
+                                // Lot 109 (17/09/2026) : le lien de la page courante est mis en avant ;
+                                // « Accueil » l'était en dur sur toutes les pages.
+                                $lienActif = fn (string ...$routes) => request()->routeIs(...$routes) ? 'active' : '';
+                            @endphp
                             <ul>
                                 <li>
-                                    <a class="active" href="{{route('client.index')}}">Accueil</a>
+                                    <a class="{{ $lienActif('client.index') }}" href="{{route('client.index')}}">Accueil</a>
                                 </li>
 
-                                <li><a href="{{route('client.location')}}">Location</a></li>
-                                <li><a href="{{route('client.demandeLivraison')}}">Livraison</a></li>
+                                <li><a class="{{ $lienActif('client.location') }}" href="{{route('client.location')}}">Location</a></li>
+                                <li><a class="{{ $lienActif('client.demandeLivraison', 'client.recapLivraison', 'client.valideDemandeLivraison') }}" href="{{route('client.demandeLivraison')}}">Livraison</a></li>
                                 {{-- Le blog n'était accessible que depuis le menu mobile : sur
                                      ordinateur, aucun lien n'y menait, les articles publiés
                                      restaient donc invisibles pour le grand public. --}}
                                 <li><a class="{{ request()->routeIs('client.blog', 'client.detailBlog') ? 'active' : '' }}" href="{{route('client.blog')}}">Blog</a></li>
-                                <li><a href="{{route('aPropos')}}">A propos</a></li>
-                                <li><a href="{{route('contact')}}">Contact</a></li>
+                                <li><a class="{{ $lienActif('aPropos') }}" href="{{route('aPropos')}}">A propos</a></li>
+                                <li><a class="{{ $lienActif('contact') }}" href="{{route('contact')}}">Contact</a></li>
 
                                 @guest
                                     <li class="header-pro">
@@ -239,8 +274,16 @@
                                  sur la connexion — soit exactement ce que fait le bouton
                                  « Se connecter » situé juste à côté. --}}
                             @auth
+                                @php $photoEntete = \Help::photoDeProfil(Auth::user()); @endphp
                                 <a href="{{route('client.monCompte')}}" title="Mon compte">
-                                    <img class="svgInject" alt="Mon compte" src="{{ asset('frontend/assets/imgs/theme/icons/icon-user.svg') }}" />
+                                    @if($photoEntete)
+                                        {{-- Lot 106 (17/09/2026) : la photo de profil remplace l'icône générique. --}}
+                                        <img class="photo-profil-entete" alt="Mon compte" src="{{ $photoEntete }}"
+                                             style="width:32px !important; height:32px !important; min-width:0 !important; min-height:0 !important; max-width:none !important; border-radius:50%; object-fit:cover; border:2px solid #ffffff; box-shadow:0 0 0 2px rgba(255,255,255,0.28), 0 2px 6px rgba(0,0,0,0.35); background:#ffffff; vertical-align:middle; filter:none !important;" />
+                                        {{-- filter:none : premium-client.css blanchit toutes les images de l'en-tête (brightness(0) invert(1)) ; max-width:none : main.css les borne à 25 px. --}}
+                                    @else
+                                        <img class="svgInject" alt="Mon compte" src="{{ asset('frontend/assets/imgs/theme/icons/icon-user.svg') }}" />
+                                    @endif
                                 </a>
                             @endauth
                             @guest
@@ -251,7 +294,22 @@
                             @endguest
                             @auth
                                 <a href="{{route('client.monCompte')}}"> <span class="lable">Mon compte</span> </a>
-
+                                {{-- Lot 107 (17/09/2026) : menu au survol de l'icône « Mon compte »
+                                     (même mécanique que le panier : .header-action-icon-2:hover .cart-dropdown-wrap). --}}
+                                <div class="cart-dropdown-wrap cart-dropdown-hm2 account-dropdown menu-compte-entete">
+                                    <ul>
+                                        <li><a href="{{ route('client.monCompte') }}"><i class="fi-rs-settings-sliders"></i>Mon compte</a></li>
+                                        <li><a href="{{ route('client.monCompte') }}?onglet=account-detail"><i class="fi-rs-user"></i>Profil</a></li>
+                                        <li><a href="{{ route('client.demandeClientATermePage') }}"><i class="fi-rs-briefcase"></i>Devenir un client à terme</a></li>
+                                        <li>
+                                            <form action="{{ route('show.logout') }}" method="post">
+                                                @csrf
+                                                @method('delete')
+                                                <button type="submit"><i class="fi-rs-sign-out"></i>Déconnexion</button>
+                                            </form>
+                                        </li>
+                                    </ul>
+                                </div>
                             @endauth
 
                         </div>

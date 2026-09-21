@@ -96,7 +96,7 @@
                                     <i class="material-icons md-email" style="font-size:14px;vertical-align:middle;color:#1c57a3;"></i>
                                     Email professionnel <span class="text-danger">*</span>
                                 </label>
-                                <input class="form-control" name="email" placeholder="gestionnaire@gravierci.com" type="email"
+                                <input class="form-control" name="email" placeholder="gestionnaire@votre-domaine.com" type="email"
                                        required value="{{ old('email') }}" autocomplete="email" />
                                 <small class="text-muted">Récupération de mot de passe et notifications.</small>
                                 @error('email')<div class="text-danger small mt-1">{{ $message }}</div>@enderror

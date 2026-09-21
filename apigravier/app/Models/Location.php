@@ -48,11 +48,43 @@ class Location extends Model
      * Total net à payer : HT − remise, puis TVA et livraison.
      * Même formule qu'à la facturation (OrdersController::genererFactureLocation).
      */
+    public function detailLocation()
+    {
+        return $this->hasMany(DetailLocation::class, 'location_id');
+    }
+
+    /**
+     * HT marchandise, recalculé DEPUIS LES LIGNES.
+     *
+     * `montant_total` n'a PAS le même sens selon le canal : le site y écrit le
+     * HT, l'application le NET final, TVA et livraison comprises. Le lire ici
+     * puis y rajouter TVA et livraison gonflait le dû de ces deux montants sur
+     * toute location passée depuis le téléphone — 144 000 réclamés là où le
+     * back-office et la facture annonçaient 122 000.
+     *
+     * ATTENTION : `detail_location.prix` porte le TOTAL de la ligne, quantité
+     * ET nombre de jours compris. On ne le multiplie donc pas par la quantité,
+     * contrairement à `detail_commande.prix`. C'est déjà la source qu'emploient
+     * la facture et le site.
+     */
+    public function montantHT(): float
+    {
+        $ht = (float) $this->detailLocation->sum('prix');
+
+        // Repli défensif : une location sans ligne ne devrait pas exister, mais
+        // rendre zéro la ferait passer pour soldée.
+        return $ht > 0 ? $ht : (float) $this->montant_total;
+    }
+
     public function montantAPayer(): float
     {
-        return max(0, (float) $this->montant_total - (float) ($this->remise ?? 0))
+        return max(0, $this->montantHT() - (float) ($this->remise ?? 0))
             + (float) ($this->tvaLocation->montant ?? 0)
-            + (float) ($this->cout_livraison_client ?? 0);
+            + (float) ($this->cout_livraison_client ?? 0)
+            // TVA sur le transport (point 5) : même dû que le site.
+            + (float) ($this->tva_transport ?? 0)
+            // AIRSI figé sur la location (10/09/2026).
+            + (float) ($this->airsi ?? 0);
     }
 
     /** Ce qui a réellement été encaissé sur la location. */
@@ -123,6 +155,49 @@ class Location extends Model
             ->whereIn('location.statut', [Help::$STATUT_ACTIF, 3])
             ->limit(500)
             ->get();
+    }
+
+    /**
+     * OÙ EN EST LA LIVRAISON DU MATÉRIEL (10/09/2026) — même règle que le site
+     * (Location::etatLivraison) : la location reste EN COURS jusqu'au retour,
+     * le client doit pourtant voir si son matériel est arrivé. Une course de
+     * location porte l'id de sa LIGNE dans livraison.detail_commande_id.
+     *
+     * Retourne null sans course, sinon ['code' => …, 'libelle' => …].
+     */
+    public static function etatLivraison($location): ?array
+    {
+        $lignes = \Illuminate\Support\Facades\DB::table('detail_location')->where('location_id', $location->id)->pluck('id');
+        if ($lignes->isEmpty()) {
+            return null;
+        }
+        $courses = \Illuminate\Support\Facades\DB::table('livraison')
+            ->where('provenance', Help::$LOCATION)
+            ->whereIn('detail_commande_id', $lignes)
+            ->whereNull('deleted_at')
+            ->where('accepte', '<>', 3)
+            ->get(['accepte', 'etat_livraison', 'updated_at']);
+        if ($courses->isEmpty()) {
+            return null;
+        }
+        $retrait   = (int) $location->est_livrable !== 1 && !$location->adresse_livraison_id;
+        $acceptees = $courses->where('accepte', 1);
+        $livrees   = $acceptees->where('etat_livraison', Help::$LIVRAISON_LIVREE);
+
+        if ($acceptees->isNotEmpty() && $livrees->count() === $acceptees->count()) {
+            $date  = $livrees->max('updated_at');
+            $quand = $date ? ' le ' . \Carbon\Carbon::parse($date)->format('d/m/Y H:i:s') : '';
+            return $retrait
+                ? ['code' => 'RETIREE', 'libelle' => 'Retirée' . $quand]
+                : ['code' => 'LIVREE', 'libelle' => 'Livrée' . $quand];
+        }
+        if ($acceptees->isNotEmpty()) {
+            return $retrait
+                ? ['code' => 'A_RETIRER', 'libelle' => 'À retirer chez le fournisseur']
+                : ['code' => 'EN_LIVRAISON', 'libelle' => 'En livraison'];
+        }
+
+        return ['code' => 'A_CONFIRMER', 'libelle' => 'Livreur à confirmer'];
     }
 
     public static function enregistrer(array $arr)

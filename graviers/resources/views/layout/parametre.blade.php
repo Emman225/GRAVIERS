@@ -86,7 +86,7 @@
                         <button class="nav-link" id="tab-apporteurs-tab" data-bs-toggle="tab"
                             data-toggle="tab" data-bs-target="#tab-apporteurs" data-target="#tab-apporteurs"
                             type="button" role="tab" aria-controls="tab-apporteurs" aria-selected="false">
-                            <i class="material-icons md-handshake align-middle"></i>
+                            <i class="material-icons md-people align-middle"></i>
                             Apporteurs
                         </button>
                     </li>
@@ -98,6 +98,30 @@
                             Termes & conditions
                         </button>
                     </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-entreprise-tab" data-bs-toggle="tab"
+                            data-toggle="tab" data-bs-target="#tab-entreprise" data-target="#tab-entreprise"
+                            type="button" role="tab" aria-controls="tab-entreprise" aria-selected="false">
+                            <i class="material-icons md-domain align-middle"></i>
+                            Entreprise & mentions légales
+                        </button>
+                    </li>
+                    {{-- AUDIT — RÉSERVÉ AU SUPERADMINISTRATEUR ET À L'ADMINISTRATEUR.
+                         Le journal formait un menu principal ; il est devenu cet
+                         onglet le 29/08/2026. « Paramètre » s'ouvre aussi au
+                         gestionnaire, à qui le journal n'a jamais été montré :
+                         l'onglet ne lui est donc pas affiché, et le contrôleur ne
+                         lit même pas la table pour lui. --}}
+                    @if ($peutVoirAudit ?? false)
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-audit-tab" data-bs-toggle="tab"
+                                data-toggle="tab" data-bs-target="#tab-audit" data-target="#tab-audit"
+                                type="button" role="tab" aria-controls="tab-audit" aria-selected="false">
+                                <i class="material-icons md-history align-middle"></i>
+                                Audit
+                            </button>
+                        </li>
+                    @endif
                 </ul>
 
                     <button type="button" class="onglets-defilants__fleche onglets-defilants__fleche--droite"
@@ -115,6 +139,46 @@
                     <div class="tab-pane fade show active" id="tab-general" role="tabpanel"
                         aria-labelledby="tab-general-tab">
 
+                        {{-- MODE « SITE EN CONSTRUCTION » (lot 114, 19/09/2026) : un interrupteur, réservé aux
+                             administrateurs. Actif : le site public n'est visible que des personnes connectées. --}}
+                        @php $enConstruction = \App\Models\Configuration::siteEnConstruction(); @endphp
+                        <div class="card mb-4" id="carte-site-en-construction"
+                             style="border: 1px solid {{ $enConstruction ? '#f5c26b' : '#d5dbe3' }}; background: {{ $enConstruction ? '#fff7e0' : '#f8fafc' }};">
+                            <div class="card-body d-flex align-items-center justify-content-between flex-wrap" style="gap: 14px;">
+                                <div>
+                                    <h5 class="mb-1">
+                                        Site en construction
+                                        <span class="badge {{ $enConstruction ? 'bg-warning text-dark' : 'bg-secondary' }}" style="vertical-align: middle;">
+                                            {{ $enConstruction ? 'Activé' : 'Désactivé' }}
+                                        </span>
+                                    </h5>
+                                    <p class="text-muted small mb-0" style="max-width: 640px;">
+                                        Activé : un visiteur non connecté ne voit que la page
+                                        <a href="{{ route('siteEnConstruction') }}" target="_blank">« site en construction »</a> ;
+                                        les personnes connectées naviguent normalement et arrivent sur l'accueil après leur connexion.
+                                        Les pages de connexion et les applications mobiles restent ouvertes.
+                                    </p>
+                                </div>
+                                @if (in_array((int) Auth::user()->type_user_id, [\Help::$USER_SA, \Help::$USER_ADMIN], true))
+                                    <form method="post" action="{{ route('show.basculerSiteEnConstruction') }}" class="js-delete-form"
+                                          data-confirm-mode="confirm"
+                                          data-confirm-title="{{ $enConstruction ? 'Rouvrir le site public ?' : 'Mettre le site en construction ?' }}"
+                                          data-confirm-button="{{ $enConstruction ? 'Oui, rouvrir le site' : 'Oui, activer le mode' }}"
+                                          data-confirm-html="{{ $enConstruction
+                                              ? 'Le site public redeviendra visible de <strong>tous les visiteurs</strong>.'
+                                              : 'Les visiteurs <strong>non connectés</strong> ne verront plus que la page « site en construction ».' }}">
+                                        @csrf
+                                        <button type="submit" class="btn {{ $enConstruction ? 'btn-success' : 'btn-warning' }}">
+                                            <i class="material-icons md-{{ $enConstruction ? 'lock_open' : 'construction' }} align-middle"></i>
+                                            {{ $enConstruction ? 'Désactiver le mode' : 'Activer le mode' }}
+                                        </button>
+                                    </form>
+                                @else
+                                    <span class="text-muted small">Réservé aux administrateurs.</span>
+                                @endif
+                            </div>
+                        </div>
+
                         <form method="post" action="{{ route('show.parametre') }}">
                             @csrf
                             <input type="hidden" name="_section" value="general">
@@ -131,6 +195,47 @@
                                     <input class="form-control" required type="number" name="montant_point"
                                         value="{{ $config->montant_point }}" />
                                     <small class="text-muted">Valeur d'un point fidélité en {{ $config->devise }}.</small>
+                                </div>
+
+                                {{-- LA REGLE D'ATTRIBUTION, ENFIN PARAMETRABLE.
+                                     Elle vivait en dur dans le code — 200 points
+                                     forfaitaires au guichet — et differait selon
+                                     le canal de paiement. --}}
+                                <div class="col-lg-4 mb-3">
+                                    <label class="form-label">Montant pour un point</label>
+                                    <input class="form-control" required type="number" min="1" step="1"
+                                        name="montant_pour_un_point"
+                                        value="{{ $config->montant_pour_un_point }}" />
+                                    <small class="text-muted">
+                                        Somme encaissée donnant 1 point.
+                                        @php
+                                            $taux = ($config->montant_pour_un_point ?? 0) > 0
+                                                ? 100 * ($config->montant_point ?? 0) / $config->montant_pour_un_point
+                                                : 0;
+                                        @endphp
+                                        Soit <strong>{{ rtrim(rtrim(number_format($taux, 2, ',', ' '), '0'), ',') }} %</strong>
+                                        des achats rendus au client.
+                                    </small>
+                                </div>
+
+                                {{-- PLANCHER DE PAIEMENT.
+                                     Les points pouvaient couvrir une commande
+                                     ENTIERE : sans livraison, le total tombait a
+                                     zero et la commande devenait une impasse — la
+                                     passerelle appelee avec 0, l'encaissement au
+                                     guichet refusant le montant nul, le virement
+                                     supposant un justificatif de 0. --}}
+                                <div class="col-lg-4 mb-3">
+                                    <label class="form-label">Minimum à payer</label>
+                                    <input class="form-control" required type="number" min="0" step="1"
+                                        name="montant_minimum_a_payer"
+                                        value="{{ $config->montant_minimum_a_payer }}" />
+                                    <small class="text-muted">
+                                        Somme minimale qu'une commande doit laisser à payer.
+                                        Les points ne descendent pas en dessous ; le reliquat
+                                        reste au compte du client.
+                                        <strong>0 retire la limite.</strong>
+                                    </small>
                                 </div>
 
                             </div>
@@ -158,6 +263,42 @@
                                     <input class="form-control" required type="text" name="tva"
                                         value="{{ $config->tva }}" />
                                     <small class="text-muted">Taux par défaut appliqué aux factures.</small>
+                                </div>
+
+                                {{-- La TVA sur le transport : une decision de gestion, pas un taux.
+                                     Le champ cache accompagne la case — decochee, une case n est pas
+                                     transmise, et la desactivation serait impossible. --}}
+                                <div class="col-lg-4 mb-3">
+                                    <label class="form-label">TVA sur le transport</label>
+                                    <input type="hidden" name="tva_transport" value="0">
+                                    <div class="form-check mt-2">
+                                        <input class="form-check-input" type="checkbox" value="1"
+                                               name="tva_transport" id="tvaTransport"
+                                               @checked((int) ($config->tva_transport ?? 0) === 1)>
+                                        <label class="form-check-label" for="tvaTransport">
+                                            Appliquer la TVA au transport (ventes, locations et demandes de livraison)
+                                        </label>
+                                    </div>
+                                    <small class="text-muted">
+                                        Désactivée, le transport est facturé hors taxe. Le choix vaut pour
+                                        les <strong>nouvelles</strong> demandes : les courses déjà chiffrées
+                                        gardent leur montant. Un client donné peut en être dispensé depuis la
+                                        liste des clients.
+                                    </small>
+                                </div>
+
+                                {{-- L'AIRSI (10/09/2026) : acompte prélevé sur le client sans régime réel
+                                     d'imposition (RNI / RSI), calculé sur le HT + TVA, ajouté au net à payer. --}}
+                                <div class="col-lg-4 mb-3">
+                                    <label class="form-label" for="tauxAirsi">Taux de l'AIRSI (%)</label>
+                                    <input type="number" class="form-control" name="taux_airsi" id="tauxAirsi"
+                                           min="0" max="100" step="0.01" value="{{ $config->taux_airsi ?? 5 }}">
+                                    <small class="text-muted">
+                                        Acompte d'impôt sur le revenu du secteur informel : dû par le client
+                                        qui n'a pas déclaré un régime réel (RNI ou RSI), sur le HT + TVA,
+                                        dans la case « Autres taxes » des documents. 5 % par défaut ; à 0, plus
+                                        aucun AIRSI sur les <strong>nouvelles</strong> affaires.
+                                    </small>
                                 </div>
 
                                 <div class="col-lg-4 mb-3">
@@ -478,7 +619,7 @@
                             </div>
 
                             <p class="text-muted mb-3">
-                                <i class="material-icons md-tip" style="vertical-align: middle; font-size: 18px;"></i>
+                                <i class="material-icons md-info" style="vertical-align: middle; font-size: 18px;"></i>
                                 La liste des agences se gère dans
                                 <a href="{{ route('show.agences.index') }}"><strong>Configuration → Agences</strong></a>.
                             </p>
@@ -615,6 +756,125 @@
                         </form>
                     </div>
 
+                    <div class="tab-pane fade" id="tab-entreprise" role="tabpanel" aria-labelledby="tab-entreprise-tab">
+                        <form method="post" action="{{ route('show.parametre') }}">
+                            @csrf
+
+                            {{-- CES CHAMPS EXISTAIENT EN BASE MAIS N'AVAIENT AUCUN ECRAN.
+                                 Les factures et les recus les LISENT depuis toujours ; faute
+                                 de formulaire, personne ne pouvait les corriger, et les
+                                 valeurs enregistrees s'etaient decalees d'une case. --}}
+                            <div class="alert alert-info">
+                                <strong>Ces informations s'impriment sur CHAQUE facture et chaque reçu.</strong>
+                                Laissées vides, les lignes correspondantes sortent vides chez le client.
+                                Le NCC est le plus sensible : il est aussi encodé dans le QR code de la
+                                facture normalisée et sert à préfixer son numéro — un NCC faux produit
+                                des factures que l'administration rejette.
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Raison sociale</label>
+                                    <input class="form-control" type="text" name="raison_sociale"
+                                        placeholder="DALAKOUN SARLU"
+                                        value="{{ $config->raison_sociale }}" />
+                                    <div class="form-text">Le nom legal, tel qu il figure au registre du commerce.</div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">NCC — n° de compte contribuable</label>
+                                    <input class="form-control" type="text" name="ncc"
+                                        placeholder="2507546 J"
+                                        value="{{ $config->ncc }}" />
+                                    <div class="form-text">LE PLUS SENSIBLE : imprime sur la facture, repris en bas a la mention « CC N° », encode dans le QR code que l administration scanne, et utilise pour prefixer le numero de chaque facture normalisee.</div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Régime d’imposition</label>
+                                    <input class="form-control" type="text" name="regime_imposition"
+                                        placeholder="RSI — Regime Simplifie d Imposition"
+                                        value="{{ $config->regime_imposition }}" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Centre des impôts de rattachement</label>
+                                    <input class="form-control" type="text" name="centre_impots"
+                                        placeholder="SAID II Plateaux — Djibi"
+                                        value="{{ $config->centre_impots }}" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">RCCM — registre du commerce</label>
+                                    <input class="form-control" type="text" name="rccm"
+                                        placeholder="CI-ABJ-03-2025-B13-13523"
+                                        value="{{ $config->rccm }}" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Références bancaires</label>
+                                    <input class="form-control" type="text" name="ref_bancaires"
+                                        placeholder="Banque, code guichet, n° de compte, cle"
+                                        value="{{ $config->ref_bancaires }}" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Adresse du siège</label>
+                                    <input class="form-control" type="text" name="adresse_siege"
+                                        placeholder="Abidjan, Cocody Angre…"
+                                        value="{{ $config->adresse_siege }}" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Numéro de téléphone</label>
+                                    <input class="form-control" type="text" name="telephone"
+                                        placeholder="07 00 13 07 98"
+                                        value="{{ $config->telephone }}" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Adresse e-mail de l’entreprise</label>
+                                    <input class="form-control" type="text" name="email_entreprise"
+                                        placeholder="contact@exemple.ci"
+                                        value="{{ $config->email_entreprise }}" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Capital social</label>
+                                    <input class="form-control" type="text" name="capital_social"
+                                        placeholder="20 000 000 FCFA"
+                                        value="{{ $config->capital_social }}" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Numéro CNPS (employeur)</label>
+                                    <input class="form-control" type="text" name="cnps"
+                                        placeholder=""
+                                        value="{{ $config->cnps }}" />
+                                </div>
+                            </div>
+
+                            <button class="btn btn-primary" type="submit">
+                                <i class="material-icons md-check align-middle"></i>
+                                Enregistrer les informations de l'entreprise
+                            </button>
+                        </form>
+                    </div>
+
+                    {{-- ============================================================
+                         ONGLET : JOURNAL D'AUDIT
+                         Le corps vit dans un partiel : il n'existe qu'UNE version
+                         du journal, et l'ancienne adresse « /audit » y renvoie.
+                         ============================================================ --}}
+                    @if ($peutVoirAudit ?? false)
+                        <div class="tab-pane fade" id="tab-audit" role="tabpanel"
+                            aria-labelledby="tab-audit-tab">
+                            <h5 class="mb-1">Journal d'audit</h5>
+                            <p class="text-muted small">
+                                Toutes les opérations d'écriture du back-office : qui a fait
+                                quoi, quand, et depuis quelle adresse.
+                            </p>
+
+                            {{-- Le formulaire de filtre revient ICI, sur cet onglet :
+                                 sans « onglet=audit », filtrer renverrait sur
+                                 « Configuration générale » et la recherche
+                                 semblerait sans effet. --}}
+                            @include('admin.audit._journal', [
+                                'actionFiltre' => route('show.parametre'),
+                                'champsCaches' => ['onglet' => 'audit'],
+                            ])
+                        </div>
+                    @endif
+
                 </div>
                 {{-- /tab-content --}}
 
@@ -627,8 +887,14 @@
          de tab-pane pour éviter les conflits de focus / z-index quand
          deux versions de Bootstrap sont chargées simultanément.
          ============================================================ --}}
+
+    {{-- La fenêtre de détail du journal d'audit, pour la même raison : dans le
+         panneau d'onglet et ouverte par « data-bs-toggle », elle tremblait. --}}
+    @if ($peutVoirAudit ?? false)
+        @include('admin.audit._fenetre-detail')
+    @endif
     @foreach ($clientsAvecPrix as $item)
-        <div class="modal fade param-modal-produits" id="modalProduits-{{ $item->client?->id }}" tabindex="-1"
+        <div class="modal fade param-modal param-modal-produits" id="modalProduits-{{ $item->client?->id }}" tabindex="-1"
             role="dialog" aria-labelledby="modalProduitsLabel-{{ $item->client?->id }}" aria-hidden="true"
             style="display:none;">
             <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
@@ -684,6 +950,34 @@
 
 @section('cssParts')
     <link rel="stylesheet" href="{{ asset('backend/plugins/DataTables/datatables.min.css') }}">
+    <style>
+        /* ===== DE LA LARGEUR POUR LES TABLEAUX =====
+           Le thème pose 3 % de retrait horizontal sur chaque « .content-main ».
+           Cette page en ajoute un TROISIÈME : la carte perdait ainsi près de
+           160 px de largeur utile, de quoi serrer les six colonnes du journal
+           d'audit et ses commandes (recherche, pagination). */
+        .main-wrap > .content-main > .content-main > .content-main {
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+
+        /* Le panneau d'onglet ajoutait encore 12 px de chaque côté. */
+        #parametreTabsContent > .tab-pane#tab-audit {
+            padding-left: 0;
+            padding-right: 0;
+        }
+
+        /* Sur grand écran, le retrait de la carte ne sert plus la lisibilité :
+           il ne fait que rogner le tableau. On le resserre. */
+        @media (min-width: 1200px) {
+            .content-main .card > .card-body { padding-left: 14px; padding-right: 14px; }
+        }
+
+        /* Les commandes du tableau (recherche, pagination) se serrent sur une
+           seule ligne quand la place manque : on les laisse passer à la ligne
+           plutôt que de les tronquer. */
+        #journalAudit_wrapper .dt-layout-row { flex-wrap: wrap; row-gap: .5rem; }
+    </style>
     <link rel="stylesheet" href="{{ asset('backend/assets/css/vendors/select2.min.css') }}">
     <style>
         /* ===== Onglets sur une seule ligne, défilables ===== */
@@ -834,6 +1128,110 @@
     <script src="{{ asset('backend/assets/js/vendors/select2.min.js') }}"></script>
     <script type="text/javascript">
         $(document).ready(function() {
+
+            // ===== ONGLET DEMANDÉ PAR L'ADRESSE (« ?onglet=audit ») =====
+            //
+            // Sans cela, filtrer le journal ramenait sur « Configuration
+            // générale » : le formulaire recharge la page, et Bootstrap
+            // rouvre toujours le premier onglet. L'ancienne adresse « /audit »
+            // s'appuie sur le même mécanisme.
+            (function () {
+                var demande = @js($ongletDemande ?? null);
+                if (!demande) return;
+
+                var bouton = document.getElementById('tab-' + demande + '-tab');
+                if (!bouton) return;
+
+                // On clique le bouton plutôt que d'ajouter les classes à la
+                // main : c'est ainsi que les deux versions de Bootstrap
+                // présentes sur cet écran s'accordent.
+                bouton.click();
+                bouton.scrollIntoView({ block: 'nearest', inline: 'center' });
+            })();
+
+            // ===== JOURNAL D'AUDIT =====
+            (function () {
+                var $table = $('#journalAudit');
+                if (!$table.length) return;
+
+                // Garde-fou : DataTables lève « Requested unknown parameter »
+                // quand le tableau ne porte que la ligne « aucun résultat »,
+                // dont le colspan ne correspond à aucune colonne déclarée.
+                if ($table.find('tbody tr').length > 0 &&
+                    $table.find('tbody tr td[colspan]').length === 0) {
+                    $table.DataTable({
+                        columnDefs: [{ targets: '_all', defaultContent: '-' }],
+                        language: { url: '{{ asset('backend/plugins/DataTables/i18n/fr-FR.json') }}' },
+                        // Le tri vient du serveur (du plus récent au plus
+                        // ancien) : on ne le rejoue pas ici, la date étant au
+                        // format jj/mm/aaaa que DataTables trierait comme du
+                        // texte.
+                        order: [],
+                        pageLength: 25,
+                    });
+
+                    // Un tableau construit dans un onglet MASQUÉ ne connaît pas
+                    // sa largeur : ses colonnes se recalent de travers à
+                    // l'ouverture. On les recalcule au moment où l'onglet
+                    // s'affiche.
+                    $('#tab-audit-tab').on('shown.bs.tab', function () {
+                        $table.DataTable().columns.adjust();
+                    });
+                }
+
+                $(document).on('click', '.voir-audit', function() {
+                    var $b = $(this);
+
+                    $('#auditRecit').text($b.attr('data-recit') || '-');
+
+                    var $corps = $('#auditElements').empty();
+                    var elements = [];
+
+                    try {
+                        elements = JSON.parse($b.attr('data-elements') || '[]');
+                    } catch (e) {
+                        elements = [];
+                    }
+
+                    if (!elements.length) {
+                        $corps.append(
+                            $('<tr>').append(
+                                $('<td>').addClass('text-muted')
+                                    .text('Aucune information supplementaire n a ete enregistree.')
+                            )
+                        );
+                    } else {
+                        elements.forEach(function (el) {
+                            // .text() et non .html() : une valeur saisie par un
+                            // utilisateur ne doit jamais etre interpretee comme
+                            // du balisage dans un ecran d audit.
+                            $corps.append(
+                                $('<tr>')
+                                    .append($('<th>').addClass('text-muted fw-normal')
+                                        .css('width', '40%').text(el.libelle))
+                                    .append($('<td>').addClass('fw-bold').text(el.valeur))
+                            );
+                        });
+                    }
+
+                    $('#auditMethode').text($b.data('methode') || '-');
+                    $('#auditUrl').text($b.data('url') || '-');
+                    $('#auditRoute').text($b.data('route') || '-');
+                    $('#auditAgent').text($b.data('agent') || '-');
+
+                    var donnees = $b.attr('data-donnees');
+                    $('#auditDonnees').text(donnees && donnees.length ? donnees : 'Aucune donnée enregistrée.');
+
+                    // OUVERTURE PAR LE MÉCANISME MANUEL DE CET ÉCRAN.
+                    //
+                    // Le bouton portait « data-bs-toggle="modal" ». Bootstrap 4
+                    // et 5 étant chargés ensemble, les deux répondaient : deux
+                    // voiles superposés et deux pièges à focus concurrents, et
+                    // la fenêtre tremblait. C'est le défaut déjà rencontré sur
+                    // les fenêtres « Voir les produits », et la même réponse.
+                    openParamModal($b.data('modal-id'));
+                });
+            })();
 
             // ===== Barre d'onglets défilante =====
             (function () {
@@ -994,7 +1392,7 @@
             }
 
             function closeParamModal() {
-                $('.param-modal-produits').removeClass('show').css('display', 'none').attr('aria-hidden', 'true');
+                $('.param-modal').removeClass('show').css('display', 'none').attr('aria-hidden', 'true');
                 $('#param-modal-backdrop').remove();
                 $('body').removeClass('modal-open').css('overflow', '');
             }
@@ -1014,15 +1412,15 @@
             });
 
             // Click hors du modal-content -> fermer
-            $(document).on('click', '.param-modal-produits', function (e) {
-                if ($(e.target).is('.param-modal-produits')) {
+            $(document).on('click', '.param-modal', function (e) {
+                if ($(e.target).is('.param-modal')) {
                     closeParamModal();
                 }
             });
 
             // ESC -> fermer
             $(document).on('keydown', function (e) {
-                if (e.key === 'Escape' && $('.param-modal-produits.show').length) {
+                if (e.key === 'Escape' && $('.param-modal.show').length) {
                     closeParamModal();
                 }
             });

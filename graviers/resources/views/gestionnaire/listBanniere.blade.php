@@ -36,6 +36,9 @@
         <div class="col-md-12">
             <div class="card mb-4">
                 <div class="card-body">
+                    <x-export-buttons table-id="listeBannieres"
+                                      filename="liste-des-bannieres"
+                                      title="Liste des bannières" />
                     <div class="table-responsive">
                         <table class="table table-hover table-bordered" id="listeBannieres">
                             <thead>
@@ -65,7 +68,7 @@
                                         <td>{{ $banniere->sous_titre }}</td>
                                         <td class="text-center">{{ $banniere->type_banniere }}</td>
                                         <td class="text-center">
-                                            {{ $banniere->date_heure_decompte ? Carbon::parse($banniere->date_heure_decompte)->format('d/m/Y') : '—' }}
+                                            {{ $banniere->date_heure_decompte ? \Help::dateHeure($banniere->date_heure_decompte) : '—' }}
                                         </td>
                                         <td class="text-center">
                                             {{-- Une bannière à la corbeille n'est plus affichée nulle part,
@@ -123,7 +126,7 @@
                                                       data-confirm-text="La bannière et son image seront supprimées définitivement. Cette action est irréversible.">
                                                     @csrf
                                                     @method('DELETE')
-                                                    <button type="submit" class="btn btn-sm btn-dark" title="Supprimer définitivement">
+                                                    <button type="submit" class="btn btn-sm btn-danger" title="Supprimer définitivement">
                                                         <i class="material-icons md-delete_forever"></i>
                                                     </button>
                                                 </form>

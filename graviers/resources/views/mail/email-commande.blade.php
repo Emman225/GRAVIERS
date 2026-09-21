@@ -12,7 +12,7 @@
           <tr>
             <td align="center" style="padding:20px;">
               <div style="width:80px;height:80px;border-radius:50%;background:#e9e9e9;line-height:80px;text-align:center;font-weight:bold;color:#0b71c8;margin:auto;">
-                <img src="https://graviers.fneconnect.net/frontend/assets/imgs/logo/dalakoun-blanc.png" alt="Logo">
+                <img src="{{ asset('frontend/assets/imgs/logo/dalakoun-blanc.png') }}" alt="Logo">
               </div>
               <h2 style="margin:10px 0 0;font-size:16px;font-weight:bold;">Mon Gravier -- Information de commande</h2>
             </td>
@@ -28,7 +28,7 @@
                   </td>
                   <td width="40%" align="right" style="vertical-align:top;">
                     Numéro: <a href="#" style="color:#0b71c8;text-decoration:none;">{{$commande->numero}}</a><br>
-                    Date Commande: 2025-09-06 00:14:37
+                    Date commande: {{ \Help::dateHeure($commande->date_commande ?? $commande->created_at) }}
                   </td>
                 </tr>
               </table>
@@ -40,13 +40,23 @@
                 <tr>
                   <td width="50%" valign="top">
                     <strong>Adresse de livraison</strong><br>
-                    Angré, Cocody, Abidjan, Côte d'Ivoire
+                    {{ $commande->adresseLivraison?->affichage ?? '-' }}
                   </td>
                   <td width="50%" valign="top">
                     <strong>Mode de livraison</strong><br>
-                    En vrac
+                    {{ \App\Models\TypeLivraison::find($commande->type_livraison_id)?->libelle ?? '-' }}
                   </td>
                 </tr>
+                @if (!empty($commande->date_livraison))
+                <tr>
+                  <td colspan="2" valign="top" style="padding-top:10px;">
+                    <strong>Date de livraison souhaitée</strong><br>
+                    {{ \Carbon\Carbon::parse($commande->date_livraison)->format('d/m/Y') }}<br>
+                    {{-- Le délai toléré (lot 81, 15/09/2026). --}}
+                    <span style="color:#777;font-size:12px;">{{ \Help::mentionDelaiLivraison() }}</span>
+                  </td>
+                </tr>
+                @endif
               </table>
             </td>
           </tr>

@@ -123,34 +123,30 @@
                                         <span class="badge bg-secondary">Désactivé</span>
                                     @endif
                                 </td>
-                                <td class="text-end">
-                                    <div class="dropdown">
-                                        <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm">
-                                            <i class="material-icons md-more_horiz"></i> Actions
-                                        </a>
-                                        <div class="dropdown-menu">
-                                            <a href="{{ route('show.typeVehiculeLivreur.edit', $t) }}" class="dropdown-item">
-                                                <i class="material-icons md-edit"></i> Modifier
+                                <td class="text-nowrap text-end">
+                                            <a href="{{ route('show.typeVehiculeLivreur.edit', $t) }}"
+                                               class="btn btn-sm btn-primary rounded" title="Modifier le type de véhicule">
+                                                <i class="material-icons md-edit"></i>
                                             </a>
-                                            <a href="{{ route('show.typeVehiculeLivreur.toggle', $t) }}" class="dropdown-item">
+                                            <a href="{{ route('show.typeVehiculeLivreur.toggle', $t) }}"
+                                               class="btn btn-sm rounded {{ $t->statut ? 'btn-warning' : 'btn-success' }}"
+                                               title="{{ $t->statut ? 'Désactiver le type' : 'Activer le type' }}">
                                                 @if ($t->statut)
-                                                    <i class="material-icons md-block"></i> Désactiver
+                                                    <i class="material-icons md-block"></i>
                                                 @else
-                                                    <i class="material-icons md-check_circle"></i> Activer
+                                                    <i class="material-icons md-check_circle"></i>
                                                 @endif
                                             </a>
                                             <form action="{{ route('show.typeVehiculeLivreur.destroy', $t) }}" method="POST"
-                                                  class="js-delete-form"
+                                                  class="d-inline js-delete-form"
                                                   data-item-name="{{ $t->libelle }}"
                                                   data-confirm-text="Cette action est irréversible. Impossible si des livreurs y sont rattachés.">
                                                 @csrf
                                                 @method('DELETE')
-                                                <button type="submit" class="dropdown-item text-danger">
-                                                    <i class="material-icons md-delete"></i> Supprimer
+                                                <button type="submit" class="btn btn-sm btn-danger rounded" title="Supprimer le type de véhicule">
+                                                    <i class="material-icons md-delete"></i>
                                                 </button>
                                             </form>
-                                        </div>
-                                    </div>
                                 </td>
                             </tr>
                         @empty

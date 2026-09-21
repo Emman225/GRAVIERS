@@ -209,7 +209,6 @@ h1, h2, h3, h4, h5, h6, .font-heading {
 
 .main-menu > nav > ul > li > a {
     font-family: 'Outfit', sans-serif;
-    text-transform: capitalize;
     border-radius: 8px;
 }
 
@@ -885,3 +884,113 @@ input[type="email"]:focus, input[type="text"]:focus, input[type="password"]:focu
 }
 .swal2-toast .swal2-title { color: #0a2540 !important; font-weight: 600 !important; font-size: 0.9rem !important; }
 
+/* Lot 108 (17/09/2026) — rythme vertical de l'accueil : 80 px au-dessus ET au-dessous de
+   chaque section faisaient jusqu'à 190 px de blanc entre deux blocs (relevé sur la page
+   en ligne). Les sections intermédiaires respirent à 40 px ; le bandeau d'atouts se
+   resserre, et « Achat par catégorie » colle à ses cartes. */
+.popular-categories.section-padding,
+.blocs-mis-en-avant.section-padding { padding-top: 40px; padding-bottom: 40px; }
+.featured.section-padding { padding-top: 30px; padding-bottom: 30px; }
+.popular-categories .section-title { margin-bottom: 30px; }
+.blocs-mis-en-avant .section-title.style-1 { margin-bottom: 20px !important; }
+.featured .banner-left-icon { min-height: 96px; }
+.featured .icon-box-title { font-size: 15px; margin-bottom: 4px; }
+.featured .banner-text p { font-size: 13px; line-height: 1.35; }
+.newsletter .newsletter-inner .newsletter-content h2 { text-transform: none; }
+
+/* Lot 108 ter (17/09/2026) — pied de page moins haut : marges du bloc bleu nuit, des titres
+   de colonnes, des listes et de la barre du bas resserrées ; copyright sur une seule ligne. */
+.footer-mid.section-padding { padding-top: 32px !important; padding-bottom: 12px !important; }
+.footer-mid .widget-title { margin: 6px 0 12px 0 !important; }
+.footer-mid .footer-list li { margin-bottom: 8px; }
+.footer-mid .widget-about .logo { margin-bottom: 12px !important; }
+.footer-mid .widget-about .logo img { max-height: 64px !important; }
+.footer-mid .widget-about .logo a { margin-bottom: 6px !important; display: inline-block; }
+.footer-mid .contact-infor li:not(:last-child) { margin-bottom: 6px; }
+.footer-mid .widget-install-app.mt-30 { margin-top: 16px !important; }
+.footer-mid .widget-install-app p { margin-bottom: 8px; }
+.footer-mid .download-app img { max-height: 40px; }
+footer.main .footer-bottom { margin-top: 0; }
+footer.main .mobile-social-icon h6 { margin-bottom: 0; }
+/* Barre du bas du pied de page : un trait, une ligne. */
+footer.main .barre-du-bas { padding-top: 0; padding-bottom: 6px; }
+footer.main .barre-du-bas .footer-bottom { margin-bottom: 8px; padding-top: 0 !important; } /* le thème posait 20 px au-dessus du trait */
+footer.main .barre-du-bas p.font-sm { line-height: 1.3; }
+footer.main .barre-du-bas .mobile-social-icon { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+footer.main .barre-du-bas .mobile-social-icon h6 { margin: 0 6px 0 0; }
+footer.main .barre-du-bas .mobile-social-icon a { margin: 0; height: 24px; width: 24px; line-height: 24px; }
+footer.main .barre-du-bas .mobile-social-icon a img { width: 22px; height: 22px; }
+footer.main .barre-du-bas p.font-sm:empty { display: none; }
+
+/* Lot 108 quater (17/09/2026) — barre du bas : chaque élément centré verticalement dans sa colonne. */
+footer.main .barre-du-bas .row > [class*="col-"]:not(.col-12) { display: flex; align-items: center; min-height: 28px; }
+footer.main .barre-du-bas .row > .text-end { justify-content: flex-end; }
+footer.main .barre-du-bas p.font-sm { margin: 0; }
+
+/* Bouton « remonter » (#scrollUp, injecté par jquery.scrollUp) : rond de 44 px en dégradé bleu de
+   la charte, chevron blanc, ombre douce. Pas de « display » ici : le plugin le montre après 300 px
+   de défilement et le cache en haut de page. */
+#scrollUp {
+    width: 44px !important; height: 44px !important; right: 24px !important; bottom: 48px !important;
+    text-align: center; line-height: 44px !important;
+    border: 0 !important; border-radius: 50% !important; overflow: visible !important;
+    background: linear-gradient(145deg, #2a6fd1 0%, #1C57A3 55%, #0A2540 100%) !important;
+    color: #fff !important; box-shadow: 0 8px 20px rgba(10, 37, 64, 0.35), inset 0 1px 0 rgba(255,255,255,0.25) !important;
+    transition: transform .2s ease, box-shadow .2s ease !important;
+}
+#scrollUp svg { display: inline-block; vertical-align: middle; }
+#scrollUp i { display: none !important; }
+#scrollUp:hover { transform: translateY(-3px) !important; box-shadow: 0 12px 26px rgba(10, 37, 64, 0.45), inset 0 1px 0 rgba(255,255,255,0.25) !important; }
+
+/* Bouton WhatsApp : icône flottante ronde en bas à droite. En haut de page (bouton « remonter » caché)
+   elle occupe sa place ; dès que « remonter » apparaît (body.avec-remonter, 300 px), elle remonte
+   au-dessus de lui. Le numéro n'est pas affiché : il est dans le lien wa.me. */
+.whatsapp-flottant {
+    position: fixed; right: 24px; bottom: 48px; z-index: 999; width: 44px; height: 44px;
+    display: inline-flex; align-items: center; justify-content: center; border-radius: 50%;
+    background: #25D366; color: #fff !important; box-shadow: 0 6px 18px rgba(37, 211, 102, 0.45);
+    text-decoration: none; transition: transform .2s ease, box-shadow .2s ease, background .2s ease, bottom .25s ease;
+}
+body.avec-remonter .whatsapp-flottant { bottom: 104px; }
+.whatsapp-flottant:hover { transform: translateY(-4px); background: #1ebe5a; color: #fff; box-shadow: 0 10px 22px rgba(30, 190, 90, 0.5); }
+.whatsapp-flottant svg { flex: 0 0 auto; }
+footer.main .barre-du-bas .ck-sep { margin: 0 6px; opacity: .6; }
+footer.main .barre-du-bas .ck-lien-pied { color: inherit; text-decoration: underline; text-underline-offset: 2px; opacity: .85; }
+footer.main .barre-du-bas .ck-lien-pied:hover { opacity: 1; color: var(--premium-primary); }
+
+/* Lot 110 (17/09/2026) — section « applications mobiles » de l'accueil. */
+.section-applications { padding: 56px 0 48px; background: linear-gradient(180deg, #f7f9fc 0%, #ffffff 100%); }
+.appli-entete { text-align: center; max-width: 720px; margin: 0 auto 32px; }
+.appli-sur { display: inline-flex; align-items: center; gap: 8px; background: #e8f0fa; color: #1C57A3; font-weight: 700; font-size: 12.5px;
+    letter-spacing: .6px; text-transform: uppercase; padding: 7px 14px; border-radius: 20px; margin-bottom: 14px; }
+.appli-entete h2 { font-size: 2.1rem; font-weight: 800; color: #0A2540 !important; margin-bottom: 10px; }
+.appli-entete h2::after { content: ""; display: block; width: 64px; height: 4px; border-radius: 2px; background: #FFB300; margin: 12px auto 0; }
+.appli-entete p { color: #56637a; font-size: 1.02rem; line-height: 1.7; margin: 0; }
+.appli-alerte { max-width: 720px; margin: 0 auto 22px; background: #fff7e0; border: 1px solid #ffe2a3; color: #7a5200; border-radius: 12px; padding: 12px 16px; text-align: center; font-weight: 600; }
+.appli-grille { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+@media (max-width: 991px) { .appli-grille { grid-template-columns: 1fr; max-width: 520px; margin: 0 auto; } }
+.appli-carte { position: relative; background: #fff; border: 1px solid #e6ecf4; border-radius: 18px; padding: 28px 26px 24px; display: flex; flex-direction: column;
+    box-shadow: 0 6px 20px rgba(10, 37, 64, .05); transition: transform .2s ease, box-shadow .2s ease; overflow: hidden; }
+.appli-carte::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 6px; background: var(--appli-accent, #1C57A3); }
+.appli-carte--client { --appli-accent: #1C57A3; }
+.appli-carte--livreur { --appli-accent: #25D366; }
+.appli-carte--apporteur { --appli-accent: #FFB300; }
+.appli-carte:hover { transform: translateY(-5px); box-shadow: 0 16px 34px rgba(10, 37, 64, .12); }
+.appli-visuel { height: 300px; margin: -8px -26px 18px; overflow: hidden; display: flex; justify-content: center; align-items: flex-start;
+    background: radial-gradient(120% 90% at 50% 100%, rgba(28, 87, 163, .10) 0%, rgba(28, 87, 163, 0) 70%); }
+.appli-visuel img { width: 260px; height: auto; display: block; margin-top: 18px; transition: transform .35s ease; }
+.appli-carte:hover .appli-visuel img { transform: translateY(-10px); }
+.appli-icone { width: 58px; height: 58px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 26px;
+    color: #fff; background: var(--appli-accent, #1C57A3); margin-bottom: 16px; box-shadow: 0 8px 18px rgba(10, 37, 64, .15); }
+.appli-carte h3 { font-size: 1.35rem; font-weight: 800; color: #0A2540 !important; margin-bottom: 4px; }
+.appli-sous { color: #56637a; margin-bottom: 14px; font-size: 14.5px; }
+.appli-carte ul { list-style: none; margin: 0 0 20px; padding: 0; flex: 1 1 auto; }
+.appli-carte ul li { display: flex; gap: 8px; align-items: flex-start; color: #3a4552; font-size: 14.5px; line-height: 1.5; margin-bottom: 8px; }
+.appli-carte ul li i { color: var(--appli-accent, #1C57A3); margin-top: 3px; font-size: 13px; }
+.appli-bouton { display: inline-flex; align-items: center; justify-content: center; gap: 10px; background: #0A2540; color: #fff !important; font-weight: 700;
+    padding: 13px 18px; border-radius: 30px; text-decoration: none; transition: background .2s ease, transform .2s ease; }
+.appli-bouton:hover { background: #1C57A3; transform: translateY(-2px); }
+.appli-bouton i { font-size: 18px; }
+.appli-carte small { display: block; text-align: center; color: #8794ab; margin-top: 10px; font-size: 12.5px; }
+.appli-note { text-align: center; color: #6b7a90; font-size: 13.5px; margin: 26px auto 0; max-width: 760px; }
+.appli-note i { color: #1C57A3; margin-right: 4px; }

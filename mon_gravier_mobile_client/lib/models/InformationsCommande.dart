@@ -61,7 +61,27 @@ class Data {
   }
 }
 
+/// Codes d'une course acceptée sur la ligne : code de livraison (remis au
+/// livreur) et bon d'enlèvement (remis au fournisseur).
+class CodesLigne {
+  String? codeLivraison;
+  String? codeEnlevement;
+
+  CodesLigne({this.codeLivraison, this.codeEnlevement});
+
+  CodesLigne.fromJson(Map<String, dynamic> json) {
+    codeLivraison = json['code_livraison']?.toString();
+    codeEnlevement = json['code_enlevement']?.toString();
+  }
+
+  Map<String, dynamic> toJson() => {
+        'code_livraison': codeLivraison,
+        'code_enlevement': codeEnlevement,
+      };
+}
+
 class LigneCommande {
+  List<CodesLigne>? codes;
   int? id;
   int? produitId;
   int? commandeId;
@@ -122,6 +142,12 @@ class LigneCommande {
     prixMoyen = double.parse(json['prix_moyen']==null ? '0' : json['prix_moyen'].toString());
     prixReduction = double.parse(json['prix_reduction']==null ? '0' : json['prix_reduction'].toString());
     image = json['image'];
+    if (json['codes'] is List) {
+      codes = (json['codes'] as List)
+          .whereType<Map>()
+          .map((c) => CodesLigne.fromJson(Map<String, dynamic>.from(c)))
+          .toList();
+    }
   }
 
   Map<String, dynamic> toJson() {
@@ -178,6 +204,18 @@ class DataInfosLocation {
   UneLocation? location;
   List<LigneLocation>? lignes;
 
+  /// Le client retire lui-même chez le fournisseur (10/09/2026) : c'est le
+  /// bon d'enlèvement qui compte ; sinon un livreur vient, et c'est le code
+  /// de livraison.
+  bool retraitSurPlace = false;
+
+  /// Codes des courses acceptées de la location, comme pour une commande.
+  List<CodesLigne> codes = [];
+
+  /// Où en est le matériel (10/09/2026) : « Livrée le … », « Retirée le … ».
+  String? etatLivraisonCode;
+  String? etatLivraisonLibelle;
+
   DataInfosLocation({this.clientATerme, this.location, this.lignes});
 
   DataInfosLocation.fromJson(Map<String, dynamic> json) {
@@ -189,6 +227,17 @@ class DataInfosLocation {
       lignes = <LigneLocation>[];
       json['lignes'].forEach((v) {
         lignes!.add(new LigneLocation.fromJson(v));
+      });
+    }
+    retraitSurPlace = json['retrait_sur_place'] == true;
+    if (json['etat_livraison'] is Map) {
+      etatLivraisonCode = json['etat_livraison']['code']?.toString();
+      etatLivraisonLibelle = json['etat_livraison']['libelle']?.toString();
+    }
+    if (json['codes'] != null) {
+      codes = <CodesLigne>[];
+      json['codes'].forEach((v) {
+        codes.add(CodesLigne.fromJson(v));
       });
     }
   }
@@ -219,6 +268,10 @@ class UneLocation {
   double? remise;
   double? montant_tva;
   double? cout_livraison_client;
+  double? tva_transport;
+  double? airsi;
+  /// Numéro de bon de commande interne, figé sur la location (09/09/2026).
+  String? numero_bon_commande;
   int? statut;
   String? deletedAt;
   String? createdAt;
@@ -259,6 +312,8 @@ class UneLocation {
     remise = double.parse(json['remise'] == null ? '0' : json['remise'].toString());
     montant_tva = double.parse(json['montant_tva'] == null ? '0' : json['montant_tva'].toString());
     cout_livraison_client = double.parse(json['cout_livraison_client'] == null ? '0' : json['cout_livraison_client'].toString());
+    tva_transport = double.tryParse(json['tva_transport']?.toString() ?? '0') ?? 0;
+    numero_bon_commande = json['numero_bon_commande']?.toString();
     statut = json['statut'];
     deletedAt = json['deleted_at'];
     createdAt = json['created_at'];

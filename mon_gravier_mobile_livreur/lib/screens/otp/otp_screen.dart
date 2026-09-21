@@ -2,10 +2,10 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../components/bouton_retour.dart';
 import '../../constants.dart';
 
 import '../../globale.dart';
@@ -32,6 +32,7 @@ class _OtpScreenState extends State<OtpScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: const BoutonRetour(),
         title: const Text("OTP Verification"),
       ),
       body: SizedBox(

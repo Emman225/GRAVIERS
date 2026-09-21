@@ -96,15 +96,13 @@
                                             @endif
                                         </td>
                                         <td><span class="fw-bold"> {{$commande->est_livrable == 1 ? 'OUI' : 'NON'}} </span></td>
-                                        <td class="texte-center">{{ $commande->created_at->format('d-m-Y à H:i') }}</td>
+                                        <td class="texte-center">{{ $commande->created_at->format('d/m/Y à H:i:s') }}</td>
 
-                                        <td>
+                                        <td class="text-nowrap">
                                             <div class="dropdown show">
                                                 <a class="btn btn-secondary" href="#" role="button"
                                                     id="dropdownMenuLink" data-toggle="dropdown" aria-haspopup="true"
-                                                    aria-expanded="false">
-                                                    Actions
-                                                </a>
+                                                    aria-expanded="false" title="Actions"><i class="material-icons md-more_horiz"></i></a>
                                                 <div class="dropdown-menu" aria-labelledby="dropdownMenuLink">
                                                     <a href="{{ route('orders.details', $commande->numero) }}"
                                                         class="dropdown-item rounded font-sm">Détails de la commande</a>

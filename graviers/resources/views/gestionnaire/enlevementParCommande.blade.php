@@ -20,7 +20,7 @@
                                 <thead>
                                     <tr>
                                         <th></th>
-                                        <th>Code du bon</th>
+                                        <th>N° du bon</th>
                                         <th>Client</th>
                                         <th>Nom du Fournisseur</th>
                                         <th>livreur</th>
@@ -37,7 +37,8 @@
                                     @foreach ($enlevements as $enlevement)
                                         <tr>
                                             <td><input type="radio" value="{{$enlevement->id}}" class="form-control"></td>
-                                            <td> {{ $enlevement->code_enleve }} </td>
+                                            {{-- N° public du bon ; le code d'enlèvement n'est montré qu'au client et au fournisseur (14/18). --}}
+                                            <td> {{ $enlevement->id }} </td>
                                             <td> {{ $enlevement->livraison?->client?->display_name }} </td>
                                             <td><b> {{ $enlevement->fournisseur?->nom.' '.$enlevement->fournisseur?->prenom }} </b></td>
                                             <td><b> {{ $enlevement->livreur?->nom.' '.$enlevement->livreur?->prenom }} </b></td>

@@ -5,6 +5,8 @@ import 'package:mon_gravier_com_livreur/screens/demande_retrait/liste_demande_re
 import 'package:mon_gravier_com_livreur/screens/modifier_mot_de_passe/modifier_pass_screen.dart';
 import 'package:mon_gravier_com_livreur/screens/sign_in/sign_in_screen.dart';
 
+import '../../constants.dart';
+import '../../../components/bouton_retour.dart';
 import '../../globale.dart';
 import '../../helper/constants.dart';
 import 'components/profile_menu.dart';
@@ -19,6 +21,12 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        // Onglet de la barre du bas : rien à dépiler, le retour
+        // ramène à l'accueil.
+        leading: BoutonRetour(
+          onTap: retourAccueil,
+          tooltip: "Retour à l'accueil",
+        ),
         title: const Text("Mon compte"),
         centerTitle: true,
         automaticallyImplyLeading: false,
@@ -27,33 +35,49 @@ class ProfileScreen extends StatelessWidget {
         child: Container(
                 width: double.infinity,
                 height: heightOfScreen(context),
-                decoration: const BoxDecoration(
-                  image: DecorationImage(
-                    image: AssetImage("assets/images/bg.jpg"),
-                    fit: BoxFit.cover,
-                    opacity: 0.1,
-                  ),
-                ),
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.symmetric(vertical: 20),
                   child: Column(
                     children: [
-                      const ProfilePic(),
-                      Text(user.nom.toString().toUpperCase(),
-                          textAlign: TextAlign.center),
-                      const SizedBox(height: 20),
+                      // L'identité du livreur devient une CARTE : elle était
+                      // posée nue au centre d'une page blanche, le nom dans la
+                      // taille du corps de texte.
+                      Container(
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: kSpaceXl, vertical: kSpaceSm),
+                        padding: const EdgeInsets.all(kSpaceLg),
+                        decoration: BoxDecoration(
+                          color: kSurfaceColor,
+                          borderRadius: BorderRadius.circular(kRadiusMd),
+                          border: Border.all(color: kBorderColor),
+                        ),
+                        child: Column(
+                          children: [
+                            const ProfilePic(),
+                            const SizedBox(height: kSpaceMd),
+                            Text(
+                              user.nom.toString().toUpperCase(),
+                              textAlign: TextAlign.center,
+                              style: kTitreSectionStyle,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const _TitreGroupe("Mon activité"),
                       ProfileMenu(
-                        text: "Demander Retrait",
+                        text: "Demander un retrait",
                         icon: "assets/icons/Cash.svg",
                         press: () => Get.toNamed(ListeDemandeRetraitScreen.routeName),
                       ),
+                      const _TitreGroupe("Mon compte"),
                       ProfileMenu(
-                        text: "Modifier mot de passe",
+                        text: "Modifier mon mot de passe",
                         icon: "assets/icons/Settings.svg",
                         press: () => Get.toNamed(ModifierPasseScreen.routeName, arguments: 1),
                       ),
                       ProfileMenu(
-                        text: "Déconnexion",
+                        text: "Me déconnecter",
+                        destructif: true,
                         icon: "assets/icons/Log out.svg",
                         press: () {
                           lireOuEcrireDonnee("token", '', 1);
@@ -67,15 +91,38 @@ class ProfileScreen extends StatelessWidget {
                       const Padding(
                         padding: EdgeInsets.only(top: 24, bottom: 12),
                         child: Text(
-                          "Version $versionApplication",
+                          "MON GRAVIER — version $versionApplication",
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey, fontSize: 12),
+                          style: kLegendeStyle,
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
+      ),
+    );
+  }
+}
+
+/// Intitulé de groupe : sépare l'activité du livreur des réglages de son
+/// compte. La page empilait auparavant tous les boutons sans distinction.
+class _TitreGroupe extends StatelessWidget {
+  const _TitreGroupe(this.texte);
+
+  final String texte;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding:
+          const EdgeInsets.fromLTRB(kSpaceXl, kSpaceXl, kSpaceXl, kSpaceSm),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          texte.toUpperCase(),
+          style: kEtiquetteStyle.copyWith(color: kTextMutedColor),
+        ),
       ),
     );
   }

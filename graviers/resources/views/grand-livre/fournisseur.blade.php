@@ -21,6 +21,9 @@
         </header> --}}
         <!-- card-header end// -->
         <div class="card-body">
+            <x-export-buttons table-id="liste"
+                              filename="grand-livre-fournisseurs"
+                              title="Grand livre — fournisseurs" />
             <div class="table-responsive">
                 <table class="table table-striped" id="liste">
                     {{-- @dd($founisseurs) --}}
@@ -71,8 +74,8 @@
                                 {{-- <td class="text-end">
                                     <a href="{{route('show.editSellers',$fournisseur->id)}}" class="btn btn-sm btn-brand rounded font-sm mt-15">Modifier les infos</a>
                                 </td> --}}
-                                <td class="text-end">
-                                    <a href="{{route('show.bonParFournisseur',$fournisseur)}}" class="btn btn-sm btn-brand rounded font-sm mt-15">Détails des enlèvements</a>
+                                <td class="text-nowrap text-end">
+                                    <a href="{{route('show.bonParFournisseur',$fournisseur)}}" class="btn btn-sm btn-info rounded font-sm mt-15" title="Détails des enlèvements"><i class="material-icons md-local_shipping"></i></a>
                                 </td>
 
                             </tr>

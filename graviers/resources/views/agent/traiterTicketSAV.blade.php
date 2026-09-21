@@ -18,7 +18,7 @@
                 <div class="col-md-6">
                     <p class="mb-1"><strong>Client :</strong> {{ $ticket->client?->display_name }}</p>
                     <p class="mb-1"><strong>Produit concerné :</strong> {{ $ticket->detailCommande?->produit?->nom ?? '-' }}</p>
-                    <p class="mb-1"><strong>Ouvert le :</strong> {{ Carbon::parse($ticket->created_at)->format('d/m/Y H:i') }}</p>
+                    <p class="mb-1"><strong>Ouvert le :</strong> {{ Carbon::parse($ticket->created_at)->format('d/m/Y H:i:s') }}</p>
                 </div>
                 <div class="col-md-6 text-md-end">
                     <p class="mb-1"><strong>Statut :</strong>

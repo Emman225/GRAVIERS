@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:item_count_number_button/item_count_number_button.dart';
 import 'package:mon_gravier_com/helper/constants.dart';
 
+import '../../../components/compteur_quantite.dart';
 import '../../../constants.dart';
-import '../../../globale.dart';
 import '../../../models/Cart.dart';
 
 class CartCard extends StatefulWidget {
@@ -49,13 +48,13 @@ class _CartCardState extends State<CartCard> {
               )
             ],
           ),
-          ItemCount(
-            initialValue: widget.cart.numOfItem,
-            minValue: 1,
-            maxValue: 1000,
-            decimalPlaces: 1,
-            step: 0.1,
-            color: primaryColor,
+          CompteurQuantite(
+            valeurInitiale: widget.cart.numOfItem,
+            minimum: 1,
+            maximum: 1000,
+            decimales: 1,
+            pas: 0.1,
+            couleur: kPrimaryColor,
             onChanged: (value) {
               setState(() {
                 var val = value.toDouble().toStringAsFixed(1);

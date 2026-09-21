@@ -95,10 +95,21 @@ class ModePaiement extends Model
      * que ce drapeau n'est pas fiable : en production, « Carte bancaire » et
      * « Virement bancaire » sont marqués en ligne et repassaient donc dans la liste.
      * Le libellé, lui, dit ce que la chose EST.
+     *
+     * LE PLAFOND DU PAIEMENT EN LIGNE.
+     *
+     * Passer le montant de l'affaire retire les modes en ligne au-delà du
+     * plafond : il ne sert à rien de proposer un règlement que la suite du
+     * parcours refusera. Le client lisait déjà la phrase d'avertissement, mais
+     * le menu continuait de lui offrir Orange Money ou Wave.
+     *
+     * Le tri se fait sur `en_ligne`, le même drapeau que celui qui décide
+     * d'appeler la passerelle : le menu propose donc exactement ce que le
+     * parcours acceptera, quelle que soit la valeur de ce drapeau en ligne.
      */
-    public static function listePourClient()
+    public static function listePourClient($montant = null)
     {
-        return ModePaiement::orderBy('libelle', 'asc')
+        $modes = ModePaiement::orderBy('libelle', 'asc')
             ->where('statut', Help::$STATUT_ACTIF)
             ->where('id', '!=', 1)
             ->where(function ($query) {
@@ -115,6 +126,14 @@ class ModePaiement extends Model
                     });
             })
             ->get();
+
+        if ($montant !== null && \App\Support\PlafondPaiementEnLigne::depasse($montant)) {
+            $modes = $modes->filter(
+                fn ($mode) => \App\Support\PlafondPaiementEnLigne::modeAutorise($mode, $montant)
+            )->values();
+        }
+
+        return $modes;
     }
 
     /**
@@ -139,6 +158,28 @@ class ModePaiement extends Model
 
     // Liste COMPLÈTE des modes actifs (y compris "En Agence") — pour l'admin/technique,
     // pas pour les selects de paiement client.
+    /**
+     * MODES PROPOSÉS À L'APPORTEUR D'AFFAIRE.
+     *
+     * C'est une préférence de VERSEMENT : comment l'apporteur souhaite toucher
+     * sa commission. « En agence » n'est pas un instrument mais un lieu, et il
+     * n'a aucun sens ici — on ne verse pas une commission « en agence » au sens
+     * d'un moyen de paiement.
+     *
+     * Règle identique à celle de l'API (ModePaiement::listePourApporteur de
+     * apigravier), qui sert la liste à l'application mobile de l'apporteur : les
+     * deux formulaires doivent proposer exactement les mêmes choix, sans quoi un
+     * apporteur inscrit depuis le site aurait une préférence introuvable dans
+     * l'application.
+     */
+    public static function listePourApporteur()
+    {
+        return ModePaiement::orderBy('libelle', 'asc')
+            ->where('statut', Help::$STATUT_ACTIF)
+            ->where('libelle', 'not like', '%agence%')
+            ->get();
+    }
+
     public static function listeTous()
     {
         return ModePaiement::orderBy('libelle', 'asc')

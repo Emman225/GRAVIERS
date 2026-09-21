@@ -50,7 +50,7 @@
 
                     <div class="parametre-info-grid">
                         <div class="parametre-info-row">
-                            <i class="material-icons md-percent text-primary"></i>
+                            <i class="material-icons md-pie_chart text-primary"></i>
                             <div class="text-start">
                                 <div class="parametre-info-label">Pourcentage</div>
                                 <div class="parametre-info-value">{{ $apporteur->pourcentage }}%</div>
@@ -120,7 +120,7 @@
                             </div>
 
                             <div class="col-md-6">
-                                <label class="premium-field-label"><i class="material-icons md-percent"></i> Pourcentage de commission</label>
+                                <label class="premium-field-label"><i class="material-icons md-pie_chart"></i> Pourcentage de commission</label>
                                 <div class="input-group">
                                     <input class="form-control fw-bold text-center" disabled type="text"
                                            value="{{ $apporteur->pourcentage }}" />

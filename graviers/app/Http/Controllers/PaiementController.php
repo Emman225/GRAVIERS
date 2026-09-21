@@ -12,6 +12,7 @@ use App\Models\Client;
 
 use App\Models\Commande;
 use App\Models\CommissionApporteur;
+use App\Support\AffaireCommissionnable;
 use App\Models\Configuration;
 use App\Models\Devis;
 use App\Models\Facture;
@@ -75,6 +76,34 @@ class PaiementController extends Controller
 
     public function facture($ligne, $action){
 
+        // LE REÇU DU CLIENT EST CELUI DU GUICHET (07/09/2026).
+        //
+        // Cette page rendait un document au dessin d'une facture, dont la
+        // désignation portait le CODE interne du paiement (PAY-…) et non le
+        // numéro de la commande. Le client demandait un reçu au modèle de
+        // l'agence (/recu/{id}), avec le numéro de sa commande : c'est
+        // désormais le même document, produit par RecuPaiement.
+        $lignePaiement = LignePaiement::find($ligne);
+        $paiementRecu  = $lignePaiement?->paiement;
+        if ($paiementRecu) {
+            // Un client ne voit que ses propres reçus ; l'écran des
+            // paiements du back-office, lui, les voit tous.
+            $utilisateur = Auth::user();
+            if ($utilisateur && (int) $utilisateur->type_user_id === (int) Help::$USER_CLIENT) {
+                $clientConnecte = \App\Models\Client::where('user_id', $utilisateur->id)->first();
+                abort_unless($clientConnecte && (int) $clientConnecte->id === (int) $paiementRecu->client_id, 403);
+            }
+
+            $numeroRecu = $paiementRecu->numero_recu
+                ?: (\App\Services\RecuPaiement::estEnLigne($paiementRecu)
+                    ? \App\Services\RecuPaiement::attribuerNumeroSiAbsent($paiementRecu)
+                    : ($paiementRecu->code ?? $paiementRecu->id));
+            $pdfRecu = \App\Services\RecuPaiement::pdf($paiementRecu);
+            $nomRecu = 'Recu_' . $numeroRecu . '.pdf';
+
+            return $action == 'voir' ? $pdfRecu->stream($nomRecu) : $pdfRecu->download($nomRecu);
+        }
+
         // if(gettype($ligne) == 'string'){
         //    $data['ligne'] = LignePaiement::where('reference',$ligne)->first();
         // }elseif(gettype($ligne) == 'integer'){
@@ -97,6 +126,20 @@ class PaiementController extends Controller
         $paiementRecu = optional($data['ligne'])->paiement;
         $data['fne_numero'] = optional($paiementRecu)->numero_recu
             ?: (optional($paiementRecu)->code ?: (optional($data['ligne'])->reference ?: ''));
+
+        // LA PART FISCALE DU REGLEMENT, AU LIEU D'UNE TVA ECRITE A ZERO.
+        //
+        // Le recu annoncait « TOTAL HT = montant encaisse », « TVA 0 »,
+        // « TOTAL TTC = le meme montant », et un resume fiscal affirmant
+        // « TVA exo.leg — Pas de TVA sur HT 00,00% ». Autrement dit : il
+        // declarait une exoneration sur des reglements qui, eux, contenaient
+        // bien de la TVA. Le montant encaisse est un TTC presente comme un HT.
+        //
+        // On repart de l'affaire reglee — vente, location ou transport — qui
+        // porte son propre montant de TVA, et on en prend la part
+        // proportionnelle a ce qui a ete encaisse : un client qui regle la
+        // moitie de sa commande a acquitte la moitie de sa TVA.
+        $data = array_merge($data, $this->partFiscaleDuReglement($data['ligne']));
 
         $pdf = PDF::loadView('document.facture',$data);
 
@@ -700,12 +743,148 @@ class PaiementController extends Controller
 
     }
 
+    /**
+     * CE QUE CONTIENT REELLEMENT UN REGLEMENT : HT, TVA, TTC.
+     *
+     * `ligne_paiement.montant` est ce que le client a VERSE — donc un TTC. Le
+     * recu le presentait comme un HT avec une TVA nulle.
+     *
+     * La TVA se lit sur l'affaire reglee, jamais recalculee ici : chaque type
+     * d'affaire a sa propre regle (la TVA du transport est meme optionnelle),
+     * et la reproduire serait s'exposer a deux verites differentes.
+     *
+     * Le prorata traite les reglements partiels : la TVA acquittee suit la
+     * part versee. Si le total de l'affaire est introuvable ou nul, on ne
+     * devine pas — on rend le montant en TTC avec une TVA a zero, ce qui
+     * revient a l'ancien comportement mais seulement dans ce cas-la.
+     */
+    private function partFiscaleDuReglement($ligne): array
+    {
+        $verse = (float) optional($ligne)->montant;
+        $paiement = optional($ligne)->paiement;
+
+        $affaire = null;
+        switch (optional($paiement)->service) {
+            case Help::$COMMANDE:
+                $affaire = Commande::find($paiement->service_id);
+                $tvaAffaire = (float) (optional($affaire)->TvaCommande->montant ?? 0);
+                break;
+            case Help::$LOCATION:
+                $affaire = \App\Models\Location::find($paiement->service_id);
+                $tvaAffaire = (float) (optional($affaire)->tvaLocation->montant ?? 0);
+                break;
+            case Help::$LIVRAISON:
+                $affaire = \App\Models\DemandeLivraison::find($paiement->service_id);
+                $tvaAffaire = (float) \App\Models\TvaCommande::where('commande_id', $paiement->service_id)
+                    ->where('type_affaire', Help::$LIVRAISON)
+                    ->where('statut', Help::$STATUT_ACTIF)
+                    ->sum('montant');
+                break;
+            default:
+                $tvaAffaire = 0.0;
+        }
+
+        $totalAffaire = $affaire ? (float) $affaire->montantAPayer() : 0.0;
+        $taux = (float) (Configuration::first()->tva ?? 0);
+
+        if ($totalAffaire <= 0 || $tvaAffaire <= 0 || $taux <= 0) {
+            return [
+                'total_ht'       => $verse,
+                'total_tva'      => 0.0,
+                'total_ttc'      => $verse,
+                'taux_tva'       => 0.0,
+                'base_taxee'     => 0.0,
+                'base_non_taxee' => $verse,
+            ];
+        }
+
+        // DEUX BASES, ET NON UNE SEULE.
+        //
+        // Un reglement couvre de la marchandise — taxee — et un transport qui,
+        // lui, ne l'est pas (la TVA sur le transport est une option, desactivee
+        // par defaut). Ramener le tout a un seul taux donnait des valeurs
+        // absurdes sur le resume fiscal : 17,14 %, 10,91 %, 16,53 % selon la
+        // part de livraison. Aucune de ces valeurs n'est un taux de TVA.
+        //
+        // La base taxee se DEDUIT de la TVA elle-meme : au taux en vigueur,
+        // 18 F de TVA correspondent a 100 F de marchandise. Le reste du total —
+        // livraison, moins la remise — forme la base non taxee. La somme des
+        // deux plus la TVA redonne exactement le total de l'affaire.
+        $part = $verse / $totalAffaire;
+
+        $baseTaxee    = $tvaAffaire / ($taux / 100);
+        $baseNonTaxee = $totalAffaire - $baseTaxee - $tvaAffaire;
+
+        $tva = round($tvaAffaire * $part);
+        $bt  = round($baseTaxee * $part);
+        $bnt = round($verse - $tva - $bt);
+
+        return [
+            'total_ht'       => $bt + $bnt,
+            'total_tva'      => $tva,
+            'total_ttc'      => round($verse),
+            'taux_tva'       => $taux,
+            'base_taxee'     => $bt,
+            'base_non_taxee' => $bnt,
+        ];
+    }
+
     private function addCommission($apporteur, $l){
         if($apporteur){
             $taux = $this->resolveTauxCommission($apporteur);
+            // LA CIBLE DE LA COMMISSION SE RESOUT EN DEUX TEMPS.
+            //
+            // Constate en production le 28/08/2026 : trois commissions portaient
+            // `commande_id = NULL`, et l'application apporteur affichait
+            // « null null (# null) — Total : 0 F ». Le montant, lui, etait juste.
+            //
+            // La chaine : le reglement porte sur une FACTURE, la facture peut
+            // n'avoir aucun `service_id` (colonne nullable), le paiement herite
+            // de ce vide, et la commission avec lui. Rien ne le controlait.
+            //
+            // On lit donc le paiement, PUIS la facture en second recours. Le
+            // type d'affaire suit la meme source : `commande_id` est polymorphe,
+            // et l'annoncer faux est pire que de l'ignorer.
+            $paiement = $l->paiement;
+            $facture  = optional($paiement)->facture;
+
+            // LA LIGNE DE REGLEMENT SAIT DEJA SUR QUOI ELLE PORTE.
+            //
+            // Ses `service` / `service_id` sont renseignes par CHACUN des
+            // points d'appel, juste avant l'appel. On les lisait pourtant en
+            // dernier, apres deux sauts de relation qui peuvent echouer.
+            $cible   = $l->service_id ?: (optional($paiement)->service_id ?: optional($facture)->service_id);
+            $service = $l->service    ?: (optional($paiement)->service    ?: optional($facture)->service);
+
+            // ON NE COMMISSIONNE QUE CE QUI PEUT ETRE RATTACHE.
+            //
+            // Une demande de livraison ne se commissionne pas — le guichet des
+            // livraisons n'en cree aucune —, et une affaire introuvable ne se
+            // commissionne pas davantage : la commission crediterait le solde
+            // de l'apporteur sans justification tracable, et s'afficherait
+            // sans client sur son telephone.
+            //
+            // On journalise plutot que de creer : une commission absente se
+            // rattrape, une commission fausse se propage.
+            $type = AffaireCommissionnable::typeSiRattachable($service, $cible);
+
+            if (!$type) {
+                \Log::warning('Commission non creee : affaire non commissionnable', [
+                    'apporteur_id'    => $apporteur->id,
+                    'ligne_paiement'  => $l->id,
+                    'paiement_id'     => optional($paiement)->id,
+                    'facture_id'      => optional($facture)->id,
+                    'service'         => $service,
+                    'service_id'      => $cible,
+                    'montant_ecarte'  => round($l->montant * $taux / 100),
+                ]);
+                return;
+            }
+
             $commission = new CommissionApporteur;
-            $commission->commande_id = $l->paiement->service_id;
+            $commission->commande_id  = $cible;
             $commission->apporteur_id = $apporteur->id;
+            $commission->type_affaire = $type;
             // Arrondi au franc entier : le FCFA n'a pas de decimales (meme
             // convention que PaiementEnLigne).
             $commission->montant = round($l->montant * $taux / 100);

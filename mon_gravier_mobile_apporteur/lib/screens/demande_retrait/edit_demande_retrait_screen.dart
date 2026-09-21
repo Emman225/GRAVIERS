@@ -1,11 +1,11 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:mon_gravier_com_apporteur/models/retour_liste_demande_paiement.dart';
 import 'package:select_searchable_list/select_searchable_list.dart';
+import '../../../components/bouton_retour.dart';
 import '../../../globale.dart';
 import '../../../helper/constants.dart';
 import '../../components/separateur_de_milier.dart';
@@ -70,40 +70,13 @@ class _EditDemandeRetraitScreenState extends State<EditDemandeRetraitScreen> {
       appBar: AppBar(
         title: const Text(
           "Demander un paiement",
-          style: TextStyle(color: Colors.black),
         ),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       body: Container(
         width: double.infinity,
         height: heightOfScreen(context),
-        decoration: const BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage("assets/images/bg.jpg"),
-            fit: BoxFit.cover,
-            opacity: 0.1,
-          ),
-        ),
         child: ListView(
           physics: const BouncingScrollPhysics(),
           children: [
@@ -112,7 +85,7 @@ class _EditDemandeRetraitScreenState extends State<EditDemandeRetraitScreen> {
               padding: const EdgeInsets.all(8.0),
               child: DropDownTextField(
                 textEditingController: modePaiementController,
-                title: 'Mode de paiement',
+                title: 'Mode de paiement *',
                 hint: 'Choisir un mode de paiement',
                 options: {
                   for (var p in _listModePaiement)
@@ -135,7 +108,7 @@ class _EditDemandeRetraitScreenState extends State<EditDemandeRetraitScreen> {
                 controller: montantController,
                 textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
-                  labelText: "Montant",
+                  labelText: "Montant *",
                   hintText: "Saisissez le montant ici...",
                 ),
               ),
@@ -147,7 +120,7 @@ class _EditDemandeRetraitScreenState extends State<EditDemandeRetraitScreen> {
                 controller: compteController,
                 textInputAction: TextInputAction.done,
                 decoration: const InputDecoration(
-                  labelText: "Numéro de compte / Téléphone",
+                  labelText: "Numéro de compte / Téléphone *",
                   hintText: "Saisissez le Num de compte ici...",
                 ),
               ),
@@ -211,6 +184,8 @@ class _EditDemandeRetraitScreenState extends State<EditDemandeRetraitScreen> {
               _montant = 0;
             });
             afficherSucces(datas['message']);
+            // Le solde et la liste des reglements de l'accueil changent.
+            rafraichirAccueil?.call();
           } else {
             afficherErreur(datas['message']);
           }

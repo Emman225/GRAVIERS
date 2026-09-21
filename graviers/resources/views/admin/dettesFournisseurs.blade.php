@@ -44,7 +44,7 @@
                                 <td class="text-end text-danger">
                                     <strong>{{ Help::formatNombre($fournisseur->solde, true) }}</strong>
                                 </td>
-                                <td class="text-center">
+                                <td class="text-nowrap text-center">
                                     <button type="button" class="btn btn-sm btn-outline-secondary btn-historique-fournisseur"
                                             data-fournisseur-id="{{ $fournisseur->id }}">
                                         <i class="material-icons md-history align-middle"></i>
@@ -55,7 +55,7 @@
                                             <thead>
                                                 <tr>
                                                     <th>Date</th>
-                                                    <th>Code bon</th>
+                                                    <th>N° bon</th>
                                                     <th>Produit</th>
                                                     <th class="text-end">Qté</th>
                                                     <th class="text-end">Qté servie</th>
@@ -64,8 +64,9 @@
                                             <tbody>
                                                 @foreach ($fournisseur->enlevements as $e)
                                                     <tr>
-                                                        <td>{{ \Carbon\Carbon::parse($e->created_at)->format('d/m/Y') }}</td>
-                                                        <td>{{ $e->code_enleve }}</td>
+                                                        <td>{{ \Help::dateHeure($e->created_at) }}</td>
+                                                        {{-- Le code d'enlèvement n'est montré qu'au client et au fournisseur (14/18). --}}
+                                                        <td>{{ $e->id }}</td>
                                                         <td>{{ $e->produit?->nom ?? '-' }}</td>
                                                         <td class="text-end">{{ $e->qte }}</td>
                                                         <td class="text-end">{{ $e->qte_servi ?? '-' }}</td>
@@ -75,7 +76,7 @@
                                         </table>
                                     </div>
                                 </td>
-                                <td class="text-center">
+                                <td class="text-nowrap text-center">
                                     {{-- Le règlement se fait au guichet, qui porte la double
                                          validation, les reçus et l'imputation sur les pièces.
                                          Le popup local écrivait par un autre chemin. --}}

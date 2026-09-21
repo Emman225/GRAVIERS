@@ -32,6 +32,9 @@
         </header>
         <!-- card-header end// -->
         <div class="card-body">
+            <x-export-buttons table-id="liste"
+                              filename="grand-livre-clients-a-terme"
+                              title="Grand livre — clients à terme" />
             <div class="table-responsive">
                 <table class="table table-striped" id="liste">
                     {{-- @dd($founisseurs) --}}

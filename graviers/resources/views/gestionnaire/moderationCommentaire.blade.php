@@ -42,8 +42,11 @@
     </header>
     <!-- card-header end// -->
     <div class="card-body">
+        <x-export-buttons table-id="listeModerationProduits"
+                          filename="moderation-commentaires-produits"
+                          title="Modération des commentaires produits" />
         <div class="table-responsive">
-            <table class="table table-striped">
+            <table class="table table-striped" id="listeModerationProduits">
                 <thead>
                     <tr>
                         <th>#ID</th>
@@ -78,7 +81,7 @@
                                 </ul>
                             </td>
 
-                            <td>{{Carbon::parse($note->created_at)->format('d-m-Y à H:i')}}</td>
+                            <td>{{Carbon::parse($note->created_at)->format('d/m/Y à H:i:s')}}</td>
                             <td>
                                 @switch($note->statut)
                                     @case(1)
@@ -94,7 +97,7 @@
 
                                 @endswitch
                             </td>
-                            <td class="text-end">
+                            <td class="text-nowrap text-end">
                                 {{-- <a href="#" class="btn btn-md rounded font-sm">Detail</a> --}}
                                 <div class="dropdown">
                                     <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm"> <i class="material-icons md-more_horiz"></i> </a>

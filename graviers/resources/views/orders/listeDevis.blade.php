@@ -69,11 +69,11 @@
                                              @if($d->cout_livraison > 0 ) {{number_format($d->cout_livraison, '0','', ' ')}} fcfa @else <span class="fw-bold"> Pas à livrer </span> @endif
                                         </td>
                                         {{-- <td><span class="fw-bold"> {{$d->cout_livraison > 0 ? 'OUI' : 'NON'}} </span></td> --}}
-                                        <td class="texte-center">{{ $d->created_at->format('d-m-Y à H:i') }}</td>
+                                        <td class="texte-center">{{ $d->created_at->format('d/m/Y à H:i:s') }}</td>
                                         <td><span class="badge bg-{{ $d->statut == 1 ? 'secondary' : 'success' }}">{{ $d->statut == 1 ? 'En attente' : 'Commandé' }} </span>
                                         </td>
-                                        <td>
-                                            <a href="{{ route('orders.detailDevis', $d) }}" class="btn btn-primary"> Détail </a>
+                                        <td class="text-nowrap">
+                                            <a href="{{ route('orders.detailDevis', $d) }}" class="btn btn-primary" title="Détail"><i class="material-icons md-more_horiz"></i></a>
                                         </td>
                                     </tr>
                                 @endforeach

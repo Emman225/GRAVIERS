@@ -122,17 +122,19 @@
                                                     </div>
                                                 </td>
 
-                                                <td class="price" data-title="Sous-total">
-                                                    <div class="detail-extralink mr-15">
-                                                        <div class="radius w-100 border-bleu">
-
-                                                            <input type="text" id="montant"
-                                                                min="{{ $produit->price }}" name="montant[]"
-                                                                class="qty-val"
-                                                                value="{{ $produit->price * $produit->qty }}"
-                                                                min="1">
-
-                                                        </div>
+                                                {{-- LE MONTANT DOIT SE LIRE EN ENTIER (10/09/2026). Le cadre bleu
+                                                     (.border-bleu : 50 px de marges intérieures) dans une cellule
+                                                     étroite laissait 54 px au champ pour un nombre qui en demande
+                                                     104 : le client ne voyait que « 1 ». Le champ prend toute la
+                                                     largeur d'une cellule qui a la sienne, sans marges superflues. --}}
+                                                <td class="price panier-location-montant" data-title="Sous-total">
+                                                    <div class="panier-location-montant__cadre border-bleu">
+                                                        <input type="text" id="montant"
+                                                            min="{{ $produit->price }}" name="montant[]"
+                                                            class="qty-val panier-location-montant__champ"
+                                                            value="{{ $produit->price * $produit->qty }}"
+                                                            inputmode="numeric" autocomplete="off"
+                                                            aria-label="Sous-total par jour">
                                                     </div>
                                                     <h4 class="text-brand"> fcfa
                                                     </h4>
@@ -245,6 +247,20 @@
     </main>
 @endsection
 
+@section('cssPart')
+    <style>
+        /* Sous-total du panier de location : un champ qui montre tout le montant (10/09/2026). */
+        td.panier-location-montant { min-width: 190px; }
+        .panier-location-montant__cadre.border-bleu { padding: 8px 10px; margin: 0 0 8px 0; }
+        .panier-location-montant__champ.qty-val,
+        .detail-info .detail-qty input.panier-location-montant__champ.qty-val {
+            width: 100% !important; min-width: 120px; text-align: center;
+            font-weight: 700; font-size: 1.05rem; color: #1C57A3;
+            border: 0; background: transparent; outline: none; box-shadow: none;
+        }
+    </style>
+@endsection
+
 @section('jspart')
     <script>
         var map = L.map('map').setView([51.505, -0.09], 13);
@@ -280,7 +296,7 @@
                         console.log("Response:", response);
 
                         if (response.qte < 0.1) {
-                            alert('La quantité doit être supérieure à 0.');
+                            alerte('La quantité doit être supérieure à 0.');
                             return;
                         }
 
@@ -295,7 +311,7 @@
                     }
                 },
                 error: function () {
-                    alert('Une erreur est survenue lors de la mise à jour du total.');
+                    alerte('Une erreur est survenue lors de la mise à jour du total.');
                 }
             });
 
@@ -358,7 +374,7 @@
                     }
                 },
                 error: function () {
-                    alert('Une erreur est survenue.');
+                    alerte('Une erreur est survenue.');
                 }
             });
         }

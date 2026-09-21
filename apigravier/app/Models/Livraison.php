@@ -208,4 +208,30 @@ class Livraison extends Model
     {
         return $this->hasOne(Enlevement::class, 'livraison_id');
     }
+
+    /**
+     * CE QUI A RÉELLEMENT ÉTÉ REMIS SUR CETTE COURSE.
+     *
+     * `qte` est la quantité DEMANDÉE : celle que le gestionnaire a inscrite au
+     * traitement, et qui figure sur le bon d'enlèvement. Le fournisseur peut en
+     * servir moins — c'est le cas courant d'un enlèvement partiel, et le
+     * reliquat reste dû.
+     *
+     * Créditer le client de la quantité demandée clôturait la commande alors
+     * qu'il manquait de la marchandise : constaté sur la commande 627042, où
+     * 5 t servies sur 15 faisaient passer la commande en TERMINEE.
+     *
+     * Sans bon — une location, une demande de livraison — il n'y a pas de
+     * fournisseur, et la quantité de la course fait foi.
+     */
+    public function quantiteRemise(): float
+    {
+        $bon = $this->enlevement;
+
+        if (!$bon) {
+            return (float) $this->qte;
+        }
+
+        return $bon->qte_servi !== null ? (float) $bon->qte_servi : (float) $bon->qte;
+    }
 }

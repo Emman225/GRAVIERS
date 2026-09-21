@@ -34,6 +34,9 @@
         </header>
 
         <div class="card-body">
+            <x-export-buttons table-id="liste"
+                              filename="demandes-de-livraison"
+                              title="Demandes de livraison" />
             <div class="table-responsive">
                 <table class="table table-striped" id="liste">
 
@@ -115,10 +118,24 @@
                                             <br>
                                             <span class="badge bg-danger mt-1">Refus livreur - a reaffecter</span>
                                         @endif
+
+                                        {{-- L'avancement, ligne par ligne. « EN TRAITEMENT »
+                                             ne disait pas si la marchandise etait partie :
+                                             une demande livree a moitie et une demande dont
+                                             rien n'a bouge portaient le meme mot. --}}
+                                        @foreach ($livraison->detailLivraison as $uneLigne)
+                                            @if ($uneLigne->qteLivree() > 0)
+                                                <br>
+                                                <small class="{{ $uneLigne->estEntierementLivree() ? 'text-success' : 'text-muted' }}">
+                                                    {{ ucfirst($uneLigne->nom_produit) }} :
+                                                    {{ $uneLigne->qteLivree() }}/{{ $uneLigne->qte }} livré
+                                                </small>
+                                            @endif
+                                        @endforeach
                                     </td>
                                     {{-- <td class="text-center"> {{$livraison->detailLivraison->poids_vehicule_souhaite}}t </td> --}}
-                                    <td class="text-center fw_bold"> {{Carbon::parse($livraison->created_at)->format('d-m-Y à H:i')}} </td>
-                                    <td class="text-center"> <a href="{{route('show.traitelivraisonPage',$livraison)}}" class="btn btn-primary"> traiter la demande</a> </td>
+                                    <td class="text-center fw_bold"> {{Carbon::parse($livraison->created_at)->format('d/m/Y à H:i:s')}} </td>
+                                    <td class="text-nowrap text-center"> <a href="{{route('show.traitelivraisonPage',$livraison)}}" class="btn btn-primary" title="traiter la demande"><i class="material-icons md-play_arrow"></i></a> </td>
                                 </tr>
                             @endif
                         @endforeach

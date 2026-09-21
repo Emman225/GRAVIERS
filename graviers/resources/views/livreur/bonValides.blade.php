@@ -40,7 +40,7 @@
         </div>
         <div class="col-xl-6 col-md-6">
             <div class="kpi-card kpi-card-info">
-                <div class="kpi-card-icon"><i class="material-icons md-inventory"></i></div>
+                <div class="kpi-card-icon"><i class="material-icons md-assignment"></i></div>
                 <div class="kpi-card-body">
                     <div class="kpi-card-label">Quantité totale servie</div>
                     <div class="kpi-card-value">{{ rtrim(rtrim(number_format($totalQte, 2, ',', ' '), '0'), ',') }}</div>
@@ -60,6 +60,9 @@
             </h5>
         </div>
         <div class="card-body p-0">
+            <x-export-buttons table-id="bonsValidesTable"
+                              filename="bons-valides"
+                              title="Bons validés" />
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0" id="bonsValidesTable">
                     <thead class="table-light">
@@ -87,12 +90,12 @@
                                 <td>{{ $vehicule?->marque ?: '—' }}</td>
                                 <td>@if($vehicule?->immatriculation) <span class="badge bg-light text-dark">{{ $vehicule->immatriculation }}</span> @else — @endif</td>
                                 <td class="text-end">{{ $vehicule?->capacite ? $vehicule->capacite.'t' : '—' }}</td>
-                                <td>{{ optional($enlevement->livraison)->date_livraison ? Carbon::parse($enlevement->livraison?->date_livraison)->format('d/m/Y') : '—' }}</td>
+                                <td>{{ optional($enlevement->livraison)->date_livraison ? \Help::dateHeure($enlevement->livraison?->date_livraison) : '—' }}</td>
                             </tr>
                         @empty
                             <tr>
                                 <td colspan="8" class="text-center text-muted py-5">
-                                    <i class="material-icons md-inventory_2" style="font-size:48px;opacity:0.3"></i>
+                                    <i class="material-icons md-assignment" style="font-size:48px;opacity:0.3"></i>
                                     <p class="mb-0 mt-2">Aucun bon validé pour l'instant.</p>
                                 </td>
                             </tr>

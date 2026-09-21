@@ -21,8 +21,11 @@
         <div class="col-md-9">
             <div class="card mb-4">
                 <div class="card-body">
+                    <x-export-buttons table-id="listeLivraisonsDuLivreur"
+                                      filename="livraisons-du-livreur"
+                                      title="Livraisons du livreur" />
                     <div class="table-responsive">
-                        <table class="table table-striped">
+                        <table id="listeLivraisonsDuLivreur" class="table table-striped">
                             <thead dis>
                                 <tr >
 
@@ -75,7 +78,7 @@
                                         <td class="text-center">{{ $livraison->adresseLivraison?->affichage }}</td>
                                         <td class="text-center">{{ Carbon::parse($livraison->updated_at)->format('d-m-Y') }}</td>
                                         <td class="text-center">{{ Carbon::parse($livraison->date_livraison)->format('d-m-Y') }}</td>
-                                        <td class="text-center">
+                                        <td class="text-nowrap text-center">
                                             @if ($livraison->accepte == 2)
                                                 {{-- Pas encore acceptée : le livreur accepte/refuse depuis
                                                      son application mobile. --}}
@@ -84,9 +87,7 @@
                                                 @if ($livraison->etat_livraison == "EN COURS DE LIVRAISON")
                                                     <span class="badge bg-warning text-dark">En route...</span>
                                                 @else
-                                                    <a href="{{route('livreur.enRoute',$livraison)}}" class="btn btn-primary">
-                                                        En route
-                                                    </a>
+                                                    <a href="{{route('livreur.enRoute',$livraison)}}" class="btn btn-primary" title="En route"><i class="material-icons md-navigation"></i></a>
 
                                                 @endif
                                             @endif

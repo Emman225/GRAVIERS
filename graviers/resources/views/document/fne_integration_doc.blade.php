@@ -110,7 +110,7 @@
 <h1>Intégration FNE - GRAVIERS.COM</h1>
 <p class="meta">
     Direction Générale des Impôts (Côte d'Ivoire) — Facture Normalisée Electronique<br>
-    Application : <strong>graviers.fneconnect.net</strong> (Dalakoun SARL)<br>
+    Application : <strong>{{ parse_url(config('app.url'), PHP_URL_HOST) }}</strong> (Dalakoun SARL)<br>
     Document technique - Version 1.0 - {{ now()->format('d/m/Y') }}
 </p>
 

@@ -29,8 +29,11 @@
 
                 <!-- card-header end// -->
                 <div class="card-body">
+                    <x-export-buttons table-id="listeGrandLivreApporteurs"
+                                      filename="grand-livre-apporteurs"
+                                      title="Grand livre — apporteurs" />
                     <div class="table-responsive">
-                        <table class="table table-hover table-bordered tablee">
+                        <table id="listeGrandLivreApporteurs" class="table table-hover table-bordered tablee">
                             <thead>
                                 <tr>
                                     <th class="text-center" style="background-color: #1c57a3; color: white; border-top-left-radius:5px">N°</th>
@@ -59,12 +62,12 @@
                                     </td>
                                     <td class="texte-center"></td>
                                     
-                                    <td class="text-end">
-                                        <a  href=""  class="btn btn-md rounded font-sm">Faire une réduction</a>
+                                    <td class="text-nowrap text-end">
+                                        <a  href=""  class="btn btn-md rounded font-sm" title="Faire une réduction"><i class="material-icons md-more_horiz"></i></a>
                                     </td>
                                     
-                                    <td class="text-end">
-                                        <a  href=""  class="btn btn-md rounded font-sm">Les enlevements</a>
+                                    <td class="text-nowrap text-end">
+                                        <a  href=""  class="btn btn-info btn-md rounded font-sm" title="Les enlevements"><i class="material-icons md-local_shipping"></i></a>
                                     </td>
                                 </tr>
 

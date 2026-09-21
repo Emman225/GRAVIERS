@@ -35,7 +35,7 @@
                     </td>
                     <td style="border:1px solid #999; padding:5px;">{{ $abonne->origine ?: '—' }}</td>
                     <td style="border:1px solid #999; padding:5px; text-align:center;">
-                        {{ $abonne->created_at ? $abonne->created_at->format('d/m/Y H:i') : '—' }}
+                        {{ $abonne->created_at ? $abonne->created_at->format('d/m/Y H:i:s') : '—' }}
                     </td>
                 </tr>
             @empty

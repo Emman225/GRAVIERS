@@ -243,8 +243,11 @@
                     @if ($repartitionAgence->isEmpty())
                         <p class="text-center text-muted my-4">Aucune commande répartie par agence pour le moment.</p>
                     @else
+                        <x-export-buttons table-id="listeSyntheseComptant"
+                                          filename="synthese-comptant"
+                                          title="Synthèse comptant" />
                         <div class="table-responsive">
-                            <table class="table dash-table align-middle mb-0">
+                            <table id="listeSyntheseComptant" class="table dash-table align-middle mb-0">
                                 <thead>
                                     <tr>
                                         <th>Agence</th>

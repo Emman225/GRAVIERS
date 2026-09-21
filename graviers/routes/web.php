@@ -15,6 +15,7 @@ use App\Http\Controllers\OrdersController;
 use App\Http\Controllers\SellerController;
 use App\Http\Controllers\LivreurController;
 use App\Http\Controllers\PaiementController;
+use App\Http\Controllers\PourcentageDalakounController;
 use App\Http\Controllers\ProductsController;
 use App\Http\Controllers\ApporteurController;
 use App\Http\Controllers\GrandLivreController;
@@ -23,6 +24,7 @@ use App\Http\Controllers\ConfigurationPrixController;
 use App\Http\Controllers\ResetProcessController;
 use App\Http\Controllers\CreanceClientTermeController;
 use App\Http\Controllers\CommandeComptantController;
+use App\Http\Controllers\AvanceClientController;
 use App\Http\Controllers\DemandeLivraisonComptantController;
 use App\Http\Controllers\LocationComptantController;
 use App\Http\Controllers\GrilleTarifaireController;
@@ -31,6 +33,9 @@ use App\Http\Controllers\DetteLivreurController;
 use App\Http\Controllers\DetteApporteurController;
 use App\Http\Controllers\ComptabiliteController;
 use App\Http\Controllers\RecapGlobalDettesController;
+use App\Http\Controllers\DecisionClientTermeController;
+use App\Http\Controllers\GrilleLivreurController;
+use App\Http\Controllers\RecapVentesLocationsController;
 use App\Http\Controllers\AgenceController;
 use App\Http\Controllers\RecapCreancesController;
 
@@ -87,6 +92,11 @@ Route::get('/notify', [UserController::class, 'notify'])->name('notify');
 Route::get('/pageError',[UserController::class,'error'])->name('notFound');
 
 Route::get('/Site-en-contruction',[UserController::class,'enConstruction'])->name('enConstruction');
+// Lot 114 (19/09/2026) : la page du mode « site en construction » (interrupteur dans Paramètres).
+Route::get('/site-en-construction', [UserController::class, 'pageSiteEnConstruction'])->name('siteEnConstruction');
+// Lot 110 (17/09/2026) : téléchargement des applications Android (APK posés dans public/telechargements).
+Route::get('/telecharger-application/{application}', [UserController::class, 'telechargerApplication'])
+    ->name('telechargerApplication')->where('application', 'client|livreur|apporteur');
 Route::get('/a-propos',[UserController::class,'pageAPropos'])->name('aPropos');
 Route::get('/nous-contacter',[UserController::class,'pageContact'])->name('contact');
 Route::post('/nous-contacter',[UserController::class,'contactStore'])->name('contact.store');
@@ -156,6 +166,9 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::get('/preuve-operation-bancaire-{commande}', 'preuve')->name('preuve');
     Route::post('/preuve-operation-bancaire-{commande}', 'preuveValide')->name('preuveValide');
     Route::get('/admin-applique-tva-{client}', 'appliqueTVA')->name('appliqueTva');
+    // TVA sur le transport, retirable par client (10/09/2026).
+    // Chemin distinct de « admin-applique-tva-{client} », déclaré avant et qui capturerait « transport-N ».
+    Route::get('/admin-tva-transport-client-{client}', 'appliqueTvaTransport')->name('appliqueTvaTransport');
 
     // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::get('/products', 'products')->name('products');
     Route::get('/bonAttente', 'bonAttente')->name('bonAttente');
@@ -201,6 +214,10 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::get('/clients-terme/paiements', [CreanceClientTermeController::class, 'paiements'])->name('creancesTerme.paiements');
     Route::post('/clients-terme/paiements', [CreanceClientTermeController::class, 'storePaiement'])->name('creancesTerme.paiements.store');
     Route::post('/clients-terme/paiements/{paiement}/valider', [CreanceClientTermeController::class, 'validerPaiementClient'])->name('creancesTerme.paiements.valider');
+    // Point 20 (09/09/2026) : preuve du versement, puis « Effectuée ».
+    Route::post('/clients-terme/paiements/{paiement}/preuve', [CreanceClientTermeController::class, 'preuve'])->name('creancesTerme.paiements.preuve');
+    Route::get('/clients-terme/paiements/{paiement}/preuve', [CreanceClientTermeController::class, 'voirPreuve'])->name('creancesTerme.paiements.voirPreuve');
+    Route::post('/clients-terme/paiements/{paiement}/effectuer', [CreanceClientTermeController::class, 'effectuer'])->name('creancesTerme.paiements.effectuer');
     Route::get('/clients-terme/facture/{numero}/historique', [CreanceClientTermeController::class, 'factureHistorique'])->name('creancesTerme.facture.historique');
     Route::get('/clients-terme/recu/{paiement}', [CreanceClientTermeController::class, 'recu'])->name('creancesTerme.recu');
     Route::get('/clients-terme/recu/{paiement}/pdf', [CreanceClientTermeController::class, 'recuPdf'])->name('creancesTerme.recuPdf');
@@ -213,10 +230,26 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::get('/comptant/encaissements', [CommandeComptantController::class, 'encaissements'])->name('comptant.encaissements');
     Route::post('/comptant/encaissements', [CommandeComptantController::class, 'storeEncaissement'])->name('comptant.encaissements.store');
     Route::post('/comptant/encaissements/{paiement}/valider', [CommandeComptantController::class, 'validerEncaissement'])->name('comptant.encaissements.valider');
+    // Point 20 (09/09/2026) : preuve du versement, puis « Effectuée ».
+    Route::post('/comptant/encaissements/{paiement}/preuve', [CommandeComptantController::class, 'preuve'])->name('comptant.encaissements.preuve');
+    Route::get('/comptant/encaissements/{paiement}/preuve', [CommandeComptantController::class, 'voirPreuve'])->name('comptant.encaissements.voirPreuve');
+    Route::post('/comptant/encaissements/{paiement}/effectuer', [CommandeComptantController::class, 'effectuer'])->name('comptant.encaissements.effectuer');
     Route::get('/comptant/commande/{numero}/historique', [CommandeComptantController::class, 'commandeHistorique'])->name('comptant.commande.historique');
     Route::get('/recu/{paiement}', [CommandeComptantController::class, 'recu'])->name('recu');
     Route::get('/recu/{paiement}/pdf', [CommandeComptantController::class, 'recuPdf'])->name('recuPdf');
+    Route::post('/recu/{paiement}/envoyer', [CommandeComptantController::class, 'envoyerRecu'])->name('recu.envoyer');
     Route::get('/comptant/synthese', [CommandeComptantController::class, 'synthese'])->name('comptant.synthese');
+
+    // Avances clients (point 19, 07/09/2026) : dépôt sans commande, double
+    // validation, reçu RA-AAAA-NNN, imputation automatique sur les commandes
+    // réglées « en agence ».
+    Route::get('/avances', [AvanceClientController::class, 'index'])->name('avances.index');
+    Route::post('/avances', [AvanceClientController::class, 'store'])->name('avances.store');
+    Route::post('/avances/{id}/valider', [AvanceClientController::class, 'valider'])->name('avances.valider');
+    Route::post('/avances/{id}/envoyer-recu', [AvanceClientController::class, 'envoyerRecu'])->name('avances.envoyerRecu');
+    Route::get('/avances/{id}/recu', [AvanceClientController::class, 'recu'])->name('avances.recu');
+    Route::get('/avances/{id}/recu/pdf', [AvanceClientController::class, 'recuPdf'])->name('avances.recuPdf');
+    Route::get('/avances/solde/{client}', [AvanceClientController::class, 'soldeClient'])->name('avances.solde');
 
     // Demandes de livraison réglées en agence. Écran distinct de celui des
     // commandes : la caisse des ventes filtre en dur sur service = 'COMMANDE'.
@@ -224,6 +257,10 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::get('/comptant/livraisons/encaissements', [DemandeLivraisonComptantController::class, 'encaissements'])->name('comptant.livraisons.encaissements');
     Route::post('/comptant/livraisons/encaissements', [DemandeLivraisonComptantController::class, 'storeEncaissement'])->name('comptant.livraisons.encaissements.store');
     Route::post('/comptant/livraisons/encaissements/{paiement}/valider', [DemandeLivraisonComptantController::class, 'validerEncaissement'])->name('comptant.livraisons.encaissements.valider');
+    // Point 20 : preuve du versement et finalisation par un troisième administrateur.
+    Route::post('/comptant/livraisons/encaissements/{paiement}/preuve', [DemandeLivraisonComptantController::class, 'preuve'])->name('comptant.livraisons.encaissements.preuve');
+    Route::get('/comptant/livraisons/encaissements/{paiement}/preuve', [DemandeLivraisonComptantController::class, 'voirPreuve'])->name('comptant.livraisons.encaissements.voirPreuve');
+    Route::post('/comptant/livraisons/encaissements/{paiement}/effectuer', [DemandeLivraisonComptantController::class, 'effectuer'])->name('comptant.livraisons.encaissements.effectuer');
 
     // Locations réglées en agence. Le règlement se saisissait depuis la fiche de
     // la location, sans guichet, sans agence, sans reçu et SANS seconde
@@ -231,6 +268,10 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::get('/encaissements/locations', [LocationComptantController::class, 'encaissements'])->name('encaissements.locations');
     Route::post('/encaissements/locations', [LocationComptantController::class, 'storeEncaissement'])->name('encaissements.locations.store');
     Route::post('/encaissements/locations/{paiement}/valider', [LocationComptantController::class, 'validerEncaissement'])->name('encaissements.locations.valider');
+    // Point 20 : preuve du versement et finalisation par un troisième administrateur.
+    Route::post('/encaissements/locations/{paiement}/preuve', [LocationComptantController::class, 'preuve'])->name('encaissements.locations.preuve');
+    Route::get('/encaissements/locations/{paiement}/preuve', [LocationComptantController::class, 'voirPreuve'])->name('encaissements.locations.voirPreuve');
+    Route::post('/encaissements/locations/{paiement}/effectuer', [LocationComptantController::class, 'effectuer'])->name('encaissements.locations.effectuer');
     Route::get('/encaissements/locations/{numero}/historique', [LocationComptantController::class, 'locationHistorique'])->name('encaissements.locations.historique');
 
     // Grille tarifaire des demandes de livraison. Elle ne se modifiait
@@ -240,11 +281,27 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::post('/grille-tarifaire/{coutLivraison}', [GrilleTarifaireController::class, 'update'])->name('grilleTarifaire.update');
     Route::delete('/grille-tarifaire/{coutLivraison}', [GrilleTarifaireController::class, 'destroy'])->name('grilleTarifaire.destroy');
 
+    // La grille de facturation d'UN livreur : meme structure que celle du
+    // client, ce qui permet de lire la marge tranche par tranche.
+    // Attribue les 96 tranches du catalogue a un livreur, d'un coup. Deposee
+    // AVANT la route parametree : « /livreur-{livreur}/... » n'attraperait pas
+    // celle-ci, mais l'ordre garde l'intention lisible.
+    Route::post('/grille-livreur/pre-remplir', [GrilleLivreurController::class, 'preRemplir'])
+        ->name('grilleLivreur.preRemplir');
+    Route::get('/livreur-{livreur}/facturation', [GrilleLivreurController::class, 'index'])->name('grilleLivreur');
+    Route::post('/livreur-{livreur}/facturation', [GrilleLivreurController::class, 'store'])->name('grilleLivreur.store');
+    Route::post('/livreur-{livreur}/facturation/{tranche}', [GrilleLivreurController::class, 'update'])->name('grilleLivreur.update');
+    Route::delete('/livreur-{livreur}/facturation/{tranche}', [GrilleLivreurController::class, 'destroy'])->name('grilleLivreur.destroy');
+
     // Dettes fournisseurs - écrans dédiés (Enlèvements / Paiements / Synthèse)
     Route::get('/fournisseurs/enlevements', [DetteFournisseurController::class, 'enlevements'])->name('fournisseurs.enlevements');
     Route::get('/fournisseurs/paiements', [DetteFournisseurController::class, 'paiements'])->name('fournisseurs.paiements');
     Route::post('/fournisseurs/paiements', [DetteFournisseurController::class, 'storePaiement'])->name('fournisseurs.paiements.store');
     Route::post('/fournisseurs/paiements/{id}/valider', [DetteFournisseurController::class, 'validerPaiementFournisseur'])->name('fournisseurs.paiements.valider');
+    // Point 20 (09/09/2026) : preuve du versement, puis « Effectuée ».
+    Route::post('/fournisseurs/paiements/{id}/preuve', [DetteFournisseurController::class, 'preuve'])->name('fournisseurs.paiements.preuve');
+    Route::get('/fournisseurs/paiements/{id}/preuve', [DetteFournisseurController::class, 'voirPreuve'])->name('fournisseurs.paiements.voirPreuve');
+    Route::post('/fournisseurs/paiements/{id}/effectuer', [DetteFournisseurController::class, 'effectuer'])->name('fournisseurs.paiements.effectuer');
     Route::get('/fournisseurs/enlevement/{id}/historique', [DetteFournisseurController::class, 'enlevementHistorique'])->name('fournisseurs.enlevement.historique');
     Route::get('/fournisseurs/recu/{id}', [DetteFournisseurController::class, 'recu'])->name('fournisseurs.recu');
     Route::get('/fournisseurs/recu/{id}/pdf', [DetteFournisseurController::class, 'recuPdf'])->name('fournisseurs.recuPdf');
@@ -255,6 +312,10 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::get('/livreurs/paiements', [DetteLivreurController::class, 'paiements'])->name('livreurs.paiements');
     Route::post('/livreurs/paiements', [DetteLivreurController::class, 'storePaiement'])->name('livreurs.paiements.store');
     Route::post('/livreurs/paiements/{id}/valider', [DetteLivreurController::class, 'validerPaiementLivreur'])->name('livreurs.paiements.valider');
+    // Point 20 (09/09/2026) : preuve du versement, puis « Effectuée ».
+    Route::post('/livreurs/paiements/{id}/preuve', [DetteLivreurController::class, 'preuve'])->name('livreurs.paiements.preuve');
+    Route::get('/livreurs/paiements/{id}/preuve', [DetteLivreurController::class, 'voirPreuve'])->name('livreurs.paiements.voirPreuve');
+    Route::post('/livreurs/paiements/{id}/effectuer', [DetteLivreurController::class, 'effectuer'])->name('livreurs.paiements.effectuer');
     Route::get('/livreurs/livraison/{id}/historique', [DetteLivreurController::class, 'livraisonHistorique'])->name('livreurs.livraison.historique');
     Route::get('/livreurs/recu/{id}', [DetteLivreurController::class, 'recu'])->name('livreurs.recu');
     Route::get('/livreurs/recu/{id}/pdf', [DetteLivreurController::class, 'recuPdf'])->name('livreurs.recuPdf');
@@ -265,6 +326,10 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::get('/apporteurs/paiements', [DetteApporteurController::class, 'paiements'])->name('apporteurs.paiements');
     Route::post('/apporteurs/paiements', [DetteApporteurController::class, 'storePaiement'])->name('apporteurs.paiements.store');
     Route::post('/apporteurs/paiements/{id}/valider', [DetteApporteurController::class, 'validerPaiementApporteur'])->name('apporteurs.paiements.valider');
+    // Point 20 (09/09/2026) : preuve du versement, puis « Effectuée ».
+    Route::post('/apporteurs/paiements/{id}/preuve', [DetteApporteurController::class, 'preuve'])->name('apporteurs.paiements.preuve');
+    Route::get('/apporteurs/paiements/{id}/preuve', [DetteApporteurController::class, 'voirPreuve'])->name('apporteurs.paiements.voirPreuve');
+    Route::post('/apporteurs/paiements/{id}/effectuer', [DetteApporteurController::class, 'effectuer'])->name('apporteurs.paiements.effectuer');
     Route::get('/apporteurs/commission/{id}/historique', [DetteApporteurController::class, 'commissionHistorique'])->name('apporteurs.commission.historique');
     Route::get('/apporteurs/recu/{id}', [DetteApporteurController::class, 'recu'])->name('apporteurs.recu');
     Route::get('/apporteurs/recu/{id}/pdf', [DetteApporteurController::class, 'recuPdf'])->name('apporteurs.recuPdf');
@@ -278,7 +343,27 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
 
     // Comptabilité - états destinés à la déclaration et au pilotage de la marge.
     Route::get('/comptabilite/tva-collectee', [ComptabiliteController::class, 'tvaCollectee'])->name('comptabilite.tvaCollectee');
+    Route::get('/comptabilite/airsi-collecte', [ComptabiliteController::class, 'airsiCollectee'])->name('comptabilite.airsiCollectee');
     Route::get('/comptabilite/benefices-livraisons', [ComptabiliteController::class, 'beneficesLivraisons'])->name('comptabilite.beneficesLivraisons');
+
+    // Les deux récapitulatifs par AFFAIRE : « CA détaillé » répond par produit,
+    // ceux-ci répondent par vente et par location — on ne relance pas un
+    // produit, on relance un client sur une vente.
+    Route::get('/comptabilite/recap-ventes', [RecapVentesLocationsController::class, 'ventes'])->name('comptabilite.recapVentes');
+    Route::get('/comptabilite/recap-locations', [RecapVentesLocationsController::class, 'locations'])->name('comptabilite.recapLocations');
+
+    // Les CAUTIONS ont leur propre etat : une caution n'est pas un produit mais
+    // un depot detenu. Seule la retenue reste acquise et se declare ; le
+    // restitue eteint une dette. Les melanger au recapitulatif des locations
+    // aurait fausse la marge.
+    Route::get('/comptabilite/etat-cautions', [RecapVentesLocationsController::class, 'cautions'])->name('comptabilite.etatCautions');
+
+    // Seconde validation des décisions de crédit : accorder ou retirer le
+    // statut de client à terme, réviser un plafond.
+    Route::post('/decision-credit-{decision}/valider', [DecisionClientTermeController::class, 'valider'])->name('decisionCredit.valider');
+    Route::post('/decision-credit-{decision}/refuser', [DecisionClientTermeController::class, 'refuser'])->name('decisionCredit.refuser');
+    Route::post('/client-{client}/retirer-statut-terme', [DecisionClientTermeController::class, 'demanderRetrait'])->name('decisionCredit.retrait');
+    Route::post('/client-{client}/rendre-statut-terme', [DecisionClientTermeController::class, 'demanderReactivation'])->name('decisionCredit.reactivation');
 
     // Journal d'audit — réservé au superadministrateur et à l'administrateur.
     // Le middleware refuse les autres profils : masquer l'entrée de menu
@@ -339,6 +424,10 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::get('/liste-de-demande-de-paiemennt-livreur', 'listeDeDemande')->name('listeDeDemandeLivreur');
 
     Route::get('/valide-demande-{id}-{type}-{reponse}', 'valideDemande')->name('valideDemande');
+    // Circuit après la 2e validation (point 20) : preuve du versement, puis « Effectuée ».
+    Route::post('/demande-paiement/{demande}/preuve', 'joindrePreuveDemande')->name('demandePaiement.preuve');
+    Route::get('/demande-paiement/{demande}/preuve', 'voirPreuveDemande')->name('demandePaiement.voirPreuve');
+    Route::post('/demande-paiement/{demande}/effectuer', 'effectuerDemande')->name('demandePaiement.effectuer');
     Route::get('/liste-de-demande-de-paiemennt-apporteur', 'listeDeDemandeApporteur')->name('listeDeDemandeApporteur');
     Route::get('/liste-de-demande-de-paiemennt-fournisseur', 'listeDeDemandeFournisseur')->name('listeDeDemandeFournisseur');
     Route::get('/historique-demande-de-paiemennt', 'historiqueDemande')->name('historiqueDemande');
@@ -364,6 +453,9 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::get('/detail-demande-livraison-{demande}','detailDemandeLivraison')->name('detailDemandeLivraison')->middleware('auth');
     Route::get('/traite-livraison-page-{demandeLivraison}','traiteLivraisonPage')->name('traitelivraisonPage')->middleware('auth');
     Route::post('/traite-livraison-page-{demandeLivraison}-{detail}','traiteLivraison')->name('traitementLivraison')->middleware('auth');
+    // Renvoi du code de validation au client, quand le courriel d'affectation
+    // n'est pas arrivé. Même contrôleur, même écran de retour.
+    Route::post('/renvoyer-code-livraison-{livraison}','renvoyerCodeDemandeLivraison')->name('renvoyerCodeDemandeLivraison')->middleware('auth');
     Route::get('selecion-vehicule-{id}-{detail}', 'selectionneVehicule')->name('selectCar')->middleware('auth');
     // [ROUTE MORTE] méthode absente du contrôleur -> erreur 500 : Route::post('/Valider-selection-vehicule','validerSelectionVehicule')->name('validerSelection');
     Route::get('/bloquer-compte-user-{id}-{type}','bloquerCompte')->name('bloquerCompte');
@@ -454,6 +546,8 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
 
     Route::get('/parametre','parametre')->name('parametre');
     Route::post('/parametre','parametreUpdate')->name('parametreUpdate');
+    // Lot 114 : interrupteur du mode « site en construction » (administrateurs seulement).
+    Route::post('/parametre/site-en-construction','basculerSiteEnConstruction')->name('basculerSiteEnConstruction');
 
     route::post('/modifier-prix_livraison_de_livreur-{livreur}','modifierPrixLivraison')->name('modifierPrixLivraison');
     Route::post('/modifier-zone-intervention-livreur-{livreur}','modifierZoneLivreur')->name('modifierZoneLivreur');
@@ -468,6 +562,8 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::post('/restaure-livraison/{livraison}','restaureLivraison')->name('restaureLivraison');
 
     Route::get('/les-regions', 'lesRegions')->name('lesRegions');
+    // La saisie a sa propre page : la liste ne recule plus derriere un formulaire.
+    Route::get('/nouvelle-region', 'nouvelleRegion')->name('nouvelleRegion');
     Route::post('/les-regions', 'lesRegionsValid')->name('lesRegionsValid');
     Route::get('modifier-region-{region}', 'modifierRegion')->name('modifierRegion');
     Route::post('modifier-region-{region}', 'modifierRegionValid')->name('modifierRegionValid');
@@ -556,6 +652,8 @@ Route::get('/calcul/cout/livraison{long}/{lat}/{region}', [DestinationController
 
 route::name('dest.')->controller(DestinationController::class)->middleware('auth.type:Admin,Gestionnaire')->group(function(){
     Route::get('/les-villes', 'lesVilles')->name('lesVilles');
+    // La saisie a sa propre page : la liste ne recule plus derriere un formulaire.
+    Route::get('/nouvelle-ville', 'nouvelleVille')->name('nouvelleVille');
     Route::post('/les-villes', 'lesVillesValid')->name('lesVillesValid');
     Route::get('modifier-ville-{ville}', 'modifierVille')->name('modifierVille');
     Route::post('modifier-ville-{ville}', 'modifierVilleValid')->name('modifierVilleValid');
@@ -568,10 +666,19 @@ route::get('/{name}-liste-produits', [ProductsController::class, 'produitCategor
 Route::name('product.')->controller(ProductsController::class)->middleware('auth.type:Admin,Gestionnaire')->group(function(){
     route::get('/products-list', 'productsList')->name('list');
     route::get('/products-category', 'productsCategory')->name('category');
+    // La saisie a sa propre page : la liste ne recule plus derrière un formulaire.
+    route::get('/nouvelle-categorie', 'nouvelleCategorie')->name('nouvelleCategorie');
     route::post('/products-category', 'saveCategorie')->name('saveCategorie');
     route::get('/edit-category-{categorie}', 'editCategory')->name('editCategory');
     route::post('/edit-category-{categorie}', 'editCategoryTraitement')->name('editCategoryTraitement');
     route::get('/delete-category-{categorie}', 'deleteCategory')->name('deleteCategory');
+    // LE POURCENTAGE DALAKOUN : la marge ajoutee au prix d'achat pour faire le
+    // prix du catalogue. Il n'entre en vigueur qu'apres double validation.
+    route::get('/pourcentage-dalakoun', [PourcentageDalakounController::class, 'index'])->name('pourcentage');
+    route::post('/pourcentage-dalakoun', [PourcentageDalakounController::class, 'store'])->name('pourcentage.store');
+    route::post('/pourcentage-dalakoun-{pourcentage}/valider', [PourcentageDalakounController::class, 'valider'])->name('pourcentage.valider');
+    route::post('/pourcentage-dalakoun-{pourcentage}/refuser', [PourcentageDalakounController::class, 'refuser'])->name('pourcentage.refuser');
+
     route::get('/products-add', 'productsAdd')->name('add');
     route::post('/products-add', 'saveProduct')->name('saveProduct');
     route::get('/products-edit/{produit}', 'edit')->name('edit');
@@ -605,8 +712,16 @@ Route::name('orders.')->controller(OrdersController::class)->middleware('auth.ty
     route::get('/factures-non-validees', 'facturesNonValidees')->name('facturesNonValidees');
     route::get('/factures-validees', 'facturesValidees')->name('facturesValidees');
     route::post('/valider-facture-fne/{facture}', 'validerFactureFne')->name('validerFactureFne');
+    // FACTURE D'AVOIR (lot 92, 16/09/2026) : sur une facture certifiée, certifiée elle aussi par la DGI.
+    route::get('/facture-avoir/{facture}/nouveau', 'nouvelAvoir')->name('nouvelAvoir');
+    route::post('/facture-avoir/{facture}/emettre', 'emettreAvoir')->name('emettreAvoir');
+    route::get('/facture-avoir/{facture}/{action?}', 'factureAvoir')->name('factureAvoir');
     // FNE pour les LOCATIONS (équivalent de genererFacture/valider pour les ventes).
     route::post('/generer-facture-location/{location}', 'genererFactureLocation')->name('genererFactureLocation');
+    // Facture INTERNE d'un transport : sans elle, un client ayant regle une
+    // demande de livraison restait indefiniment en « regle d'avance ».
+    route::post('/generer-facture-livraison/{demande}', 'genererFactureLivraison')->name('genererFactureLivraison');
+    route::get('/facture-livraison/{facture}/{action?}', 'factureLivraison')->name('factureLivraison');
     route::get('/facture-location-{facture}-{action?}', 'factureLocation')->name('factureLocation');
     route::get('/documentation/fne-integration', 'documentationFne')->name('documentationFne');
     route::get('/order-item/{id}', 'oderItemPage')->name('item');
@@ -696,6 +811,10 @@ Route::name('sellers.')->controller(SellerController::class)->middleware('auth.t
     Route::post('/seller/bon/imprime/{code}', 'bonImprime')->name('imprime');
     Route::post('/seller/bon/validation/{code}', 'bonValidation')->name('validate');
     Route::get('/seller/accepte', 'accepte')->name('accepte');
+    // Planning livraison, historique et récap produits (lot 83, 15/09/2026).
+    Route::get('/seller/planning-livraison', 'planningLivraison')->name('planningLivraison');
+    Route::get('/seller/historique-enlevements', 'historiqueEnlevements')->name('historiqueEnlevements');
+    Route::get('/seller/recap-produits', 'recapProduits')->name('recapProduits');
     Route::get('/seller/refuse', 'refuse')->name('refuse');
     Route::get('/seller/{seller}/profile', 'profile')->name('profile');
     Route::get('/seller/{product}/products', 'editProducts')->name('edit');
@@ -801,6 +920,8 @@ Route::controller(DevisController::class)->middleware('auth.type:client')->name(
     Route::get('devis/annuler/modification/{devis}', 'annulerModificationDevis')->name('annulerModificationDevis');
     Route::match(['get', 'post'],'/recapitulatif-devis{devis?}','recapDevis')->name('recapDevis')->middleware('auth');
     Route::get('devis/mode/paiement/{devis}', 'modePaiement')->name('modePaiement');
+    // Suppression d'un devis en attente par son client (10/09/2026).
+    Route::delete('devis/supprimer/{devis}', 'supprimerDevis')->name('supprimerDevis');
 });
 
 /*
@@ -941,6 +1062,13 @@ Route::name('client.')->controller(ClientController::class)->middleware('auth.ty
         Route::post('/modifier-adresse-de-livraison-{commande}','adresseLivraisonModifiee')->name('adresseLivraisonModifiee');
 
         Route::get('liste-des-facture-{commande}','listeFacture')->name('listeFacture');
+        // La proforma ou la facture de la commande, en PDF (lot 81, 15/09/2026).
+        Route::get('/commande-{numero}-document-pdf', 'documentCommandePdf')->name('documentCommandePdf')->middleware('auth');
+        // Proforma / facture et factures DGI des locations et demandes de livraison (lot 85, 15/09/2026).
+        Route::get('/document-location/{location}/pdf', 'documentLocationPdf')->name('documentLocationPdf')->middleware('auth');
+        Route::get('/document-demande-livraison/{demande}/pdf', 'documentLivraisonPdf')->name('documentLivraisonPdf')->middleware('auth');
+        Route::get('/liste-des-factures-{service}-{id}', 'listeFactureAffaire')->name('listeFactureAffaire')->middleware('auth')->where('service', 'location|livraison');
+        Route::get('/facture-affaire-{facture}-{action}', 'factureAffairePdf')->name('factureAffairePdf')->middleware('auth')->where('action', 'voir|telecharger');
 
         Route::get('/facture-commande-pdf-{numero}', 'nouvelleFacture')->name('nouvelleFacture');
         Route::get('/telecharger-facture-commande-pdf-{numero}', 'techargerFacture')->name('techargerFacture');

@@ -23,8 +23,11 @@
                 @if (!$enlevements->isEmpty())
                     <!-- card-header end// -->
                     <div class="card-body">
+                        <x-export-buttons table-id="listeDetailLivreur"
+                                          filename="grand-livre-detail-livreur"
+                                          title="Grand livre — détail du livreur" />
                         <div class="table-responsive">
-                            <table class="table table-striped">
+                            <table id="listeDetailLivreur" class="table table-striped">
                                 <thead>
                                     <tr>
                                         <th class="text-center" style="background-color: #1c57a3; color: white; border-top-left-radius:5px">ID</th>
@@ -61,7 +64,7 @@
                                                         <td class=" text-center">Pas de livraison</td>
                                                         <td class=" text-center">Pas de livraison</td>
                                                     @endif
-                                                    <td class=" text-center">{{Carbon::parse($enlevement->created_at)->format('d-m-Y à H:i');  }}</td>
+                                                    <td class=" text-center">{{Carbon::parse($enlevement->created_at)->format('d/m/Y à H:i:s');  }}</td>
                                                     <td class=" text-center">{{Carbon::parse($enlevement->livraison?->date_livraison)->format('d-m-Y');  }}</td>
                                                     <td class=" text-center">{{Carbon::parse($enlevement->livraison?->updated_at)->format('d-m-Y');  }}</td>
 

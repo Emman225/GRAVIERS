@@ -6,8 +6,12 @@ use App\Models\Apporteur;
 use App\Models\Client;
 use App\Models\Commande;
 use App\Models\CommissionApporteur;
+use App\Support\AffaireCommissionnable;
 use App\Models\DemandeLivraison;
 use App\Models\DetailCommande;
+// La classe est déclarée « Devis » dans app/Models/Devis.php : la casse doit
+// être exacte, Windows la pardonne et Linux non.
+use App\Models\Devis;
 use App\Models\DetailLivraison;
 use App\Models\DetailLocation;
 use App\Models\LignePaiement;
@@ -202,6 +206,10 @@ class PaiementEnLigne extends Controller
                             }
                             $paiement->save();
 
+                            // LE REÇU PART D'ICI, une seule fois par règlement
+                            // (RecuPaiement s'en assure), après la réponse HTTP.
+                            \App\Services\RecuPaiement::envoyerParCourriel($paiement);
+
                             // LOCATION : la location n'est créée qu'ICI, à la confirmation du
                             // paiement, à partir du brouillon stocké sur le paiement
                             // (paiement.donnees_service). Idempotent : si une location est déjà
@@ -227,40 +235,18 @@ class PaiementEnLigne extends Controller
                                             $commande->etat_commande = Help::$COMMANDE_EN_ATTENTE;
                                             $commande->save();
                                         }
+                                        // Commande payée en ligne : sa FACTURE part au client
+                                        // (lot 81, 15/09/2026), une seule fois, jamais bloquant.
+                                        \App\Services\DocumentDeCommande::envoyerParCourriel($commande);
                                     }
-                                    if ($commande && $commande->client) {
-                                        $image = base_path('public/frontend/assets/imgs/logo/omer 1.png');
-                                        // La vue document.factureCommande a besoin de $enlevements,
-                                        // $config, $facture, $livraison et des données FNE. Sans eux
-                                        // la génération échouait (« Undefined variable $enlevements »)
-                                        // et le client ne recevait JAMAIS sa facture après un
-                                        // paiement en ligne — l'échec n'apparaissait que dans le
-                                        // journal du serveur.
-                                        Help::envoyerDocumentPdf(
-                                            $commande->client->display_name,
-                                            $commande->client->user?->email ?: ($commande->client->email ?: ''),
-                                            'Facture',
-                                            $commande->numero ?? $commande->id,
-                                            'document.factureCommande',
-                                            $this->donneesFactureCommande($commande, $image),
-                                            'Facture_' . ($commande->numero ?? $commande->id) . '.pdf'
-                                        );
-                                    }
+                                    // PLUS DE « FACTURE » ICI (07/09/2026). Au moment du
+                                    // paiement, rien n'est encore enlevé : la pièce sortait
+                                    // avec tous ses montants à 0. Le client reçoit désormais
+                                    // son REÇU DE PAIEMENT (envoyé dans la boucle ci-dessus,
+                                    // par RecuPaiement) ; la facture, elle, part quand elle
+                                    // est établie (FacturationCommande).
                                     break;
                                 case Help::$LOCATION:
-                                    $location = Location::lire($s['service_id']);
-                                    if ($location && $location->client) {
-                                        $image = base_path('public/frontend/assets/imgs/logo/omer 1.png');
-                                        Help::envoyerDocumentPdf(
-                                            $location->client->display_name,
-                                            $location->client->user?->email ?: ($location->client->email ?: ''),
-                                            'Facture Location',
-                                            $location->numero ?? $location->id,
-                                            'document.factureCommande',
-                                            $this->donneesFactureCommande($location, $image),
-                                            'Facture_Location_' . ($location->numero ?? $location->id) . '.pdf'
-                                        );
-                                    }
                                     break;
                                 case Help::$LIVRAISON:
 
@@ -346,6 +332,57 @@ class PaiementEnLigne extends Controller
                 0
             );
         }
+    }
+
+    /**
+     * Envoi du reçu d'un paiement à la demande de l'API des mobiles.
+     * Voir routes/api.php (interne/recu-paiement).
+     */
+    /**
+     * LE PDF DU REÇU, POUR L'APPLICATION (lot 88, 15/09/2026). L'API des mobiles
+     * le demande avec le jeton partagé et le remet à l'application : le client
+     * voit sur son téléphone exactement le reçu du site.
+     */
+    public function recuPdfInterne(Request $request, $paiementId)
+    {
+        $jeton = (string) config('constantes.jeton_interne');
+        if ($jeton === '' || !hash_equals($jeton, (string) $request->input('jeton', ''))) {
+            return response()->json(['code' => 403, 'message' => 'Jeton interne absent ou invalide'], 403);
+        }
+        $paiement = Paiement::find($paiementId);
+        if (!$paiement) {
+            return response()->json(['code' => 404, 'message' => 'Paiement introuvable'], 404);
+        }
+        $numero = \App\Services\RecuPaiement::attribuerNumeroSiAbsent($paiement);
+
+        return response(\App\Services\RecuPaiement::pdf($paiement->fresh())->output(), 200, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="recu-' . $numero . '.pdf"',
+            'X-Numero-Recu'       => (string) $numero,
+        ]);
+    }
+
+    public function envoyerRecuInterne(Request $request, $paiementId)
+    {
+        $jeton = (string) config('constantes.jeton_interne');
+        if ($jeton === '' || !hash_equals($jeton, (string) $request->input('jeton', ''))) {
+            return response()->json(['code' => 403, 'message' => 'Jeton interne absent ou invalide'], 403);
+        }
+
+        $paiement = Paiement::find($paiementId);
+        if (!$paiement) {
+            return response()->json(['code' => 404, 'message' => 'Paiement introuvable'], 404);
+        }
+
+        $envoye = \App\Services\RecuPaiement::envoyerParCourriel($paiement, true);
+        $paiement->refresh();
+
+        return response()->json([
+            'code'    => 200,
+            'envoye'  => $envoye,
+            'deja'    => !$envoye && (bool) $paiement->recu_envoye_le,
+            'numero'  => $paiement->numero_recu,
+        ]);
     }
 
     public function ouvreApp($codePaiement)
@@ -866,8 +903,24 @@ class PaiementEnLigne extends Controller
             return;
         }
 
-        // type_affaire est un enum('LOCATION','VENTE') côté commission_apporteur.
-        $typeAffaire = ($typeService === Help::$LOCATION) ? 'LOCATION' : 'VENTE';
+        // ON NE COMMISSIONNE QUE CE QUI PEUT ÊTRE RATTACHÉ.
+        //
+        // Cette ligne rangeait en 'VENTE' tout ce qui n'est pas une location
+        // — demande de livraison comprise. La commission pointait alors sur
+        // une commande qui n'existe pas, ou pire, sur celle qui porte le même
+        // identifiant : le téléphone de l'apporteur affichait le client d'un
+        // autre. Même règle que le chemin agence (PaiementController).
+        $typeAffaire = AffaireCommissionnable::typeSiRattachable($typeService, $idService);
+
+        if (!$typeAffaire) {
+            \Log::warning('Commission en ligne non créée : affaire non commissionnable', [
+                'apporteur_id' => $apporteur->id,
+                'client_id'    => $clientId,
+                'service'      => $typeService,
+                'service_id'   => $idService,
+            ]);
+            return;
+        }
 
         // Évite tout double crédit si le callback est rejoué.
         $existe = CommissionApporteur::where('commande_id', $idService)
@@ -946,6 +999,9 @@ class PaiementEnLigne extends Controller
             }
             $paiement->save();
 
+            // Le reçu part d'ici, une seule fois par règlement (cf. RecuPaiement).
+            \App\Services\RecuPaiement::envoyerParCourriel($paiement);
+
             // LOCATION : la location n'est créée qu'ICI, à la confirmation du paiement,
             // depuis le brouillon stocké sur le paiement (donnees_service). Idempotent
             // (creerDepuisPaiement renvoie la location existante sans rien recréer).
@@ -975,34 +1031,29 @@ class PaiementEnLigne extends Controller
                                 $commande->etat_commande = Help::$COMMANDE_EN_ATTENTE;
                                 $commande->save();
                             }
+                            // Commande payée en ligne : sa FACTURE part au client
+                            // (lot 81, 15/09/2026), une seule fois, jamais bloquant.
+                            \App\Services\DocumentDeCommande::envoyerParCourriel($commande);
+
+                            // ET LE DEVIS DEVIENT « COMMANDÉ ».
+                            //
+                            // Il basculait avant le départ vers la passerelle : un
+                            // paiement annulé laissait un devis annoncé commandé
+                            // alors que rien n'avait été réglé. Il attend
+                            // désormais ce moment-ci — atteint aussi bien par le
+                            // retour du client que par le callback ou la reprise
+                            // planifiée, et sans effet s'il a déjà basculé.
+                            if ($commande->devis_id) {
+                                Devis::where('id', $commande->devis_id)
+                                    ->where('statut', '!=', 2)
+                                    ->update(['statut' => 2]);
+                            }
                         }
-                        if ($commande && $commande->client) {
-                            $image = base_path('public/frontend/assets/imgs/logo/omer 1.png');
-                            Help::envoyerDocumentPdf(
-                                $commande->client->display_name,
-                                $commande->client->user->email,
-                                'Facture',
-                                $commande->numero ?? $commande->id,
-                                'document.factureCommande',
-                                ['commande' => $commande, 'image' => $image],
-                                'Facture_' . ($commande->numero ?? $commande->id) . '.pdf'
-                            );
-                        }
+                        // Plus de « facture » vide après paiement : le REÇU est
+                        // envoyé dans la boucle ci-dessus (RecuPaiement), la facture
+                        // partira quand elle sera établie (FacturationCommande).
                         break;
                     case Help::$LOCATION:
-                        $location = Location::lire($s['service_id']);
-                        if ($location && $location->client) {
-                            $image = base_path('public/frontend/assets/imgs/logo/omer 1.png');
-                            Help::envoyerDocumentPdf(
-                                $location->client->display_name,
-                                $location->client->user->email,
-                                'Facture Location',
-                                $location->numero ?? $location->id,
-                                'document.factureCommande',
-                                ['commande' => $location, 'image' => $image],
-                                'Facture_Location_' . ($location->numero ?? $location->id) . '.pdf'
-                            );
-                        }
                         break;
                     default:
                         break;

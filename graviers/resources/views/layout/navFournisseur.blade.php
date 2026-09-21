@@ -32,6 +32,26 @@
     </div>
 </li>
 
+{{-- PLANNING LIVRAISON, HISTORIQUE, RÉCAP PRODUITS (lot 83, 15/09/2026) --}}
+<li class="menu-item {{ request()->routeIs('sellers.planningLivraison') ? 'active' : '' }}">
+    <a class="menu-link" href="{{ route('sellers.planningLivraison') }}">
+        <i class="icon material-icons md-event_note"></i>
+        <span class="text">Planning livraison</span>
+    </a>
+</li>
+<li class="menu-item {{ request()->routeIs('sellers.historiqueEnlevements') ? 'active' : '' }}">
+    <a class="menu-link" href="{{ route('sellers.historiqueEnlevements') }}">
+        <i class="icon material-icons md-history"></i>
+        <span class="text">Historique</span>
+    </a>
+</li>
+<li class="menu-item {{ request()->routeIs('sellers.recapProduits') ? 'active' : '' }}">
+    <a class="menu-link" href="{{ route('sellers.recapProduits') }}">
+        <i class="icon material-icons md-assessment"></i>
+        <span class="text">Récap produits</span>
+    </a>
+</li>
+
 {{-- PAIEMENTS --}}
 <li class="menu-item {{ $isPaiementActive ? 'active' : '' }}">
     <a class="menu-link" href="{{ route('sellers.listePaiements') }}">

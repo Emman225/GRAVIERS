@@ -37,6 +37,8 @@ class DemandePaiement {
   int? userValideId;
   String? dateValidation;
   bool? paye;
+  /// Point 20 : A_PAYER, PREUVE_JOINTE ou EFFECTUEE une fois la demande validée.
+  String? etatReglement;
   int? statut;
   String? deletedAt;
   String? createdAt;
@@ -70,6 +72,7 @@ class DemandePaiement {
     userValideId = json['user_valide_id'];
     dateValidation = json['date_validation'];
     paye = json['paye'] == 1 ? true : false;
+    etatReglement = json['etat_reglement']?.toString();
     statut = json['statut'];
     deletedAt = json['deleted_at'];
     createdAt = json['created_at'];

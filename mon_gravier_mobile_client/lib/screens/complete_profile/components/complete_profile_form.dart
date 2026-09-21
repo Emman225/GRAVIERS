@@ -138,7 +138,7 @@ class _CompleteProfileFormState extends State<CompleteProfileForm> {
                 Navigator.pushNamed(context, OtpScreen.routeName);
               }
             },
-            child: const Text("Continue"),
+            child: const Text("Continuer"),
           ),
         ],
       ),

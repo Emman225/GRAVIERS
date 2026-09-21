@@ -37,6 +37,14 @@ class Infos {
   String? deletedAt;
   String? createdAt;
   String? updatedAt;
+  // La fiche client (lot 100, 16/09/2026) : type, RCCM, NCC, régime d'imposition.
+  String? typeClient;
+  String? rccm;
+  String? ncc;
+  String? regimeImposition;
+  String? natureFne;
+
+  bool get estEntreprise => (typeClient ?? '').toUpperCase() == 'ENTREPRISE';
 
   Infos(
       {this.id,
@@ -69,6 +77,11 @@ class Infos {
     deletedAt = json['deleted_at'];
     createdAt = json['created_at'];
     updatedAt = json['updated_at'];
+    typeClient = json['type_client']?.toString();
+    rccm = json['rccm_clt']?.toString();
+    ncc = json['ncc_clt']?.toString();
+    regimeImposition = json['regime_imposition']?.toString();
+    natureFne = json['nature_fne']?.toString();
   }
 
   Map<String, dynamic> toJson() {

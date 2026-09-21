@@ -41,6 +41,8 @@ class Enlevement extends Model
         'date_echeance',
         'statut_dette',
         'observations',
+        // Date d'envoi du bon de livraison au client (lot 84, 15/09/2026).
+        'bon_envoye_le',
     ];
 
     protected $casts = [
@@ -332,4 +334,45 @@ class Enlevement extends Model
     {
         return $this->belongsTo(Facture::class)->withDefault(['numero'=>'']);
     }
+    /**
+     * LE FOURNISSEUR A-T-IL VALIDÉ CET ENLÈVEMENT ?
+     *
+     * `fournisseur_validation` porte l'horodatage de sa validation. C'est le
+     * marqueur que lisent déjà l'espace fournisseur, le récapitulatif de chiffre
+     * d'affaires et la clôture de course : la colonne fait foi partout.
+     */
+    public function estValideParFournisseur(): bool
+    {
+        return !empty($this->fournisseur_validation);
+    }
+
+    /**
+     * Ce que le gestionnaire doit lire, en une phrase.
+     *
+     * Tant que le fournisseur n'a pas validé, le matériel n'est PAS sorti :
+     * donner le code au client ne sert à rien. Et une fois validé, ce qui
+     * compte n'est pas le fait mais la QUANTITÉ SERVIE — c'est elle qui décide
+     * si la commande est soldée ou s'il reste à enlever.
+     */
+    public function libelleValidationFournisseur(): string
+    {
+        if (!$this->estValideParFournisseur()) {
+            return 'En attente du fournisseur';
+        }
+
+        $le = Carbon::parse($this->fournisseur_validation)->format('d/m/Y');
+
+        // `qte_servi` à NULL vaut la quantité demandée : ce sont les bons émis
+        // avant que la saisie n'existe.
+        $servi = $this->qte_servi !== null ? (float) $this->qte_servi : (float) $this->qte;
+
+        if ($servi + 0.001 < (float) $this->qte) {
+            return 'Servi partiellement le ' . $le
+                . ' — ' . rtrim(rtrim(number_format($servi, 2, ',', ' '), '0'), ',')
+                . ' sur ' . rtrim(rtrim(number_format((float) $this->qte, 2, ',', ' '), '0'), ',');
+        }
+
+        return 'Validé le ' . $le;
+    }
+
 }

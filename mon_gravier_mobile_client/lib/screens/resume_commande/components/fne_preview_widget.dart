@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mon_gravier_com/globale.dart';
 import 'package:mon_gravier_com/impression/fne_template.dart';
-import 'package:intl/intl.dart';
 
 class FnePreviewWidget extends StatelessWidget {
   final FneConfig config;
@@ -9,6 +8,10 @@ class FnePreviewWidget extends StatelessWidget {
   final List<FneArticle> articles;
   final double totalHt;
   final double totalTva;
+  /// TVA sur le transport (point 5) : une ligne à part, comprise dans le TTC.
+  final double tvaTransport;
+  /// Transport NON taxé : sous les totaux, hors du TTC (présentation d'avant).
+  final double livraisonHorsTableau;
   final double totalTtc;
   final double autresTaxes;
   final double totalAPayer;
@@ -26,6 +29,8 @@ class FnePreviewWidget extends StatelessWidget {
     required this.articles,
     required this.totalHt,
     required this.totalTva,
+    this.tvaTransport = 0,
+    this.livraisonHorsTableau = 0,
     required this.totalTtc,
     required this.autresTaxes,
     required this.totalAPayer,
@@ -152,7 +157,7 @@ class FnePreviewWidget extends StatelessWidget {
                     Text('Références bancaires : ${config.refBancaires}', style: const TextStyle(fontSize: 8)),
                     Text('Établissement : ${config.nomEtablissement}', style: const TextStyle(fontSize: 8)),
                     Text('Adresse : ${config.adresseSiege}', style: const TextStyle(fontSize: 8)),
-                    Text('Nº Tel : ${config.telephone}', style: const TextStyle(fontSize: 8)),
+                    Text('Téléphone : ${config.telephone}', style: const TextStyle(fontSize: 8)),
                     Text('Mail : ${config.emailEntreprise}', style: const TextStyle(fontSize: 8)),
                     if (vendeur != null) Text('Nom du vendeur : $vendeur', style: const TextStyle(fontSize: 8)),
                     Text('Nom de PDV : ${config.nomPdv}', style: const TextStyle(fontSize: 8)),
@@ -236,7 +241,10 @@ class FnePreviewWidget extends StatelessWidget {
                     _totauxRow('TOTAL HT', totalHt),
                     // La remise s'affiche AVANT la TVA (même ordre que le site web).
                     if (remise > 0) _totauxRow('Remise', remise, negatif: true),
-                    _totauxRow('TVA ($tva%)', totalTva),
+                    // Une seule ligne « TVA » : articles + transport taxé (09/09/2026),
+                    // la ligne de transport du tableau portant déjà sa mention de TVA.
+                    _totauxRow('TVA ($tva%)', totalTva + tvaTransport),
+                    if (livraisonHorsTableau > 0) _totauxRow('Coût livraison', livraisonHorsTableau),
                     _totauxRow('TOTAL TTC', totalTtc),
                     _totauxRow('AUTRES TAXES', autresTaxes),
                     _totauxRow('TOTAL A PAYER', totalAPayer, isBold: true),

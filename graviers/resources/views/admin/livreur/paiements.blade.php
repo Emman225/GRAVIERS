@@ -69,7 +69,7 @@
                                 <td class="text-center">{{ Help::formatNombre($p->montant, true) }}</td>
                                 <td class="text-center">{{ $p->mode }}</td>
                                 <td class="text-center">{{ $p->numero_compte ?: '-' }}</td>
-                                <td class="text-center">{{ $p->date ? Carbon::parse($p->date)->format('d/m/Y H:i') : '-' }}</td>
+                                <td class="text-center">{{ $p->date ? Carbon::parse($p->date)->format('d/m/Y H:i:s') : '-' }}</td>
                                 <td class="text-center small">{{ $p->valide_par_1 }}</td>
                                 <td class="text-center small">{{ $p->valide_par_2 }}</td>
                                 <td class="text-center">
@@ -98,9 +98,7 @@
                                     @elseif ($p->attend_1re)
                                         <a href="{{ $lienValidation('accepter') }}"
                                            class="btn btn-sm btn-success"
-                                           onclick="return confirm('Donner la 1re validation à cette demande ?');">
-                                            <i class="material-icons md-check"></i> 1re validation
-                                        </a>
+                                           onclick="return confirm('Donner la 1re validation à cette demande ?');" title="1re validation"><i class="material-icons md-check"></i></a>
                                     @elseif ($p->attend_2e && $p->est_initiateur)
                                         <span class="text-muted small">
                                             <em>En attente d'un autre administrateur</em>
@@ -108,14 +106,10 @@
                                     @elseif ($p->attend_2e)
                                         <a href="{{ $lienValidation('accepter') }}"
                                            class="btn btn-sm btn-success"
-                                           onclick="return confirm('Accepter et payer cette demande ?');">
-                                            <i class="material-icons md-check"></i> 2e validation
-                                        </a>
+                                           onclick="return confirm('Accepter et payer cette demande ?');" title="2e validation"><i class="material-icons md-check"></i></a>
                                         <a href="{{ $lienValidation('refuser') }}"
                                            class="btn btn-sm btn-danger"
-                                           onclick="return confirm('Refuser cette demande ? Le montant sera restitué au solde du livreur.');">
-                                            <i class="material-icons md-denied"></i> Rejeter
-                                        </a>
+                                           onclick="return confirm('Refuser cette demande ? Le montant sera restitué au solde du livreur.');" title="Rejeter"><i class="material-icons md-block"></i></a>
                                     @endif
                                 </td>
                             </tr>
@@ -153,13 +147,15 @@
                             <th class="text-center">Référence</th>
                             <th class="text-center">Initié par</th>
                             <th class="text-center">Validé par</th>
+                            <th class="text-center">3e validateur</th>
+                            <th class="text-center">État</th>
                             <th class="text-center">Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse ($reglements as $l)
                             <tr @if($l->en_attente) style="background-color: #fff8e1;" @endif>
-                                <td class="text-center">{{ $l->date_paiement ? Carbon::parse($l->date_paiement)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date_paiement ? \Help::dateHeure($l->date_paiement) : '-' }}</td>
                                 <td class="text-center">{{ $l->numero_liv }}</td>
                                 <td class="text-center">{{ $l->code_livreur }}</td>
                                 <td>
@@ -176,6 +172,8 @@
                                 <td class="text-center">{{ $l->reference ?: '-' }}</td>
                                 <td class="text-center">{{ $l->initie_par }}</td>
                                 <td class="text-center">{{ $l->valide_par }}</td>
+                                <td class="text-center small">{{ $l->troisieme_par ?? '-' }}</td>
+                                <td class="text-center">@include('admin.shared._circuit_preuve_reglement', ['partie' => 'etat'])</td>
                                 <td class="text-center text-nowrap">
                                     @if ($l->peut_valider)
                                         <form action="{{ route('show.livreurs.paiements.valider', $l->paiement_id) }}"
@@ -186,17 +184,21 @@
                                               data-confirm-text="Confirmez-vous la validation de ce paiement livreur ? Le reçu deviendra définitif."
                                               data-confirm-button="Oui, valider">
                                             @csrf
-                                            <button type="submit" class="btn btn-sm btn-success" title="Valider">
-                                                <i class="material-icons md-check_circle"></i> Valider
-                                            </button>
+                                            <button type="submit" class="btn btn-sm btn-success" title="Valider"><i class="material-icons md-check_circle"></i></button>
                                         </form>
                                     @elseif (!$l->en_attente)
+                                        {{-- Le reçu n'est visible qu'une fois le règlement FINALISÉ (effectué)
+                                             (09/09/2026) ; un règlement d'avant le circuit, sans preuve, le garde. --}}
+                                        @if ((($l->etat_reglement ?? null) === \App\Models\DemandePaiement::EFFECTUEE) || empty($l->etat_reglement ?? null))
                                         <a href="{{ route('show.livreurs.recu', $l->paiement_id) }}" target="_blank" class="btn btn-sm btn-info" title="Voir reçu">
                                             <i class="material-icons md-receipt"></i>
                                         </a>
                                         <a href="{{ route('show.livreurs.recuPdf', $l->paiement_id) }}" class="btn btn-sm btn-secondary" title="PDF">
                                             <i class="material-icons md-picture_as_pdf"></i>
                                         </a>
+                                        @endif
+                                        @include('admin.shared._circuit_preuve_reglement', ['partie' => 'actions', 'prefixe' => 'livreurs',
+                                            'libellePreuve' => $l->livreur_nom . ' — ' . Help::formatNombre($l->montant, true)])
                                     @else
                                         <span class="text-muted small"><em>En attente d'un autre admin</em></span>
                                     @endif
@@ -204,7 +206,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="10" class="text-center text-muted">Aucun règlement enregistré.</td>
+                                <td colspan="12" class="text-center text-muted">Aucun règlement enregistré.</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -235,6 +237,8 @@
                                     ->map(fn ($courses) => (object) [
                                         'livreur_id'  => $courses->first()->livreur_id,
                                         'livreur_nom' => $courses->first()->livreur_nom,
+                                        'code'        => $courses->first()->code_livreur ?? '',
+                                        'email'       => $courses->first()->livreur_email ?? '',
                                         'nb'          => $courses->count(),
                                         'total_reste' => $courses->sum('reste'),
                                     ])->sortBy('livreur_nom')->values();
@@ -244,11 +248,13 @@
                                 <label for="filtreLivreur" class="form-label fw-bold">
                                     Livreur <span class="text-danger">*</span>
                                 </label>
-                                <select class="form-control" id="filtreLivreur">
-                                    <option value="">— Sélectionner un livreur —</option>
+                                {{-- Liste avec recherche (08/09/2026) : code livreur, nom ou courriel. --}}
+                                <select class="form-control" id="filtreLivreur"
+                                        data-placeholder="— Sélectionner un livreur : tapez un code, un nom ou un courriel —">
+                                    <option value=""></option>
                                     @foreach ($livreursNonSoldes as $lv)
                                         <option value="{{ $lv->livreur_id }}">
-                                            {{ $lv->livreur_nom }} — {{ $lv->nb }} course(s) non soldée(s)
+                                            {{ $lv->code ? $lv->code . ' — ' : '' }}{{ $lv->livreur_nom }}{{ $lv->email ? ' — ' . $lv->email : '' }} — {{ $lv->nb }} course(s) non soldée(s)
                                             — Total : {{ Help::formatNombre($lv->total_reste, true) }}
                                         </option>
                                     @endforeach
@@ -270,21 +276,36 @@
                                         Tout cocher (payer toutes les courses de ce livreur)
                                     </label>
                                 </div>
-                                <div class="border rounded p-2" style="max-height:220px; overflow-y:auto;">
-                                    @foreach ($coursesNonSoldees as $c)
-                                        <div class="form-check course-item" data-livreur-id="{{ $c->livreur_id }}" style="display:none;">
-                                            <input class="form-check-input course-check" type="checkbox"
-                                                   name="livraison_ids[]" value="{{ $c->id }}"
-                                                   id="course{{ $c->id }}"
-                                                   data-livreur-id="{{ $c->livreur_id }}"
-                                                   data-reste="{{ $c->reste }}">
-                                            <label class="form-check-label" for="course{{ $c->id }}">
-                                                {{ $c->numero_liv }}
-                                                @if ($c->date) — {{ Carbon::parse($c->date)->format('d/m/Y') }} @endif
-                                                — Reste : <strong>{{ Help::formatNombre($c->reste, true) }}</strong>
-                                            </label>
-                                        </div>
-                                    @endforeach
+                                {{-- UN TABLEAU (08/09/2026), comme pour les fournisseurs : les
+                                     lignes gardent .course-item / .course-check, le script ne
+                                     change pas ; les cases sont centrées dans leur colonne. --}}
+                                <div class="border rounded" style="max-height:260px; overflow-y:auto;">
+                                    <table class="table table-sm table-hover mb-0" id="tableCourses">
+                                        <thead style="background:#1c57a3; color:#fff; position:sticky; top:0;">
+                                            <tr>
+                                                <th style="width:44px"></th>
+                                                <th>N° course</th>
+                                                <th>Date</th>
+                                                <th class="text-end">Reste</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach ($coursesNonSoldees as $c)
+                                                <tr class="course-item" data-livreur-id="{{ $c->livreur_id }}" style="display:none;">
+                                                    <td class="text-center">
+                                                        <input class="form-check-input course-check" type="checkbox"
+                                                               name="livraison_ids[]" value="{{ $c->id }}"
+                                                               id="course{{ $c->id }}"
+                                                               data-livreur-id="{{ $c->livreur_id }}"
+                                                               data-reste="{{ $c->reste }}">
+                                                    </td>
+                                                    <td><label class="form-check-label mb-0 fw-bold" for="course{{ $c->id }}">{{ $c->numero_liv }}</label></td>
+                                                    <td>{{ $c->date ? \Help::dateHeure($c->date) : '-' }}</td>
+                                                    <td class="text-end"><strong>{{ Help::formatNombre($c->reste, true) }}</strong></td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
 
@@ -378,14 +399,19 @@
             </div>
         </div>
     </div>
+    @include('admin.shared._circuit_preuve_reglement', ['partie' => 'modal'])
 @endsection
 
 @section('cssParts')
     <link rel="stylesheet" href="{{ asset('backend/plugins/DataTables/datatables.min.css') }}">
+    <link rel="stylesheet" href="{{ asset('backend/assets/css/vendors/select2.min.css') }}">
 @endsection
 
 @section('jsParts')
     <script src="{{ asset('backend/plugins/DataTables/datatables.min.js') }}"></script>
+    {{-- Plusieurs jQuery se succèdent dans le pied de page : select2 doit
+         s'attacher à celui que la page utilise (même règle que les guichets). --}}
+    <script src="{{ asset('backend/assets/js/vendors/select2.min.js') }}"></script>
     <script type="text/javascript">
         // Construite par Laravel : une URL ecrite en dur casserait si
         // l'application etait servie depuis un sous-dossier.
@@ -409,6 +435,17 @@
             });
 
             // Étape 1 : le livreur choisi filtre la liste de SES courses.
+            // Liste avec recherche : code, nom, courriel.
+            if ($.fn.select2) {
+                $('#filtreLivreur').select2({
+                    placeholder: $('#filtreLivreur').data('placeholder'),
+                    allowClear: true,
+                    width: '100%',
+                    dropdownParent: $('#modalPaiementLivreur'),
+                    language: { noResults: function () { return 'Aucun livreur ne correspond'; } }
+                });
+            }
+
             $('#filtreLivreur').on('change', function () {
                 var id = $(this).val();
                 $('.course-check').prop('checked', false);
@@ -497,7 +534,7 @@
                                 '<td class="text-end text-success"><strong>' + fmt(h.montant) + '</strong></td>' +
                                 '<td class="text-center">' + (h.mode || '-') + '</td>' +
                                 '<td class="text-center">' + (h.reference || '-') + '</td>' +
-                                '<td class="text-center">' +
+                                '<td class="text-nowrap text-center">' +
                                     '<a href="' + h.recu_url + '" target="_blank" class="btn btn-sm btn-info" title="Voir le recu">' +
                                         '<i class="material-icons md-visibility"></i></a> ' +
                                     '<a href="' + h.recu_pdf_url + '" class="btn btn-sm btn-secondary" title="Telecharger le recu">' +

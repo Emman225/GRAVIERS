@@ -90,6 +90,9 @@
     {{-- ===== TABLEAU ===== --}}
     <div class="card dash-card mb-4">
         <div class="card-body">
+            <x-export-buttons table-id="listeCommentairesBlog"
+                              filename="commentaires-blog"
+                              title="Commentaires du blog" />
             <div class="table-responsive">
                 <table class="table dash-table align-middle mb-0" id="listeCommentairesBlog">
                     <thead>

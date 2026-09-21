@@ -3,16 +3,14 @@ import 'dart:convert';
 import 'package:buttons_tabbar/buttons_tabbar.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
-import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:mon_gravier_com_livreur/constants.dart';
 import 'package:mon_gravier_com_livreur/globale.dart';
 import 'package:mon_gravier_com_livreur/models/Commande.dart';
 import 'package:mon_gravier_com_livreur/screens/commande/components/commande_liste_screen.dart';
 
+import '../../../components/bouton_retour.dart';
 import '../../helper/constants.dart';
-import '../sign_in/sign_in_screen.dart';
 
 class CommandeScreen extends StatefulWidget {
   const CommandeScreen({super.key});
@@ -54,7 +52,7 @@ class CommandeScreenState extends State<CommandeScreen> {
         if (retourHttp.statusCode == 200) {
           com = Commande.fromJson(datas);
           if (com.code == 200) {
-            setState(() {
+            if (mounted) setState(() {
               var commandes = com.data ?? [];
               commandeAttente = commandes
                   .where((c) => c.etatCommande == COMMANDE_EN_ATTENTE)
@@ -72,15 +70,15 @@ class CommandeScreenState extends State<CommandeScreen> {
               ];
             });
           } else {
-            afficherErreur(com.message ?? '');
+            if (mounted) afficherErreur(com.message ?? '');
           }
         } else {
           // Sans cette branche, une reponse serveur en erreur ne produisait
           // AUCUNE reaction a l'ecran.
-          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez reessayer.");
+          if (mounted) afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez reessayer.");
         }
       } catch (e) {
-        afficherErreur(
+        if (mounted) afficherErreur(
             "Une erreur s'est produite veuillez reesayer plus tard");
         if (kDebugMode) {
           print(e.toString());
@@ -88,7 +86,7 @@ class CommandeScreenState extends State<CommandeScreen> {
       }
       fermerChargement();
     } else {
-      afficherInfo("Veuillez vérifier votre connexion internet");
+      if (mounted) afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -113,6 +111,7 @@ class CommandeScreenState extends State<CommandeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: const BoutonRetour(),
         title: const Text("Liste des commandes"),
         automaticallyImplyLeading: false,
       ),
@@ -120,13 +119,6 @@ class CommandeScreenState extends State<CommandeScreen> {
         child: Container(
                 width: double.infinity,
                 height: heightOfScreen(context),
-                decoration: const BoxDecoration(
-                  image: DecorationImage(
-                    image: AssetImage("assets/images/bg.jpg"),
-                    fit: BoxFit.cover,
-                    opacity: 0.1,
-                  ),
-                ),
                 child: DefaultTabController(
                   length: pages.length,
                   child: Column(

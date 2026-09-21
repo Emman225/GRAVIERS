@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:mon_gravier_com/models/adresse_de_livraison.dart';
 
 import '../../globale.dart';

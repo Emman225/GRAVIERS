@@ -47,7 +47,7 @@
             @csrf
             @method('DELETE')
             <button type="submit" class="btn btn-sm btn-dark" title="Supprimer définitivement">
-                <i class="material-icons md-delete_forever"></i>
+                <i class="material-icons md-delete_forever text-danger"></i>
             </button>
         </form>
     @endif

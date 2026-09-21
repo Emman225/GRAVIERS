@@ -55,9 +55,9 @@
         <h6 class="recap-guide-title">📋 Onglets disponibles</h6>
         <ul class="recap-guide-list">
             <li><strong>Tableau de bord</strong> — vue d'ensemble : total dû global, répartition par catégorie, Top créanciers.</li>
-            <li><strong>Détail Fournisseurs</strong> — liste complète des dettes fournisseurs avec leurs statuts.</li>
-            <li><strong>Détail Livreurs</strong> — liste complète des frais de livraison à régler.</li>
-            <li><strong>Détail Apporteurs</strong> — liste complète des commissions à verser.</li>
+            <li><strong>Détail fournisseurs</strong> — liste complète des dettes fournisseurs avec leurs statuts.</li>
+            <li><strong>Détail livreurs</strong> — liste complète des frais de livraison à régler.</li>
+            <li><strong>Détail apporteurs</strong> — liste complète des commissions à verser.</li>
         </ul>
     </section>
 
@@ -72,7 +72,7 @@
     </section>
 
     <section class="recap-guide-section recap-guide-contact">
-        <h6 class="recap-guide-title">📞 Service Trésorerie GRAVIER.COM</h6>
+        <h6 class="recap-guide-title">📞 Service trésorerie GRAVIER.COM</h6>
         <p class="mb-1"><strong>Email :</strong> <a href="mailto:tresorerie@gravier.com">tresorerie@gravier.com</a></p>
         <p class="mb-0"><strong>Téléphone :</strong> +225 27 22 00 00 00</p>
     </section>

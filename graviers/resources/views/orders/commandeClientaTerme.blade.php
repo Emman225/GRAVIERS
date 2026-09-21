@@ -24,8 +24,11 @@
 
                 <!-- card-header end// -->
                 <div class="card-body">
+                    <x-export-buttons table-id="listeCommandesClientATerme"
+                                      filename="commandes-client-a-terme"
+                                      title="Commandes client à terme" />
                     <div class="table-responsive">
-                        <table class="table table-striped">
+                        <table id="listeCommandesClientATerme" class="table table-striped">
                             <thead>
                                 <tr>
                                     <th class="text-center" style="background-color: #1c57a3; color: white; border-top-left-radius:5px">N°</th>
@@ -54,7 +57,7 @@
                                                 <td class="texte-center">{{ number_format($commande->montantHT(),'0','',' ') }} fcfa</td>
                                                 <td><span class="badge rounded-pill text-warning">{{ $commande->etat_commande }}</span>
                                                 </td>
-                                                <td class="texte-center">{{ Carbon::parse($commande->created_at)->format('d-m-Y à H:i') }}</td>
+                                                <td class="texte-center">{{ Carbon::parse($commande->created_at)->format('d/m/Y à H:i:s') }}</td>
                                                 <!-- <td class="texte-center">
 
 
@@ -66,8 +69,8 @@
                                                         <p class="text-success">Paiement soldé</p>
                                                     @endif
                                                 </td> -->
-                                                <td class="text-end">
-                                                    <a href="{{ route('orders.details', $commande->numero) }}" class="btn btn-md rounded font-sm">Detail</a>
+                                                <td class="text-nowrap text-end">
+                                                    <a href="{{ route('orders.details', $commande->numero) }}" class="btn btn-info btn-md rounded font-sm" title="Detail"><i class="material-icons md-visibility"></i></a>
 
 
                                                 </td>
@@ -77,16 +80,16 @@
                                                      page serait tombée sur « Route [paye.create] not defined ».
                                                      Le règlement d'un client à terme passe par
                                                      /clients-terme/paiements. --}}
-                                                <td>
-                                                    <a href="{{ route('orders.traitement', $commande) }}" class="btn btn-md rounded font-sm">Traiter la commande</a>
+                                                <td class="text-nowrap">
+                                                    <a href="{{ route('orders.traitement', $commande) }}" class="btn btn-primary btn-md rounded font-sm" title="Traiter la commande"><i class="material-icons md-play_arrow"></i></a>
 
                                                 </td>
-                                                <td class="text-end">
-                                                    <a  href="{{ route('orders.BECommande', $commande->numero) }}"  class="btn btn-md rounded font-sm">Les enlevements</a>
+                                                <td class="text-nowrap text-end">
+                                                    <a  href="{{ route('orders.BECommande', $commande->numero) }}"  class="btn btn-info btn-md rounded font-sm" title="Les enlevements"><i class="material-icons md-local_shipping"></i></a>
                                                 </td>
-                                                <td class="text-end">
+                                                <td class="text-nowrap text-end">
                                                     @if($commande->blClient)
-                                                        <a download href="{{asset('storage/'.$commande->blClient->fichier)}}"  class="btn btn-md rounded font-sm">Télécharger</a>
+                                                        <a download href="{{asset('storage/'.$commande->blClient->fichier)}}"  class="btn btn-md rounded font-sm" title="Télécharger"><i class="material-icons md-more_horiz"></i></a>
                                                     @endif
                                                 </td>
                                             </tr>

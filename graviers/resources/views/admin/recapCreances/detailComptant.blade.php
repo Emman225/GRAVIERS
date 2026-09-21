@@ -78,7 +78,7 @@
                             @endphp
                             <tr class="{{ $alerte ? 'table-danger' : '' }}">
                                 <td class="text-center"><strong>{{ $l->numero }}</strong></td>
-                                <td class="text-center">{{ $l->date ? Carbon::parse($l->date)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date ? \Help::dateHeure($l->date) : '-' }}</td>
                                 <td>{{ $l->client_nom }}</td>
                                 <td class="text-center">{{ $l->telephone }}</td>
                                 <td class="text-center">{{ $l->agence }}</td>

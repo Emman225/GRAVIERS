@@ -51,7 +51,7 @@
                             @endphp
                             <tr>
                                 <td class="text-center"><strong>{{ $l->numero_liv }}</strong></td>
-                                <td class="text-center">{{ $l->date ? Carbon::parse($l->date)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date ? \Help::dateHeure($l->date) : '-' }}</td>
                                 <td>{{ $l->livreur_nom }}</td>
                                 <td class="text-center">{{ $l->numero_commande }}</td>
                                 <td>{{ $l->client_nom }}</td>

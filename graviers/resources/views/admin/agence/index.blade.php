@@ -110,7 +110,7 @@
                                         <span class="badge bg-secondary">Inactive</span>
                                     @endif
                                 </td>
-                                <td class="text-end">
+                                <td class="text-nowrap text-end">
                                     <div class="dropdown">
                                         <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm">
                                             <i class="material-icons md-more_horiz"></i> Actions
@@ -127,7 +127,7 @@
                                                 @endif
                                             </a>
                                             <form action="{{ route('show.agences.destroy', $a) }}" method="POST"
-                                                  class="js-delete-form"
+                                                  class="d-inline js-delete-form"
                                                   data-item-name="{{ $a->code }} — {{ $a->nom }}"
                                                   data-confirm-text="Cette action est irréversible. Si l'agence est rattachée à des commandes ou paiements, elle ne pourra pas être supprimée.">
                                                 @csrf

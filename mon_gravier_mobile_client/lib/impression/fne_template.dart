@@ -4,6 +4,8 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:http/http.dart' as http;
 
+import '../support/regime_imposition.dart';
+
 import '../../globale.dart';
 
 /// Configuration FNE de l'entreprise - à charger depuis l'API
@@ -182,6 +184,8 @@ class FneTemplate {
     double autresTaxes = 0,
     double totalAPayer = 0,
     double remise = 0,
+    double tvaTransport = 0,
+    double livraisonHorsTableau = 0,
     required List<FneResumeFiscal> resumeFiscal,
     String? vendeur,
     String? modePaiement,
@@ -208,7 +212,33 @@ class FneTemplate {
       montantTtc: totalAPayer,
     );
 
-    final pdf = pw.Document();
+    // UNE POLICE QUI CONNAÎT LE FRANÇAIS.
+    //
+    // Sans thème, le paquet `pdf` se rabat sur Helvetica, qui ne couvre que le
+    // Latin-1 : l'apostrophe typographique (’) et le tiret cadratin (—)
+    // s'imprimaient en carrés. « Côte d▯Ivoire » sur un document remis au
+    // client. Muli est déjà embarquée dans l'application et contient ces
+    // caractères — vérifié dans sa table de correspondance.
+    //
+    // Le thème couvre TOUT le document d'un coup : les `pw.TextStyle` du
+    // gabarit ne demandent qu'un `fontWeight`, qui se résout alors sur la
+    // variante grasse déclarée ici.
+    final muli = pw.Font.ttf(await rootBundle.load('assets/fonts/muli/Muli.ttf'));
+    final muliGras =
+        pw.Font.ttf(await rootBundle.load('assets/fonts/muli/Muli-Bold.ttf'));
+    final muliItalique =
+        pw.Font.ttf(await rootBundle.load('assets/fonts/muli/Muli-Italic.ttf'));
+    final muliGrasItalique = pw.Font.ttf(
+        await rootBundle.load('assets/fonts/muli/Muli-BoldItalic.ttf'));
+
+    final pdf = pw.Document(
+      theme: pw.ThemeData.withFont(
+        base: muli,
+        bold: muliGras,
+        italic: muliItalique,
+        boldItalic: muliGrasItalique,
+      ),
+    );
 
     pdf.addPage(
       pw.MultiPage(
@@ -232,7 +262,7 @@ class FneTemplate {
           pw.SizedBox(height: 5),
 
           // ===== TOTAUX =====
-          _buildTotaux(totalHt, totalTva, totalTtc, autresTaxes, totalAPayer, remise),
+          _buildTotaux(totalHt, totalTva, totalTtc, autresTaxes, totalAPayer, remise, tvaTransport, livraisonHorsTableau),
           pw.SizedBox(height: 10),
 
           // ===== RÉSUMÉ FISCAL =====
@@ -429,7 +459,7 @@ class FneTemplate {
                 pw.Text('Adresse : ${client.adresse}',
                     style: const pw.TextStyle(fontSize: 9)),
                 pw.Text('NCC : ${client.ncc}', style: const pw.TextStyle(fontSize: 9)),
-                pw.Text('Régime d\'imposition : ${client.regimeImposition}',
+                pw.Text('Régime d\'imposition : ${libelleRegimeImposition(client.regimeImposition)}',
                     style: const pw.TextStyle(fontSize: 9)),
               ],
             ),
@@ -480,6 +510,8 @@ class FneTemplate {
     double autresTaxes,
     double totalAPayer, [
     double remise = 0,
+    double tvaTransport = 0,
+    double livraisonHorsTableau = 0,
   ]) {
     pw.Widget ligneTotaux(String label, double montant, {bool bold = false, bool negatif = false}) {
       return pw.Container(
@@ -518,7 +550,10 @@ class FneTemplate {
       ligneTotaux('TOTAL HT', totalHt),
       // La remise s'affiche AVANT la TVA (même ordre que le site web).
       if (remise > 0) ligneTotaux('Remise', remise, negatif: true),
-      ligneTotaux('TVA', totalTva),
+      // Une seule ligne « TVA » : articles + transport taxé (09/09/2026).
+      ligneTotaux('TVA', totalTva + tvaTransport),
+      // Transport NON taxé : sous les totaux, hors du TTC (présentation d'avant).
+      if (livraisonHorsTableau > 0) ligneTotaux('Coût livraison', livraisonHorsTableau),
       ligneTotaux('TOTAL TTC', totalTtc),
       ligneTotaux('AUTRES TAXES', autresTaxes),
       ligneTotaux('TOTAL A PAYER', totalAPayer, bold: true),

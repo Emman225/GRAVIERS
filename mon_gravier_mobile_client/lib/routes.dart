@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:mon_gravier_com/components/afficher_image_widget.dart';
+import 'package:mon_gravier_com/impression/impression_facture_dgi_pdf.dart';
 import 'package:mon_gravier_com/impression/impression_recu_paiement_pdf.dart';
 import 'package:mon_gravier_com/screens/afficher_carte/afficher_carte.dart';
 import 'package:mon_gravier_com/screens/choix_adresse/choix_adresse_screen.dart';
@@ -17,6 +18,7 @@ import 'package:mon_gravier_com/screens/devis/devis_screen.dart';
 import 'package:mon_gravier_com/screens/edit_profil/edit_profile_screen.dart';
 import 'package:mon_gravier_com/screens/edition_adresse/edition_adresse_screen.dart';
 import 'package:mon_gravier_com/screens/facture/facture_screen.dart';
+import 'package:mon_gravier_com/screens/facture_dgi/facture_dgi_screen.dart';
 import 'package:mon_gravier_com/screens/finalisation_demande_livraison/finalisation_demande_livraison_screen.dart';
 import 'package:mon_gravier_com/screens/liste_demande_livraison/liste_demande_livraison_screen.dart';
 import 'package:mon_gravier_com/screens/modifier_mot_de_passe/modifier_pass_screen.dart';
@@ -80,6 +82,9 @@ final Map<String, WidgetBuilder> routes = {
   DetailsLocationScreen.routeName: (context) => const DetailsLocationScreen(),
   CommandeErrorScreen.routeName: (context) => const CommandeErrorScreen(),
   FactureScreen.routeName: (context) => const FactureScreen(),
+  // Factures DGI du site sur le téléphone (lot 95, 16/09/2026).
+  FactureDgiScreen.routeName: (context) => const FactureDgiScreen(),
+  ImpressionFactureDgiPdf.routeName: (context) => const ImpressionFactureDgiPdf(),
   PaiementScreen.routeName: (context) => const PaiementScreen(),
   ImpressionRecuPaiementPdf.routeName: (context) => const ImpressionRecuPaiementPdf(),
   AfficherImageWidget.routeName: (context) => const AfficherImageWidget(),

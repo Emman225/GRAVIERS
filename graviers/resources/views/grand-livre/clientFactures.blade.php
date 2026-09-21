@@ -37,8 +37,11 @@
 
                 <!-- card-header end// -->
                 <div class="card-body">
+                    <x-export-buttons table-id="listeFacturesClient"
+                                      filename="grand-livre-factures-client"
+                                      title="Grand livre — factures du client" />
                     <div class="table-responsive">
-                        <table class="table table-striped">
+                        <table id="listeFacturesClient" class="table table-striped">
                             <thead class="thead-dark">
 
                                 <tr>
@@ -57,7 +60,7 @@
                                 @endphp
                                 @foreach ($factures as $key => $facture)
                                     @php
-                                        $supplement = $facture->commande?->cout_livraison_client + ($facture->commande?->TvaCommande?->montant ?? 0) - $facture->commande?->remise;
+                                        $supplement = $facture->commande?->cout_livraison_client + ($facture->commande?->tva_transport ?? 0) + ($facture->commande?->TvaCommande?->montant ?? 0) - $facture->commande?->remise;
                                         // dd($supplement, $facture->montant);
                                     @endphp
 
@@ -71,12 +74,12 @@
                                         <td> {{ $facture->numero }} </td>
                                         <td>{{ carbon::parse($facture->created_at)->format('d-m-Y') }}</td>
                                         <td>{{ number_format($facture->montant, '0', '', ' ') }} fcfa</td>
-                                        <td> <a style="text-decoration: none"
+                                        <td class="text-nowrap"> <a style="text-decoration: none"
                                                 href="{{ route('show.actionFacture', ['commande' => $facture->service_id, 'facture' => $facture, 'action' => 'voir', 'livraison' => $livraison]) }}"
-                                                class="text-white btn btn-primary">Voir</a> </td>
-                                        <td> <a style="text-decoration: none"
+                                                class="text-white btn btn-primary" title="Voir"><i class="material-icons md-visibility"></i></a> </td>
+                                        <td class="text-nowrap"> <a style="text-decoration: none"
                                                 href="{{ route('show.actionFacture', ['commande' => $facture->service_id, 'facture' => $facture, 'action' => 'telecharger', 'livraison' => $livraison]) }}"
-                                                class="text-white btn btn-primary">Telecharger</a> </td>
+                                                class="text-white btn btn-primary" title="Telecharger"><i class="material-icons md-more_horiz"></i></a> </td>
                                     </tr>
                                 @endforeach
 

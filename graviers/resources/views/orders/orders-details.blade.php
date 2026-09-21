@@ -121,22 +121,9 @@
                                     </a>
                                 </div>
                             </div>
-                            <div class="card-body">
-                                @if ($estPdf)
-                                    <embed src="{{ $urlBl }}" type="application/pdf"
-                                           width="100%" height="600px"
-                                           style="border: 1px solid #ddd;" />
-                                @elseif ($estImage)
-                                    <div class="text-center">
-                                        <img src="{{ $urlBl }}" alt="Bon de commande"
-                                             style="max-width: 100%; max-height: 600px; border: 1px solid #ddd;">
-                                    </div>
-                                @else
-                                    <p class="text-muted">
-                                        Format <strong>{{ $extensionBl }}</strong> non prévisualisable —
-                                        utilisez les boutons « Consulter » ou « Télécharger ».
-                                    </p>
-                                @endif
+                            {{-- L'aperçu du fichier (PDF ou image) a été retiré le 08/09/2026 :
+                                 il occupait toute la page. La barre suffit : « Consulter »
+                                 l'ouvre dans un onglet, « Télécharger » l'enregistre. --}}
                             </div>
                         </div>
                     </div>
@@ -145,8 +132,12 @@
 
             <div class="row">
                 <div class="col-lg-12">
+                    {{-- Les trois exports, comme sur les listes (08/09/2026). --}}
+                    <x-export-buttons table-id="tableDetailsCommande"
+                                      filename="commande-{{ $commande->numero }}"
+                                      title="Détail de la commande {{ $commande->numero }}" />
                     <div class="table-responsive">
-                        <table disabled class="table">
+                        <table class="table" id="tableDetailsCommande">
                             <thead>
                                 <tr>
                                     <th width="30%">Produit</th>
@@ -258,26 +249,91 @@
                                         ->orderBy('id')
                                         ->get();
                                 @endphp
+                                @php
+                                    // UN CODE REFUSÉ N'EST PLUS UN CODE À DONNER.
+                                    //
+                                    // Toutes les courses étaient listées côte à côte, refus
+                                    // compris, sous le titre « Codes à communiquer au client ».
+                                    // Le client se retrouvait avec DEUX codes sans savoir lequel
+                                    // valait — et le refusé s'affichait « EN ATTENTE », puisque
+                                    // seul `accepte` change au refus, jamais `etat_livraison`.
+                                    // Le libellé disait donc l'exact contraire de la réalité.
+                                    $codesValables = $livraisonsCommande->where('accepte', '!=', \App\Models\Livraison::REFUSEE);
+                                    $coursesRefusees = $livraisonsCommande->where('accepte', \App\Models\Livraison::REFUSEE);
+                                @endphp
                                 @if ($livraisonsCommande->isNotEmpty())
                                     <tr>
                                         <td colspan="7" style="background:#f8f9fa;">
-                                            <strong>Codes à communiquer au client</strong>
-                                            <div class="mt-2">
-                                                @foreach ($livraisonsCommande as $uneLivraison)
-                                                    <div class="mb-1">
-                                                        <span class="badge bg-info">N° de livraison</span>
-                                                        <strong>{{ $uneLivraison->numero }}</strong>
-                                                        @if ($uneLivraison->enlevement?->code_enleve)
-                                                            &nbsp;·&nbsp;
-                                                            <span class="badge bg-secondary">Code d'enlèvement</span>
-                                                            <strong>{{ $uneLivraison->enlevement->code_enleve }}</strong>
-                                                        @endif
-                                                        <small class="text-muted">
-                                                            &nbsp;— {{ $uneLivraison->etat_livraison }}
-                                                        </small>
-                                                    </div>
-                                                @endforeach
-                                            </div>
+                                            {{-- Les NUMÉROS de livraison et les BONS d'enlèvement ne sont
+                                                 plus affichés ici (08/09/2026) : ils ne servent qu'au
+                                                 client, au livreur et au fournisseur. On garde, produit
+                                                 par produit, qui a traité et servi chaque course. --}}
+                                            @if ($codesValables->isNotEmpty())
+                                                <strong>Livraisons de la commande</strong>
+                                                <div class="mt-2">
+                                                    @foreach ($codesValables as $uneLivraison)
+                                                        @php
+                                                            $bonServi  = $uneLivraison->enlevement;
+                                                            $traitePar = $bonServi?->gestionnaire?->nom_prenoms ?: null;
+                                                            $servePar  = $bonServi?->fournisseur?->user?->nom_prenoms ?: null;
+                                                            $produitLivre = $uneLivraison->detailCommande?->produit?->nom;
+                                                            $qteLivraison = $uneLivraison->qte ?? null;
+                                                        @endphp
+                                                        <div class="mb-1">
+                                                            <span class="badge bg-info">Course</span>
+                                                            <strong>{{ $produitLivre ?: 'Produit' }}</strong>
+                                                            @if ($qteLivraison)
+                                                                — {{ rtrim(rtrim(number_format((float) $qteLivraison, 2, ',', ' '), '0'), ',') }}
+                                                                {{ $uneLivraison->detailCommande?->produit?->unite ?? '' }}
+                                                            @endif
+                                                            <small class="text-muted">&nbsp;— {{ $uneLivraison->etatLisible() }}</small>
+                                                            @if ($traitePar)
+                                                                <div>
+                                                                    <small class="text-muted">
+                                                                        Traité par <strong>{{ $traitePar }}</strong>
+                                                                    </small>
+                                                                </div>
+                                                            @endif
+                                                            @if ($bonServi?->fournisseur_validation)
+                                                                <div>
+                                                                    <small class="text-success">
+                                                                        Enlèvement servi le
+                                                                        {{ \Carbon\Carbon::parse($bonServi->fournisseur_validation)->format('d/m/Y à H:i:s') }}
+                                                                        @if ($servePar)
+                                                                            par le fournisseur <strong>{{ $servePar }}</strong>
+                                                                        @endif
+                                                                        @if ($bonServi->qte_servi !== null && (float) $bonServi->qte_servi < (float) $bonServi->qte)
+                                                                            — <span class="text-danger">{{ rtrim(rtrim(number_format((float) $bonServi->qte_servi, 2, ',', ' '), '0'), ',') }}
+                                                                            sur {{ rtrim(rtrim(number_format((float) $bonServi->qte, 2, ',', ' '), '0'), ',') }}</span>
+                                                                        @endif
+                                                                    </small>
+                                                                </div>
+                                                            @elseif ($bonServi)
+                                                                <div>
+                                                                    <small class="text-warning">En attente du fournisseur</small>
+                                                                </div>
+                                                            @endif
+                                                        </div>
+                                                    @endforeach
+                                                </div>
+                                            @else
+                                                <strong>Aucune course active</strong>
+                                                <div class="mt-1">
+                                                    <small class="text-muted">
+                                                        Toutes les courses affectées ont été refusées :
+                                                        réaffectez cette ligne pour qu'une nouvelle course soit créée.
+                                                    </small>
+                                                </div>
+                                            @endif
+
+                                            @if ($coursesRefusees->isNotEmpty())
+                                                <div class="mt-3 pt-2" style="border-top:1px dashed #dee2e6;">
+                                                    <small class="text-muted">
+                                                        <strong>{{ $coursesRefusees->count() }} course(s) refusée(s) par le livreur</strong>
+                                                        — la ligne concernée a été, ou doit être, réaffectée.
+                                                    </small>
+                                                </div>
+                                            @endif
                                         </td>
                                     </tr>
                                 @endif

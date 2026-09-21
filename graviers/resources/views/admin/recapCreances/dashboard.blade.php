@@ -9,7 +9,7 @@
 @endphp
 
 @extends('layout.main')
-@section('title', 'Récap Créances - Tableau de bord')
+@section('title', 'Récap créances - Tableau de bord')
 
 @section('contenu')
     <div class="screen-overlay"></div>
@@ -19,7 +19,7 @@
         <div class="dash-welcome-content">
             <div>
                 <h2 class="dash-welcome-title">
-                    💰 Récapitulatif Créances Clients
+                    💰 Récapitulatif créances clients
                 </h2>
                 <p class="dash-welcome-subtitle">
                     {{ $greeting }} {{ $firstName }} — Vue consolidée des sommes à encaisser ({{ Carbon::now()->locale('fr')->isoFormat('D MMMM YYYY') }})
@@ -122,7 +122,7 @@
                             <thead>
                                 <tr>
                                     <th>Type de Créance</th>
-                                    <th class="text-end">Montant Total</th>
+                                    <th class="text-end">Montant total</th>
                                     <th class="text-center">Nb Clients</th>
                                     <th class="text-center">Nb Documents</th>
                                     <th class="text-end">Échu</th>
@@ -143,8 +143,8 @@
                                         <td class="text-end">
                                             <span class="kpi-pill" style="background: #eef2ff; color: #1c57a3;">{{ number_format($r->pct, 1, ',', ' ') }}%</span>
                                         </td>
-                                        <td class="text-center">
-                                            <a href="{{ $r->detail_route }}" class="btn btn-sm btn-light">
+                                        <td class="text-nowrap text-center">
+                                            <a href="{{ $r->detail_route }}" class="btn btn-sm btn-info">
                                                 <i class="material-icons md-visibility"></i> {{ $r->detail_label }}
                                             </a>
                                         </td>
@@ -270,7 +270,7 @@
                 <div class="modal-header" style="background: linear-gradient(135deg, #1c57a3 0%, #0a2540 100%); color: #fff; border-bottom: 0;">
                     <h5 class="modal-title" id="modalGuideRecapCreancesLabel">
                         <i class="material-icons md-menu_book align-middle"></i>
-                        Guide d'utilisation — Récap Créances
+                        Guide d'utilisation — Récap créances
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fermer"></button>
                 </div>

@@ -9,6 +9,7 @@ use App\Models\Concerns\TraceLesValidations;
 
 class PaiementLivreur extends Model
 {
+    use \App\Traits\CircuitPreuveReglement;
     use SoftDeletes, TraceLesValidations;
 
     protected $table = 'paiement_livreur';
@@ -33,6 +34,15 @@ class PaiementLivreur extends Model
         'user_valide2_id',
         'date_validation_1',
         'date_validation_2',
+        // Circuit après la 2e validation (point 20, 09/09/2026) : « À payer »,
+        // preuve jointe, « Effectuée ». Suivi seulement : l'imputation reste à
+        // la 2e validation.
+        'etat_reglement',
+        'preuve_paiement',
+        'date_preuve',
+        'user_preuve_id',
+        'date_effectuee',
+        'user_effectuee_id',
     ];
 
     protected $casts = [

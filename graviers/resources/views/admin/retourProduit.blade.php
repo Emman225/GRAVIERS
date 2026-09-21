@@ -10,7 +10,7 @@
     <div class="content-header">
         <h2 class="content-title">Produits retournés </h2>
         {{-- <div>
-            <a href="{{ route('sellers.register') }}" class="btn btn-primary"><i class="material-icons md-plus"></i> Ajouter Nouveau</a>
+            <a href="{{ route('sellers.register') }}" class="btn btn-primary"><i class="material-icons md-plus"></i> Ajouter nouveau</a>
         </div> --}}
     </div>
     @if(session('ok'))
@@ -37,6 +37,9 @@
         </header>
         <!-- card-header end// -->
         <div class="card-body">
+            <x-export-buttons table-id="liste"
+                              filename="retours-produits"
+                              title="Produits retournés" />
             <div class="table-responsive">
                 <table class="table table-striped" id="liste">
                     {{-- @dd($founisseurs) --}}
@@ -67,13 +70,13 @@
 
                                 <td class="text-center"> {{$retour->detailCommande?->produit?->nom ?? '-'}} </td>
 
-                                <td class="text-center fw_bold"> {{Carbon::parse($retour->created_at)->format('d-m-Y à H:i')}} </td>
+                                <td class="text-center fw_bold"> {{Carbon::parse($retour->created_at)->format('d/m/Y à H:i:s')}} </td>
                                 <td class="text-center"> {{$retour->motif}} </td>
-                                <td class="text-center">
+                                <td class="text-nowrap text-center">
 
                                     @switch($retour->statut)
                                         @case(1)
-                                            <a href="{{route('show.retourTraite',$retour)}}" class="btn btn-primary"> traiter le retour</a>
+                                            <a href="{{route('show.retourTraite',$retour)}}" class="btn btn-primary" title="traiter le retour"><i class="material-icons md-play_arrow"></i></a>
                                             @break
                                         @case($retour->statut == 2)
                                         <span class="badge badge-warning bg-success text-white">Approuvé</span>

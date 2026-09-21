@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../components/bouton_retour.dart';
+import '../../components/codes_livraison.dart';
+import '../../constants.dart';
 import '../../helper/constants.dart';
 import '../../models/Cart.dart';
+import '../../models/InformationsCommande.dart';
 import 'components/cart_card.dart';
 
 class DetailsDemandeLivraisonAfficheScreen extends StatefulWidget {
@@ -15,12 +19,56 @@ class DetailsDemandeLivraisonAfficheScreen extends StatefulWidget {
 
 class _DetailsDemandeLivraisonAfficheScreenState extends State<DetailsDemandeLivraisonAfficheScreen> {
 
-  List<Cart> datas = Get.arguments;
+  List<Cart> datas = [];
+
+  /// Codes de livraison des courses acceptées (10/09/2026) et numéro de la
+  /// demande, reçus avec les lignes. L'écran acceptait une simple liste :
+  /// il la lit encore, pour ne rien casser.
+  List<CodesLigne> codes = [];
+  String? numeroDemande;
 
   @override
   void initState() {
-    datas = Get.arguments;
+    final args = Get.arguments;
+    if (args is Map) {
+      datas = (args['lignes'] as List<Cart>?) ?? [];
+      codes = (args['codes'] as List<CodesLigne>?) ?? [];
+      numeroDemande = args['numero']?.toString();
+    } else if (args is List<Cart>) {
+      datas = args;
+    }
     super.initState();
+  }
+
+  /// Le code de livraison à remettre au livreur, en tête du détail — comme
+  /// sur le détail d'une commande ou d'une location.
+  Widget _blocCodes() {
+    if (codes.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.fromLTRB(kSpaceSm, kSpaceMd, kSpaceSm, kSpaceSm),
+      padding: const EdgeInsets.all(kSpaceMd),
+      decoration: BoxDecoration(
+        color: kSurfaceColor,
+        borderRadius: BorderRadius.circular(kRadiusMd),
+        border: Border.all(color: kBorderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "Code de livraison à remettre au livreur",
+            style: kCorpsSecondaireStyle.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: kSpaceXs),
+          for (final c in codes)
+            CodesLivraison(
+              codeLivraison: c.codeLivraison,
+              codeEnlevement: null,
+              numeroCommande: numeroDemande,
+            ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -29,29 +77,9 @@ class _DetailsDemandeLivraisonAfficheScreenState extends State<DetailsDemandeLiv
       appBar: AppBar(
         title: const Text(
           "Détails demande de livraison",
-          style: TextStyle(color: Colors.black),
         ),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       body: datas.isEmpty
           ? Center(
@@ -60,21 +88,18 @@ class _DetailsDemandeLivraisonAfficheScreenState extends State<DetailsDemandeLiv
           : Container(
               width: double.infinity,
               height: heightOfScreen(context),
-              decoration: const BoxDecoration(
-                image: DecorationImage(
-                  image: AssetImage("assets/images/bg.jpg"),
-                  fit: BoxFit.cover,
-                  opacity: 0.1,
-                ),
-              ),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 5),
                 child: ListView.builder(
-                  itemCount: datas.length,
-                  itemBuilder: (context, index) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    child: CartCard(cart: datas[index]),
-                  ),
+                  // La première case porte les codes (10/09/2026), les suivantes les lignes.
+                  itemCount: datas.length + 1,
+                  itemBuilder: (context, position) {
+                    if (position == 0) return _blocCodes();
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: CartCard(cart: datas[position - 1]),
+                    );
+                  },
                 ),
               ),
             ),

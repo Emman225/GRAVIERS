@@ -69,7 +69,9 @@
                     'show.recapDettes.detailLivreurs', 'show.recapDettes.detailApporteurs',
 
                     // Comptabilité (navAdmin)
-                    'show.comptabilite.tvaCollectee', 'show.comptabilite.beneficesLivraisons',
+                    'show.comptabilite.tvaCollectee', 'show.comptabilite.airsiCollectee',
+                    'show.comptabilite.beneficesLivraisons',
+                    'show.comptabilite.recapVentes', 'show.comptabilite.recapLocations',
 
                     // Client (navAdmin)
                     'show.listClient',
@@ -117,7 +119,7 @@
                     'show.livreurs.livraisons', 'show.livreurs.paiements', 'show.livreurs.synthese',
 
                     // Produits
-                    'product.list', 'product.category', 'product.add',
+                    'product.list', 'product.category', 'product.add', 'product.pourcentage',
 
                     // Code promo / Modération / Paiements reçu
                     'show.creationDeCodePromo',
@@ -144,7 +146,19 @@
                     // Paramètre
                     'show.parametre',
                 ];
-                $hideBack = auth()->guest() || request()->routeIs(...$homeRoutes);
+                // LA LISTE CI-DESSUS NE SUFFISAIT PLUS.
+                //
+                // Elle était tenue à la main, et chaque entrée ajoutée au menu
+                // depuis gardait son bouton « Retour » — un retour qui ne veut
+                // rien dire sur une page ouverte d'un clic dans le menu.
+                //
+                // On y ajoute donc ce que le MENU cite lui-même. La liste
+                // manuelle reste : elle couvre des écrans hors menu qui, eux
+                // aussi, n'ont pas de « précédent » (une page d'accueil de
+                // profil, par exemple).
+                $hideBack = auth()->guest()
+                    || request()->routeIs(...$homeRoutes)
+                    || \App\Support\MenusLateraux::contientLaRouteCourante();
             @endphp
 
             @auth

@@ -70,7 +70,9 @@
             <div class="recu-meta-cell" style="text-align: right;">
                 <div class="recu-meta-label">Agence</div>
                 <div class="recu-meta-value">
-                    {{ $paiement->agence?->code ?? '-' }}
+                    {{-- Un règlement en ligne n'a pas d'agence : on le dit,
+                         plutôt qu'un tiret qui ressemble à un oubli. --}}
+                    {{ $paiement->agence?->code ?? (($enLigne ?? false) ? 'En ligne' : '-') }}
                     @if ($paiement->agence?->nom)
                         <br><span style="font-weight: normal; font-size: 11px; color: #666;">{{ $paiement->agence?->nom }}</span>
                     @endif
@@ -89,9 +91,20 @@
             <td>{{ $paiement->client?->contact1 ?? '-' }}</td>
         </tr>
         <tr>
-            <td>N° Commande</td>
+            {{-- Le libellé suit la NATURE de l'opération : une location réglée en
+                 agence s'annonçait « N° Commande : - », sans rien qui la désigne. --}}
+            <td>{{ $libelleOperation ?? 'N° Commande' }}</td>
             <td>{{ $commande?->numero ?? '-' }}</td>
         </tr>
+        @if ($commande instanceof \App\Models\Commande)
+            {{-- Point 16 (07/09/2026) : le bon de commande du client figure sur le
+                 reçu comme sur la facture — il est obligatoire pour une entreprise,
+                 et son absence doit se voir. --}}
+            <tr>
+                <td>Bon de commande</td>
+                <td>{{ $bonCommande ?? $commande->blClient?->numero ?? '-' }}</td>
+            </tr>
+        @endif
         <tr>
             <td>Mode de paiement</td>
             <td>{{ $mode }}</td>
@@ -104,7 +117,7 @@
         @endif
         <tr>
             <td>Caissier</td>
-            <td>{{ $paiement->caissier?->nom_prenoms ?? '-' }}</td>
+            <td>{{ $paiement->caissier?->nom_prenoms ?? (($enLigne ?? false) ? 'Paiement en ligne' : '-') }}</td>
         </tr>
     </table>
 
@@ -116,7 +129,9 @@
     @if ($commande && $totalAPayer > 0)
         <div class="recu-resume">
             <div class="recu-resume-row">
-                <div class="recu-resume-label">Total commande :</div>
+                {{-- « Total commande » sur le recu d'une location disait deja
+                     la mauvaise chose. Le libelle suit l'operation. --}}
+                <div class="recu-resume-label">Total {{ str_replace('N° ', '', strtolower($libelleOperation ?? 'commande')) }} :</div>
                 <div class="recu-resume-value">{{ Help::formatNombre($totalAPayer, true) }}</div>
             </div>
             <div class="recu-resume-row">

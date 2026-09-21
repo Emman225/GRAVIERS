@@ -2,11 +2,12 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:mon_gravier_com_livreur/models/retour_liste_demande_paiement.dart';
 import 'package:searchable_listview/searchable_listview.dart';
 
+import '../../components/etat_vide.dart';
+import '../../../components/bouton_retour.dart';
 import '../../constants.dart';
 import '../../globale.dart';
 import '../../helper/constants.dart';
@@ -54,34 +55,34 @@ class _ListeDemandeRetraitScreenState extends State<ListeDemandeRetraitScreen> {
           // expiree ou un refus serveur (reponse HTTP 200 mais code != 200)
           // laissait simplement une liste vide, sans aucune explication.
           if (retDemande.code == 200) {
-            setState(() {
+            if (mounted) setState(() {
               demandes = retDemande.data ?? [];
             });
           } else {
-            setState(() {
+            if (mounted) setState(() {
               demandes = [];
             });
-            afficherErreur(retDemande.message ??
+            if (mounted) afficherErreur(retDemande.message ??
                 "Impossible de charger vos demandes de paiement.");
           }
         } else {
           // Sans cette branche, une reponse serveur en erreur ne produisait
           // AUCUNE reaction a l'ecran.
-          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez reessayer.");
+          if (mounted) afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez reessayer.");
         }
       } catch (e) {
         user.code = 500;
         user.message = "Une erreur s'est produite veuillez reesayer plus tard";
         // Ce bloc de secours n.affichait RIEN : l.ecran restait muet en cas de
         // coupure reseau ou de reponse illisible.
-        afficherErreur("Impossible de contacter le serveur. Verifiez votre connexion et reessayez.");
+        if (mounted) afficherErreur("Impossible de contacter le serveur. Verifiez votre connexion et reessayez.");
         if (kDebugMode) {
           print(e.toString());
         }
       }
       fermerChargement();
     } else {
-      afficherInfo("Veuillez vérifier votre connexion internet");
+      if (mounted) afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
@@ -98,27 +99,8 @@ class _ListeDemandeRetraitScreenState extends State<ListeDemandeRetraitScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Gestion des demandes de paiement"),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: const Color(0xff03dac6),
@@ -135,13 +117,6 @@ class _ListeDemandeRetraitScreenState extends State<ListeDemandeRetraitScreen> {
         child: Container(
           width: double.infinity,
           height: heightOfScreen(context),
-          decoration: const BoxDecoration(
-            image: DecorationImage(
-              image: AssetImage("assets/images/bg.jpg"),
-              fit: BoxFit.cover,
-              opacity: 0.2,
-            ),
-          ),
           child: Padding(
             padding: const EdgeInsets.all(15.0),
             child: SearchableList<DemandePaiement>(
@@ -161,7 +136,7 @@ class _ListeDemandeRetraitScreenState extends State<ListeDemandeRetraitScreen> {
                     await Get.toNamed(EditDemandeRetraitScreen.routeName, arguments: c);
                     chargerDemandePaiement();
                   }else{
-                    afficherErreur("Vous avez déjà été payé vous ne pouvez plus modifier cette ligne");
+                    if (mounted) afficherErreur("Vous avez déjà été payé vous ne pouvez plus modifier cette ligne");
                   }
                 },
                 child: Padding(
@@ -210,25 +185,31 @@ class _ListeDemandeRetraitScreenState extends State<ListeDemandeRetraitScreen> {
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
-                                Text('Montant: ${formaterMontant(c.montant?.toDouble() ?? 0)}',
+                                Text('Montant : ${formaterMontant(c.montant?.toDouble() ?? 0)}',
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                                Text("Moyen paiement: ${c.modePaiement}",
+                                Text("Moyen de paiement : ${c.modePaiement}",
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
                                 Text(
-                                  'Payé: ${c.paye == true ? 'OUI' : 'NON'}',
+                                  // Point 20 : une demande validée est « à payer »
+                                  // jusqu'à ce que l'entreprise déclare le versement effectué.
+                                  c.paye != true
+                                      ? 'Payé: NON'
+                                      : (c.etatReglement == 'EFFECTUEE'
+                                          ? 'Paiement effectué'
+                                          : (c.etatReglement == null ? 'Payé: OUI' : 'Validé — paiement en cours')),
                                   style: const TextStyle(
                                     color: kPrimaryColor,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
                                 Text(
-                                  'Date: ${c.date_demande}',
+                                  'Date : ${c.date_demande}',
                                   style: const TextStyle(
                                     color: Colors.black,
                                   ),
@@ -242,16 +223,13 @@ class _ListeDemandeRetraitScreenState extends State<ListeDemandeRetraitScreen> {
                   ),
                 ),
               ),
-              emptyWidget: const Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.error,
-                    color: Colors.red,
-                  ),
-                  Text('Aucune donnée'),
-                ],
-              ),
+              emptyWidget: const EtatVide(
+              compact: true,
+              icone: Icons.payments_outlined,
+              titre: "Aucune demande de retrait",
+              message:
+                  "Vos demandes de retrait apparaîtront ici une fois enregistrées.",
+            ),
               initialList: demandes,
               filter: (p0) {
                 return demandes
@@ -262,17 +240,11 @@ class _ListeDemandeRetraitScreenState extends State<ListeDemandeRetraitScreen> {
                     c.date_demande.toString().toUpperCase().contains(p0.toUpperCase())))
                     .toList();
               },
-              inputDecoration: InputDecoration(
-                labelText: "Recherchez...",
-                fillColor: Colors.white,
-                focusedBorder: OutlineInputBorder(
-                  borderSide: const BorderSide(
-                    color: kPrimaryColor,
-                    width: 1.0,
-                  ),
-                  borderRadius: BorderRadius.circular(10.0),
-                ),
-              ),
+              inputDecoration: const InputDecoration(
+              hintText: "Rechercher...",
+              floatingLabelBehavior: FloatingLabelBehavior.never,
+              prefixIcon: Icon(Icons.search, size: 20),
+            ),
             ),
           ),
         ),

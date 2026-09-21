@@ -21,7 +21,7 @@
         {{-- css for datatable --}}
         <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css" />
         <!-- Favicon -->
-        <link rel="shortcut icon" type="image/x-icon" href="{{ asset(config("constantes.logo")) }}" />
+        @include('layout._favicon')
         <!-- Template CSS -->
         <script src="{{asset('backend/assets/js/vendors/color-modes.js')}} "></script>
         <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
@@ -30,13 +30,15 @@
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
         <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-        <link href="{{ asset('backend/assets/css/main.css?v=6.0') }}  " rel="stylesheet" type="text/css" />
+        <link href="{{ asset('backend/assets/css/main.css?v=6.1') }}  " rel="stylesheet" type="text/css" />
         <link rel="stylesheet" href="{{ asset('backend/assets/css/myStyle.css?v=1.1') }}">
-        <link rel="stylesheet" href="{{ asset('backend/assets/css/premium-admin.css?v=1.1') }}">
-        <link rel="stylesheet" href="{{ asset('backend/assets/css/premium-dashboard.css?v=1.0') }}">
-        <link rel="stylesheet" href="{{ asset('backend/assets/css/premium-auth.css?v=4.0') }}">
+        <link rel="stylesheet" href="{{ asset('backend/assets/css/premium-admin.css?v=1.8') }}">
+        <link rel="stylesheet" href="{{ asset('backend/assets/css/premium-dashboard.css?v=1.1') }}">
+        <link rel="stylesheet" href="{{ asset('backend/assets/css/premium-auth.css?v=4.1') }}">
         <script defer src="{{ asset('backend/assets/js/table-dropdown-fix.js?v=8.2') }}"></script>
-        <script defer src="{{ asset('backend/assets/js/delete-confirm.js?v=4.0') }}"></script>
+        <script defer src="{{ asset('backend/assets/js/delete-confirm.js?v=4.3') }}"></script>
+        {{-- Astérisque sur tout champ obligatoire (lot 81, 15/09/2026). --}}
+        <script defer src="{{ asset('backend/assets/js/champs-obligatoires.js?v=1.0') }}"></script>
         <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
         {{-- <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" /> --}}
 

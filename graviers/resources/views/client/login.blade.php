@@ -127,8 +127,8 @@
         {{-- Contenu centré --}}
         <div class="hero-login__content">
             <div class="hero-login__brand-line">
-                <img src="{{ asset(config('constantes.logo')) }}" alt="GRAVIER.COM" class="hero-login__logo-mini">
-                <span>GRAVIER.COM</span>
+                <img src="{{ asset(config('constantes.logo')) }}" alt="Mon Gravier" class="hero-login__logo-mini">
+                <span>MON GRAVIER</span>
             </div>
 
             <h1 class="hero-login__hero-title">
@@ -203,11 +203,28 @@
                         Se connecter
                     </button>
 
-                    <div class="hero-login__divider"><span>ou</span></div>
+                    {{-- Lot 114 bis : pendant le mode « site en construction », l'inscription est fermée aux
+                         visiteurs — l'invitation à créer un compte n'est pas rendue du tout. --}}
+                    @php $enConstructionInvite = !Auth::check() && \App\Models\Configuration::siteEnConstruction(); @endphp
+                    @unless ($enConstructionInvite)
+                        <div class="hero-login__divider"><span>ou</span></div>
 
-                    <p class="hero-login__signup">
-                        Pas encore de compte ?
-                        <a href="{{ route('client.register') }}" class="hero-login__link hero-login__link--strong">Créer un compte</a>
+                        <p class="hero-login__signup">
+                            Pas encore de compte ?
+                            <a href="{{ route('client.register') }}" class="hero-login__link hero-login__link--strong">Créer un compte</a>
+                        </p>
+                    @endunless
+
+                    {{-- RETOUR AU SITE.
+                         L'en-tête du site est bien au-dessus, mais cette page
+                         occupe tout l'écran : dès qu'on descend jusqu'au bouton
+                         de connexion, il n'est plus visible. Le lien est ici, au
+                         bas de la carte, là où se trouve le regard. --}}
+                    <p class="hero-login__retour">
+                        <a href="{{ $enConstructionInvite ? route('siteEnConstruction') : route('client.index') }}" class="hero-login__link">
+                            <i class="material-icons md-home"></i>
+                            {{ $enConstructionInvite ? 'Retour' : 'Retour au site' }}
+                        </a>
                     </p>
                 </form>
             </div>
@@ -541,6 +558,16 @@
             color: #6b7280;
             font-size: 0.9rem;
             margin: 0;
+        }
+
+        .hero-login__retour {
+            text-align: center;
+            font-size: 0.88rem;
+            margin: 10px 0 0;
+        }
+        .hero-login__retour .material-icons {
+            font-size: 17px;
+            vertical-align: -4px;
         }
 
         /* Pictos de réassurance sous la carte */

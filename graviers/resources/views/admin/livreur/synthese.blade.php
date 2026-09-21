@@ -255,8 +255,11 @@
                     @if ($dettesParLivreur->isEmpty())
                         <p class="text-center text-muted my-4">Aucune dette par livreur pour le moment.</p>
                     @else
+                        <x-export-buttons table-id="listeSyntheseLivreurs"
+                                          filename="synthese-livreurs"
+                                          title="Synthèse livreurs" />
                         <div class="table-responsive">
-                            <table class="table dash-table align-middle mb-0">
+                            <table id="listeSyntheseLivreurs" class="table dash-table align-middle mb-0">
                                 <thead>
                                     <tr>
                                         <th>Livreur</th>

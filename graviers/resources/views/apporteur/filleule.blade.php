@@ -113,6 +113,9 @@
             </div>
         </div>
         <div class="card-body p-0">
+            <x-export-buttons table-id="filleuleTable"
+                              filename="filleuls-apporteur"
+                              title="Filleuls de l apporteur" />
             <div class="table-responsive">
                 <table class="table align-middle table-hover mb-0" id="filleuleTable">
                     <thead class="table-light">
@@ -186,9 +189,11 @@
                         @empty
                             <tr>
                                 <td colspan="7" class="text-center text-muted py-5">
-                                    <i class="material-icons md-group_off" style="font-size:48px;opacity:0.3"></i>
+                                    <i class="material-icons md-group" style="font-size:48px;opacity:0.3"></i>
                                     <p class="mb-0 mt-2">Aucun filleul(e) pour le moment.</p>
                                     <small>Partagez votre code <strong>{{ $apporteur->code }}</strong> pour commencer.</small>
+                                    {{-- L'invitation etait la, le moyen manquait. --}}
+                                    @include('apporteur._partageCode', ['code' => $apporteur->code])
                                 </td>
                             </tr>
                         @endforelse

@@ -39,6 +39,26 @@ class NewsletterController extends Controller
 
         $adresse = mb_strtolower(trim($request->email));
 
+        // D'OÙ VIENT CETTE INSCRIPTION.
+        //
+        // Le pied de page n'était pas le seul point de recueil : le popup de
+        // l'accueil en est un second. Enregistrer « Pied de page » pour les deux
+        // rendrait impossible de savoir lequel travaille, et donc de juger si le
+        // popup mérite d'être conservé.
+        //
+        // La valeur vient du formulaire mais n'est PAS reprise telle quelle :
+        // elle est confrontée à une liste connue. Un champ caché se modifie
+        // depuis le navigateur, et rien ne doit permettre d'écrire n'importe
+        // quoi dans la fiche d'un abonné.
+        $originesConnues = [
+            'Popup de la page d\'accueil',
+            'Pied de page du site',
+        ];
+
+        $origine = in_array($request->origine, $originesConnues, true)
+            ? $request->origine
+            : 'Pied de page du site';
+
         // Une adresse déjà connue n'est pas dupliquée : on la réactive.
         // withTrashed() : une adresse retirée puis ressaisie doit revenir,
         // sinon la contrainte d'unicité ferait échouer l'enregistrement.
@@ -51,13 +71,19 @@ class NewsletterController extends Controller
             $abonne->save();
 
             if ($dejaAbonne) {
-                return back()->with('success', 'Cette adresse est déjà inscrite à notre lettre d\'information.');
+                // Deux clés : « success » pour la bulle habituelle du site, et
+                // une clé propre que le popup affiche dans son cadre. Flasher
+                // capte success/error et les rejoue en bulle éphémère, qui
+                // s'efface avant d'avoir été lue dans une fenêtre modale.
+                return back()
+                    ->with('success', 'Cette adresse est déjà inscrite à notre lettre d\'information.')
+                    ->with('newsletter_message', 'Cette adresse est déjà inscrite à notre lettre d\'information.');
             }
         } else {
             $abonne = Newsletter::create([
                 'email'   => $adresse,
                 'statut'  => 1,
-                'origine' => 'Pied de page du site',
+                'origine' => $origine,
             ]);
         }
 
@@ -71,7 +97,9 @@ class NewsletterController extends Controller
             Log::error('Newsletter : accusé de réception non envoyé à ' . $adresse . ' — ' . $e->getMessage());
         }
 
-        return back()->with('success', 'Merci ! Votre inscription à notre lettre d\'information est enregistrée.');
+        return back()
+            ->with('success', 'Merci ! Votre inscription à notre lettre d\'information est enregistrée.')
+            ->with('newsletter_message', 'Merci ! Votre inscription à notre lettre d\'information est enregistrée.');
     }
 
     // -----------------------------------------------------------------

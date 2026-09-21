@@ -10,7 +10,7 @@ import 'package:mon_gravier_com_apporteur/screens/home/home_screen.dart';
 import 'package:mon_gravier_com_apporteur/screens/profile/profile_screen.dart';
 
 
-const Color inActiveIconColor = Color(0xFFB6B6B6);
+const Color inActiveIconColor = kTextMutedColor;
 
 class InitScreen extends StatefulWidget {
   const InitScreen({super.key});
@@ -30,6 +30,20 @@ class _InitScreenState extends State<InitScreen> {
     });
   }
 
+  @override
+  void initState() {
+    super.initState();
+    // Les onglets ont besoin de pouvoir revenir à l'accueil : c'est ici, et
+    // seulement ici, que l'index se change.
+    allerAOnglet = updateCurrentIndex;
+  }
+
+  @override
+  void dispose() {
+    if (allerAOnglet == updateCurrentIndex) allerAOnglet = null;
+    super.dispose();
+  }
+
   final pages = [
     const HomeScreen(),
     const CommissionScreen(),
@@ -38,9 +52,28 @@ class _InitScreenState extends State<InitScreen> {
   ];
 
 
-  @override
-  void initState() {
-    super.initState();
+  /// LES ONGLETS DEJA VISITES RESTENT VIVANTS.
+  ///
+  /// On n'affichait qu'un ecran a la fois : les autres quittaient l'arbre,
+  /// leur etat etait detruit, et y revenir les reconstruisait de zero — voile
+  /// de chargement et appel a l'API compris, pour des donnees deja chargees.
+  ///
+  /// Un onglet JAMAIS ouvert n'est pas construit : sans cela, tous les ecrans
+  /// appelleraient l'API en meme temps au demarrage.
+  final Set<int> _dejaVisites = {0};
+
+  Widget _corpsDesOnglets() {
+    _dejaVisites.add(currentSelectedIndex);
+
+    return IndexedStack(
+      index: currentSelectedIndex,
+      // Comme avant, l'ecran occupe tout le corps de la page.
+      sizing: StackFit.expand,
+      children: [
+        for (var i = 0; i < pages.length; i++)
+          _dejaVisites.contains(i) ? pages[i] : const SizedBox.shrink(),
+      ],
+    );
   }
 
   @override
@@ -54,15 +87,22 @@ class _InitScreenState extends State<InitScreen> {
           }
           return false;
         },
-          child: pages[currentSelectedIndex],
+          child: _corpsDesOnglets(),
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        onTap: updateCurrentIndex,
-        currentIndex: currentSelectedIndex,
-        showSelectedLabels: true,
-        showUnselectedLabels: false,
-        type: BottomNavigationBarType.fixed,
-        items: [
+      bottomNavigationBar: Container(
+        decoration: const BoxDecoration(
+          color: kSurfaceColor,
+          border: Border(top: BorderSide(color: kBorderColor)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: BottomNavigationBar(
+            onTap: updateCurrentIndex,
+            currentIndex: currentSelectedIndex,
+            // Les libellés des onglets NON sélectionnés étaient masqués : il
+            // restait quatre silhouettes grises presque identiques, sans un mot
+            // pour les distinguer. Le thème les affiche tous.
+            items: [
           BottomNavigationBarItem(
             icon: SvgPicture.asset(
               "assets/icons/home.svg",
@@ -139,7 +179,9 @@ class _InitScreenState extends State<InitScreen> {
             ),
             label: "Compte",
           ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }

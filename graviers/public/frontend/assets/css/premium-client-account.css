@@ -385,3 +385,26 @@ main.pages .form-select:focus {
         margin-bottom: 20px;
     }
 }
+
+/* ==============================================================
+   COLONNES LISIBLES (10/09/2026)
+   Une valeur ne se coupe plus sur plusieurs lignes parce que le titre
+   de sa colonne est court : les cellules gardent leur contenu sur une
+   ligne, le tableau prend la largeur de son contenu et défile dans
+   .table-responsive s'il déborde. Les cellules de texte long (notes,
+   observations, adresses) sont repérées par delete-confirm.js et
+   reçoivent .td-texte-long : elles reprennent le retour à la ligne
+   dans une colonne large.
+   ============================================================== */
+.table tbody td,
+.table tfoot td {
+    white-space: nowrap;
+}
+.table tbody td.td-texte-long,
+.table tfoot td.td-texte-long {
+    white-space: normal;
+    min-width: 280px;
+}
+table.dataTable {
+    width: 100% !important;
+}

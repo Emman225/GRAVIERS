@@ -61,7 +61,7 @@
                                                 <td class="texte-center">{{ number_format($commande->montantHT(),'0','',' ') }} fcfa</td>
                                                 <td><span class="badge rounded-pill text-warning">{{ $commande->etat_commande }}</span>
                                                 </td>
-                                                <td class="texte-center">{{ Carbon::parse($commande->created_at)->format('d-m-Y à H:i') }}</td>
+                                                <td class="texte-center">{{ Carbon::parse($commande->created_at)->format('d/m/Y à H:i:s') }}</td>
                                                 <!-- <td class="texte-center">
                                                     @if ($commande->statut == 1)
                                                         <p class="text-danger">Aucun paiement effectué</p>
@@ -71,18 +71,18 @@
                                                         <p class="text-success">Paiement soldé</p>
                                                     @endif
                                                 </td> -->
-                                                <td class="text-end">
-                                                    <a href="{{ route('orders.details', $commande->numero) }}" class="btn btn-md rounded font-sm">Detail</a>
+                                                <td class="text-nowrap text-end">
+                                                    <a href="{{ route('orders.details', $commande->numero) }}" class="btn btn-info btn-md rounded font-sm" title="Detail"><i class="material-icons md-visibility"></i></a>
                                                 </td>
-                                                <td>
+                                                <td class="text-nowrap">
                                                     {{-- Ces commandes sont celles de clients À TERME : leur règlement
                                                          suit les factures de leur ligne de crédit, pas la caisse
                                                          comptant. L'ancien écran /paiement/create, qui validait un
                                                          paiement d'un seul clic, a été retiré. --}}
-                                                    <a href="{{ route('show.creancesTerme.paiements') }}" class="btn btn-md rounded font-sm">Encaisser (créances à terme)</a>
+                                                    <a href="{{ route('show.creancesTerme.paiements') }}" class="btn btn-success btn-md rounded font-sm" title="Encaisser (créances à terme)"><i class="material-icons md-payments"></i></a>
                                                 </td>
-                                                <td>
-                                                    <a href="{{ route('orders.traitement', $commande) }}" class="btn btn-md rounded font-sm">Traiter la commande</a>
+                                                <td class="text-nowrap">
+                                                    <a href="{{ route('orders.traitement', $commande) }}" class="btn btn-primary btn-md rounded font-sm" title="Traiter la commande"><i class="material-icons md-play_arrow"></i></a>
                                                 </td>
 
                                             </tr>

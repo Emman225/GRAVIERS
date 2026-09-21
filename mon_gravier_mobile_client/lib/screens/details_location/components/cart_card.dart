@@ -1,8 +1,7 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:item_count_number_button/item_count_number_button.dart';
 import 'package:mon_gravier_com/helper/constants.dart';
 
+import '../../../components/compteur_quantite.dart';
 import '../../../constants.dart';
 import '../../../globale.dart';
 import '../../../models/Cart.dart';
@@ -32,7 +31,7 @@ class _CartCardState extends State<CartCard> {
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: const Color(0xFFF5F6F9),
+                color: kSurfaceMutedColor,
                 borderRadius: BorderRadius.circular(15),
               ),
               child: Image.network(widget.cart.product.image.toString()),
@@ -65,12 +64,13 @@ class _CartCardState extends State<CartCard> {
             ],
           ),
         ),
-        ItemCount(
-          initialValue: widget.cart.numOfItem,
-          minValue: 1,
-          maxValue: 1000,
-          decimalPlaces: 0,
-          color: primaryColor,
+        CompteurQuantite(
+          valeurInitiale: widget.cart.numOfItem,
+          minimum: 1,
+          maximum: 1000,
+          decimales: 0,
+          pas: 1,
+          couleur: kPrimaryColor,
           onChanged: (value) {
             setState(() {
               widget.cart.numOfItem = value.toDouble();

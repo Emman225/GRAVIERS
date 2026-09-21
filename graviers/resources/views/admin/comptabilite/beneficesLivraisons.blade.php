@@ -10,6 +10,16 @@
         <h2 class="content-title">Bénéfices sur les livraisons</h2>
     </div>
 
+    @include('comptabilite._beneficeDalakoun', [
+        'titre'          => 'Bénéfices de DALAKOUN sur les livraisons',
+        'produit'        => $totaux->facture,
+        'charge'         => $totaux->verse,
+        'libelleProduit' => 'Facturé aux clients',
+        'libelleCharge'  => 'Versé aux livreurs',
+        'benefice'       => $totaux->marge,
+        'note'           => "Sur la période affichée. Le transport d'un document se répartit entre ses livraisons. Les retraits sur place sont exclus : aucun livreur n'y intervient.",
+    ])
+
     {{-- ============ Période ============ --}}
     <div class="card mb-4">
         <div class="card-body">
@@ -186,7 +196,7 @@
                     <tbody>
                         @forelse ($lignes as $l)
                             <tr class="{{ $l->perte ? 'table-danger' : '' }}">
-                                <td class="text-center">{{ $l->date->format('d/m/Y') }}</td>
+                                <td class="text-center">{{ \Help::dateHeure($l->date) }}</td>
                                 <td class="text-center"><strong>{{ $l->numero }}</strong></td>
                                 <td class="text-center">{{ $l->service }}</td>
                                 <td class="text-center">{{ $l->document }}</td>

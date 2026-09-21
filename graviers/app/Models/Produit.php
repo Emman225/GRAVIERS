@@ -34,6 +34,8 @@ class Produit extends Model
         'type_affaire',
         'unite_produit_id',
         'prix_fournisseur',
+        // Dérogation au taux général, produit par produit. NULL = pas de dérogation.
+        'pourcentage_dalakoun',
         'caution',
         'deleted_at'
 
@@ -163,6 +165,173 @@ class Produit extends Model
      *
      * Surcharge d'AFFICHAGE, jamais persistée : le prix métier reste prixPour().
      */
+    /**
+     * LE PRIX DE VENTE DE PLUSIEURS PRODUITS, indexé par identifiant.
+     *
+     * Pour les appelants qui n'ont que des identifiants en main — un devis, un
+     * écran de prix négociés. Ceux qui disposent des produits eux-mêmes passent
+     * par alignerPrixAffiche(), qui lit leur dérogation sans requête de plus.
+     *
+     * Quatre écrans calculaient encore le prix à leur façon, chacun avec sa
+     * copie de la règle et tous sur le fournisseur LE MOINS cher. L'accueil de
+     * la boutique en faisait partie : après la mise en service du pourcentage,
+     * il affichait toujours 100 F un gravier vendu 14 850, parce que sa propre
+     * ligne de code écrasait le prix calculé.
+     */
+    /**
+     * PRIX D'ACHAT MANIFESTEMENT HORS DE PROPORTION dans leur famille.
+     *
+     * Depuis que le prix de vente se calcule à partir du prix d'achat, une
+     * faute de frappe sur ce dernier n'affecte plus seulement ce qu'on verse au
+     * fournisseur : elle fait directement le prix montré au client. Une barre
+     * de fer saisie 50 000 au lieu de 5 000 s'est ainsi retrouvée affichée
+     * 55 000 en boutique, entre des voisines à 2 200 et 7 480.
+     *
+     * On compare chaque produit à la MÉDIANE de sa catégorie — insensible aux
+     * valeurs extrêmes, contrairement à la moyenne, que l'aberration elle-même
+     * tirerait vers le haut. Au-delà d'un facteur 3 dans un sens ou dans
+     * l'autre, la ligne est signalée.
+     *
+     * LES SEUILS SONT ASYMÉTRIQUES, et réglés sur le catalogue réel.
+     *
+     * Trop CHER : au-delà de 2,5 fois la médiane. La faute de frappe courante
+     * est le zéro de trop, et un prix d'achat gonflé se retourne aussitôt
+     * contre le client. Le sable de mer à 25 000 pour une médiane de 9 000
+     * ressort à 2,8 — il passait sous un seuil de 3.
+     *
+     * Trop BAS : en deçà du quart de la médiane seulement. L'écart vers le bas
+     * est souvent légitime — une barre de 6 mm coûte naturellement trois fois
+     * moins qu'une de 12 mm, et un seuil symétrique l'aurait signalée à tort.
+     *
+     * C'est un signal, pas un verdict : un produit peut légitimement coûter
+     * bien plus que ses voisins. On alerte, on ne bloque pas.
+     */
+    public static function prixAchatSuspects(float $facteurHaut = 2.5, float $facteurBas = 4.0): array
+    {
+        $achats = StockProduit::where('statut', Help::$STATUT_ACTIF)
+            ->where('prix', '>', 0)
+            ->whereNull('deleted_at')
+            ->groupBy('produit_id')
+            ->selectRaw('produit_id, MAX(prix) AS mx')
+            ->pluck('mx', 'produit_id');
+
+        if ($achats->isEmpty()) {
+            return [];
+        }
+
+        $produits = static::with('categories')->whereIn('id', $achats->keys())->get();
+
+        // Les prix d'achat regroupés par catégorie.
+        $parCategorie = [];
+
+        foreach ($produits as $produit) {
+            foreach ($produit->categories as $categorie) {
+                $parCategorie[$categorie->id]['nom'] = $categorie->nom;
+                $parCategorie[$categorie->id]['prix'][] = (float) $achats[$produit->id];
+            }
+        }
+
+        $suspects = [];
+
+        foreach ($produits as $produit) {
+            $prix = (float) $achats[$produit->id];
+
+            foreach ($produit->categories as $categorie) {
+                $voisins = $parCategorie[$categorie->id]['prix'] ?? [];
+
+                // Une famille de moins de trois produits ne dit rien : la
+                // médiane y serait le produit lui-même, ou son unique voisin.
+                if (count($voisins) < 3) {
+                    continue;
+                }
+
+                $mediane = static::mediane($voisins);
+
+                if ($mediane <= 0) {
+                    continue;
+                }
+
+                $rapport = $prix / $mediane;
+
+                if ($rapport >= $facteurHaut || $rapport <= 1 / $facteurBas) {
+                    // QUI porte ce prix, et où le corriger. Un prix d'achat
+                    // appartient à un couple produit × fournisseur : sans le
+                    // nom du fournisseur, il faut le chercher à la main.
+                    $ligne = StockProduit::with('fournisseur')
+                        ->where('produit_id', $produit->id)
+                        ->where('statut', Help::$STATUT_ACTIF)
+                        ->whereNull('deleted_at')
+                        ->orderByDesc('prix')
+                        ->first();
+
+                    $suspects[$produit->id] = [
+                        'id'             => $produit->id,
+                        'nom'            => $produit->nom,
+                        'categorie'      => $categorie->nom,
+                        'prix'           => $prix,
+                        'mediane'        => $mediane,
+                        'rapport'        => $rapport,
+                        'fournisseur'    => $ligne?->fournisseur?->nom_prenoms ?: '—',
+                        'fournisseur_id' => $ligne?->fournisseur_id,
+                    ];
+                    break;
+                }
+            }
+        }
+
+        return array_values($suspects);
+    }
+
+    private static function mediane(array $valeurs): float
+    {
+        sort($valeurs);
+        $n = count($valeurs);
+
+        if ($n === 0) {
+            return 0.0;
+        }
+
+        $milieu = intdiv($n, 2);
+
+        return $n % 2 === 1
+            ? (float) $valeurs[$milieu]
+            : ((float) $valeurs[$milieu - 1] + (float) $valeurs[$milieu]) / 2;
+    }
+
+    public static function prixVenteParProduit($produitIds = null): array
+    {
+        $requete = StockProduit::where('statut', Help::$STATUT_ACTIF)
+            ->where('prix', '>', 0)
+            ->whereNull('deleted_at');
+
+        if ($produitIds !== null) {
+            $requete->whereIn('produit_id', $produitIds);
+        }
+
+        $prixAchat = $requete->groupBy('produit_id')
+            ->selectRaw('produit_id, MAX(prix) AS mx')
+            ->pluck('mx', 'produit_id');
+
+        if ($prixAchat->isEmpty()) {
+            return [];
+        }
+
+        $tauxGeneral = PourcentageDalakoun::tauxEnVigueur();
+
+        $derogations = static::whereIn('id', $prixAchat->keys())
+            ->whereNotNull('pourcentage_dalakoun')
+            ->pluck('pourcentage_dalakoun', 'id');
+
+        $prix = [];
+
+        foreach ($prixAchat as $id => $achat) {
+            $taux = $derogations[$id] ?? $tauxGeneral;
+            $prix[$id] = (float) $achat * (1 + (float) $taux / 100);
+        }
+
+        return $prix;
+    }
+
     public static function alignerPrixAffiche($produits): void
     {
         $liste = $produits instanceof \Illuminate\Pagination\AbstractPaginator
@@ -173,18 +342,30 @@ class Produit extends Model
             return;
         }
 
-        $moinsDisant = StockProduit::whereIn('produit_id', $liste->pluck('id'))
+        // Le fournisseur le PLUS CHER fait le prix : c'est lui qui garantit le
+        // taux annoncé quel que soit celui qui servira le bon.
+        $prixAchat = StockProduit::whereIn('produit_id', $liste->pluck('id'))
             ->where('statut', Help::$STATUT_ACTIF)
             ->where('prix', '>', 0)
             ->whereNull('deleted_at')
             ->groupBy('produit_id')
-            ->selectRaw('produit_id, MIN(prix) AS mn')
-            ->pluck('mn', 'produit_id');
+            ->selectRaw('produit_id, MAX(prix) AS mx')
+            ->pluck('mx', 'produit_id');
+
+        // Le taux général est lu UNE fois pour toute la liste : le relire par
+        // produit ferait une requête par article du catalogue.
+        $tauxGeneral = PourcentageDalakoun::tauxEnVigueur();
 
         foreach ($liste as $produit) {
-            if (isset($moinsDisant[$produit->id])) {
-                $produit->prix_moyen = (float) $moinsDisant[$produit->id];
+            if (!isset($prixAchat[$produit->id])) {
+                continue;
             }
+
+            $taux = $produit->pourcentage_dalakoun !== null
+                ? (float) $produit->pourcentage_dalakoun
+                : $tauxGeneral;
+
+            $produit->prix_moyen = (float) $prixAchat[$produit->id] * (1 + $taux / 100);
         }
     }
 
@@ -197,21 +378,62 @@ class Produit extends Model
             if ($perso) return (float) $perso->prix;
         }
 
-        // Prix catalogue = prix fournisseur le plus bas (stock actif, prix > 0),
-        // cohérent avec l'affichage accueil/recherche. Le panier/commande facture
-        // donc le même prix que celui montré au client. Fallback sur prix_moyen
-        // si aucun fournisseur n'a défini de prix.
-        $prixFournisseur = StockProduit::where('produit_id', $this->id)
+        // LE PRIX DE VENTE EST CALCULÉ : prix d'achat × (1 + pourcentage DALAKOUN).
+        //
+        // Il valait jusqu'ici le prix d'achat lui-même — l'écran d'ajout de
+        // produit recopie « Prix fournisseur » dans la ligne de stock, et c'est
+        // cette ligne qui faisait le prix affiché. L'entreprise vendait donc au
+        // prix auquel elle achetait.
+        //
+        // ON RETIENT LE FOURNISSEUR LE PLUS CHER, et non le moins-disant.
+        // Sur les graviers et sables, l'écart entre fournisseurs est
+        // systématique : 7 %. En se basant sur le moins cher, un bon parti chez
+        // l'autre ramenait la marge de 20 % à 12 % — un tiers perdu, sans que
+        // rien ne le signale. Le plus cher garantit le taux annoncé quel que
+        // soit le fournisseur retenu.
+        $prixAchat = static::prixAchatDe($this->id);
+
+        if ($prixAchat === null) {
+            // Aucun fournisseur ne l'a tarifé : impossible de calculer une
+            // marge sur un coût inconnu. On rend le prix catalogue tel quel
+            // plutôt que d'inventer un montant.
+            return (float) $this->prix_moyen;
+        }
+
+        return PourcentageDalakoun::appliquerA($prixAchat, $this->tauxDalakoun());
+    }
+
+    /**
+     * Le taux qui s'applique à CE produit : sa dérogation si elle existe, le
+     * taux général sinon.
+     *
+     * Une dérogation à zéro est une décision — « vendu au prix d'achat » — et
+     * se distingue donc de l'absence de dérogation.
+     */
+    public function tauxDalakoun(): float
+    {
+        if ($this->pourcentage_dalakoun !== null) {
+            return (float) $this->pourcentage_dalakoun;
+        }
+
+        return PourcentageDalakoun::tauxEnVigueur();
+    }
+
+    /**
+     * LE PRIX D'ACHAT D'UN PRODUIT : le plus élevé parmi ses fournisseurs actifs.
+     *
+     * Null si aucun fournisseur ne l'a tarifé — un coût inconnu ne se devine
+     * pas, et le distinguer de zéro évite d'annoncer une marge imaginaire.
+     */
+    public static function prixAchatDe(int $produitId): ?float
+    {
+        $prix = StockProduit::where('produit_id', $produitId)
             ->where('statut', Help::$STATUT_ACTIF)
             ->where('prix', '>', 0)
             ->whereNull('deleted_at')
-            ->min('prix');
+            ->max('prix');
 
-        if ($prixFournisseur !== null) {
-            return (float) $prixFournisseur;
-        }
-
-        return (float) $this->prix_moyen;
+        return $prix === null ? null : (float) $prix;
     }
 
     /**

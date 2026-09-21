@@ -475,7 +475,7 @@
                                                                                         <div class="d-flex justify-content-between mb-10">
                                                                                             <div class="d-flex align-items-center">
                                                                                                 <span class="font-xs text-muted">
-                                                                                                    {{ Carbon::parse($client->pivot->created_at)->format('d-m-Y à H:i') }}
+                                                                                                    {{ Carbon::parse($client->pivot->created_at)->format('d/m/Y à H:i:s') }}
                                                                                                 </span>
                                                                                             </div>
                                                                                             <div class="product-rate d-inline-block">

@@ -6,7 +6,7 @@
 </head>
 <body style="font-family: Arial, sans-serif; color:#333; max-width:600px; margin:0 auto;">
     <div style="background:#1c57a3; color:#fff; padding:20px; text-align:center;">
-        <img src="https://graviers.fneconnect.net/frontend/assets/imgs/logo/dalakoun-blanc.png" alt="DALAKOUN"
+        <img src="{{ asset('frontend/assets/imgs/logo/dalakoun-blanc.png') }}" alt="DALAKOUN"
             style="max-width:180px; width:100%; height:auto; margin-bottom:10px;" />
         <h2 style="margin:0;">Inscription confirmée</h2>
     </div>
@@ -18,7 +18,7 @@
             sur les matériaux de construction.</p>
 
         <p style="text-align:center; margin:30px 0;">
-            <a href="https://graviers.fneconnect.net"
+            <a href="{{ config('app.url') }}"
                style="background:#1c57a3; color:#fff; padding:12px 26px; border-radius:5px;
                       text-decoration:none; display:inline-block;">Découvrir nos produits</a>
         </p>
@@ -30,7 +30,7 @@
     </div>
     <div style="background:#f8f9fa; padding:15px; text-align:center; font-size:12px; color:#666;">
         <p style="margin:0;">DALAKOUN SARL — Abidjan, Côte d'Ivoire</p>
-        <p style="margin:5px 0 0;">info@fneconnect.net</p>
+        <p style="margin:5px 0 0;">{{ \Help::emailContact() }}</p>
     </div>
 </body>
 </html>

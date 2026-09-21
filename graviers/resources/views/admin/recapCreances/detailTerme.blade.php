@@ -79,13 +79,13 @@
                             @endphp
                             <tr class="{{ $alerte ? 'table-danger' : '' }}">
                                 <td class="text-center"><strong>{{ $l->numero }}</strong></td>
-                                <td class="text-center">{{ $l->date_facture ? Carbon::parse($l->date_facture)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date_facture ? \Help::dateHeure($l->date_facture) : '-' }}</td>
                                 <td>{{ $l->client_nom }}</td>
                                 <td class="text-center">{{ $l->telephone }}</td>
                                 <td class="text-end">{{ Help::formatNombre($l->montant_ttc, true) }}</td>
                                 <td class="text-end text-success">{{ Help::formatNombre($l->paye, true) }}</td>
                                 <td class="text-end text-danger"><strong>{{ Help::formatNombre($l->reste_du, true) }}</strong></td>
-                                <td class="text-center">{{ $l->echeance ? Carbon::parse($l->echeance)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->echeance ? \Help::dateHeure($l->echeance) : '-' }}</td>
                                 <td class="text-center"><span class="badge {{ $badge }}">{{ $statutLabel }}</span></td>
                                 <td class="text-center">
                                     @if ($l->jours_retard > 0)

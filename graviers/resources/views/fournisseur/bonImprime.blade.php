@@ -120,11 +120,13 @@
 
             <div class="title" style="text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 20px;">
                 Bon de livraison N° <span style="font-weight:bold"> {{$bon->code_enleve}} </span>
+                {{-- Lot 111 (19/09/2026) : le numéro du bon en code-barres (Code 128). --}}
+                {!! \App\Services\CodeBarres::bloc($bon->code_enleve, 40) !!}
             </div>
 
             {{-- <div class="info-box">
                 <p>En date du: <span style="font-weight:bold">{{$enlevement->livraison?->date_livraison}}</span> </p>
-                <p>Référence Fournisseur: <span style="font-weight:bold">{{ $enlevement->fournisseur?->nom_prenoms }}</span></p>
+                <p>Référence fournisseur: <span style="font-weight:bold">{{ $enlevement->fournisseur?->nom_prenoms }}</span></p>
                 <p>Adresse <span style="font-weight:bold">{{ $enlevement->fournisseur?->adresse_geo }}</span></p>
                 <p>Contact: <span style="font-weight:bold">{{ $enlevement->fournisseur?->contact1 }}</span></p>
             </div> --}}
@@ -167,7 +169,8 @@
                             @endif
                         </td>
                         <td style="border: 1px solid #000; padding: 10px; text-align: left;">{{ number_format((float) ($produit?->prix ?? 0), 0, '', ' ') }} fcfa</td>
-                        <td style="border: 1px solid #000; padding: 10px; text-align: left; background-color: yellow;">{{ number_format((float) ($produit?->prix ?? 0) * $bon->quantiteAPayer(), 0, '', ' ') }} fcfa</td>
+                        {{-- Le bleu du logo, à la place du jaune (lot 84, 15/09/2026). --}}
+                        <td style="border: 1px solid #000; padding: 10px; text-align: left; background-color: #1c57a3; color: #fff; font-weight: bold;">{{ number_format((float) ($produit?->prix ?? 0) * $bon->quantiteAPayer(), 0, '', ' ') }} fcfa</td>
                     </tr>
                     {{-- <tr class="total-row" style="">
                         <td colspan="3" style="border: 1px solid #000; padding: 10px; text-align: left;">Total</td>
@@ -176,14 +179,19 @@
                 </tbody>
             </table>
 
-            <div class="footer" style="display: flex; justify-content: space-between;">
-                <div class="footer-box">
-                    <p>Observation(s) lors de la réception</p>
-                </div>
-                <div class="footer-box" style="border: 1px solid #000; padding: 10px; width: 45%; height: 100px;">
-                    <p>Nom, signature et date du réceptionnaire</p>
-                </div>
-            </div>
+            {{-- Lot 112 (19/09/2026) : deux colonnes par un TABLEAU (« display:flex » ignoré par DomPDF). --}}
+            <table class="footer" style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td style="vertical-align: top; padding: 0; width: 52%;">
+                        <p style="margin: 4px 0;">Observation(s) lors de la réception</p>
+                    </td>
+                    <td style="vertical-align: top; padding: 0; width: 48%;">
+                        <div class="footer-box" style="border: 1px solid #000; padding: 10px; height: 100px;">
+                            <p style="margin: 0;">Nom, signature et date du réceptionnaire</p>
+                        </div>
+                    </td>
+                </tr>
+            </table>
         </div>
 
 

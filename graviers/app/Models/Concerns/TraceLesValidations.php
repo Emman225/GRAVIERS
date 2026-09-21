@@ -30,17 +30,10 @@ trait TraceLesValidations
         return $this->belongsTo(User::class, 'user_valide2_id');
     }
 
-    /** « NOM PRÉNOMS (identifiant) », ou un tiret si personne. */
+    /** « NOM PRÉNOMS (identifiant) », ou un tiret si personne — règle logée dans Help. */
     public static function libelleCompte(?User $user): string
     {
-        if (!$user) {
-            return '-';
-        }
-
-        $nom = trim((string) $user->nom_prenoms) ?: 'Compte n° ' . $user->id;
-        $identifiant = trim((string) $user->login);
-
-        return $identifiant !== '' ? $nom . ' (' . $identifiant . ')' : $nom;
+        return \Help::compteAvecIdentifiant($user);
     }
 
     public function getInitieParAttribute(): string

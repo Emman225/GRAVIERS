@@ -71,6 +71,9 @@
             </h5>
         </div>
         <div class="card-body p-0">
+            <x-export-buttons table-id="bonsTable"
+                              filename="bons-du-livreur"
+                              title="Bons du livreur" />
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0" id="bonsTable">
                     <thead class="table-light">
@@ -107,16 +110,12 @@
                                 <td>{{ $vehicule?->marque ?: '—' }}</td>
                                 <td>@if($vehicule?->immatriculation) <span class="badge bg-light text-dark">{{ $vehicule->immatriculation }}</span> @else — @endif</td>
                                 <td class="text-end">{{ $vehicule?->capacite ? $vehicule->capacite.'t' : '—' }}</td>
-                                <td><small>{{ Carbon::parse($enlevement->created_at)->format('d/m/Y H:i') }}</small></td>
-                                <td><small>{{ optional($enlevement->livraison)->date_livraison ? Carbon::parse($enlevement->livraison?->date_livraison)->format('d/m/Y') : '—' }}</small></td>
-                                <td class="text-center">
+                                <td><small>{{ Carbon::parse($enlevement->created_at)->format('d/m/Y H:i:s') }}</small></td>
+                                <td><small>{{ optional($enlevement->livraison)->date_livraison ? \Help::dateHeure($enlevement->livraison?->date_livraison) : '—' }}</small></td>
+                                <td class="text-nowrap text-center">
                                     @if($accepte == 2)
-                                        <a href="{{ route('livreur.actionBonEnlevement', ['enlevement' => $enlevement, 'action' => 'accepter']) }}" class="btn btn-sm btn-success">
-                                            <i class="material-icons md-check"></i> Accepter
-                                        </a>
-                                        <a href="{{ route('livreur.actionBonEnlevement', ['enlevement' => $enlevement, 'action' => 'refuser']) }}" class="btn btn-sm btn-danger">
-                                            <i class="material-icons md-close"></i> Refuser
-                                        </a>
+                                        <a href="{{ route('livreur.actionBonEnlevement', ['enlevement' => $enlevement, 'action' => 'accepter']) }}" class="btn btn-sm btn-success" title="Accepter"><i class="material-icons md-check"></i></a>
+                                        <a href="{{ route('livreur.actionBonEnlevement', ['enlevement' => $enlevement, 'action' => 'refuser']) }}" class="btn btn-sm btn-danger" title="Refuser"><i class="material-icons md-close"></i></a>
                                     @elseif($accepte == 1)
                                         <span class="badge bg-success-light text-success">Accepté</span>
                                     @else

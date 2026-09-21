@@ -169,7 +169,7 @@
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    var geocoder = L.Control.geocoder({
+    var geocoder = creerRechercheLieu({
         defaultMarkGeocode: false
     }).addTo(map);
 
@@ -226,7 +226,7 @@
 
     }).addTo(map1);
 
-    var geocoder1 = L.Control.geocoder({
+    var geocoder1 = creerRechercheLieu({
         defaultMarkGeocode: false
     }).addTo(map1);
 

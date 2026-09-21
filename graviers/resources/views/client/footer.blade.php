@@ -10,8 +10,8 @@
                             <img src="{{asset('frontend/assets/imgs/theme/icons/icon-1.svg')}}" alt=""/>
                         </div>
                         <div class="banner-text">
-                            <h3 class="icon-box-title">Meilleur prix et offre</h3>
-                            <p>A partir de 10.000fcfa</p>
+                            <h3 class="icon-box-title">Meilleurs prix</h3>
+                            <p>Tarifs dégressifs selon le volume</p>
                         </div>
                     </div>
                 </div>
@@ -21,8 +21,8 @@
                             <img src="{{asset('frontend/assets/imgs/theme/icons/icon-2.svg')}}" alt="" />
                         </div>
                         <div class="banner-text">
-                            <h3 class="icon-box-title">Livreur rapide</h3>
-                            <p>Un bon service de livraison</p>
+                            <h3 class="icon-box-title">Livraison sur chantier</h3>
+                            <p>Suivi de votre commande en ligne</p>
                         </div>
                     </div>
                 </div>
@@ -32,8 +32,8 @@
                             <img src="{{asset('frontend/assets/imgs/theme/icons/icon-3.svg')}}" alt="" />
                         </div>
                         <div class="banner-text">
-                            <h3 class="icon-box-title">Des promo par jour</h3>
-                            <p>Quand vous êtes inscrit</p>
+                            <h3 class="icon-box-title">Devis gratuit</h3>
+                            <p>Réponse rapide, sans engagement</p>
                         </div>
                     </div>
                 </div>
@@ -43,8 +43,8 @@
                             <img src="{{asset('frontend/assets/imgs/theme/icons/icon-4.svg')}}" alt="" />
                         </div>
                         <div class="banner-text">
-                            <h3 class="icon-box-title">Wide assortment</h3>
-                            <p>Mega Discounts</p>
+                            <h3 class="icon-box-title">Large choix</h3>
+                            <p>Gravier, sable, ciment, fer, brique…</p>
                         </div>
                     </div>
                 </div>
@@ -54,8 +54,8 @@
                             <img src="{{asset('frontend/assets/imgs/theme/icons/icon-5.svg')}}" alt="" />
                         </div>
                         <div class="banner-text">
-                            <h3 class="icon-box-title">Un retour rapide</h3>
-                            <p>En moins de 30 jours</p>
+                            <h3 class="icon-box-title">Paiement flexible</h3>
+                            <p>Mobile Money, virement ou espèces</p>
                         </div>
                     </div>
                 </div>
@@ -65,8 +65,8 @@
                             <img src="{{asset('frontend/assets/imgs/theme/icons/icon-6.svg')}}" alt="" />
                         </div>
                         <div class="banner-text">
-                            <h3 class="icon-box-title">Livraison garanti </h3>
-                            <p>En moins de 30 jours</p>
+                            <h3 class="icon-box-title">Retrait sur place</h3>
+                            <p>À l'agence, aux heures d'ouverture</p>
                         </div>
                     </div>
                 </div>
@@ -83,9 +83,17 @@
                         <div class="newsletter-content">
                             <h2 class="mb-20">
                                 Nous ne vendons que <br />
-                                De la qualité
+                                de la qualité
                             </h2>
-                            <p class="mb-45">Commencer vos achat avec <span class="text-brand"> DALAKOUN </span></p>
+                            {{-- Lot 108 : « DALAKOUN » était bleu sur bleu (text-brand), donc invisible. --}}
+                            <p class="mb-30">Commencez vos achats avec <span style="color:#FFB300; font-weight:700;">Mon Gravier</span></p>
+                            {{-- Lot 109 ter (17/09/2026) : la section dit ce qu'elle est. --}}
+                            <p class="newsletter-intitule" style="color:#fff !important; font-weight:700; margin:0 0 6px; font-size:15px;">
+                                <i class="fi-rs-envelope" style="margin-right:6px;"></i>Newsletter
+                            </p>
+                            <p class="newsletter-explication" style="color:#dce9f7 !important; margin:0 0 14px; font-size:14px;">
+                                Laissez votre adresse e-mail pour recevoir nos offres, promotions et conseils chantier.
+                            </p>
                             {{-- Ce formulaire n'était relié à rien : ni action, ni méthode, ni
                                  nom de champ. Le visiteur croyait s'inscrire et rechargeait
                                  simplement la page ; aucune adresse n'était conservée. --}}
@@ -115,16 +123,16 @@
                 <div class="col">
                     <div class="widget-about font-md mb-md-3 mb-lg-3 mb-xl-0">
                         <div class="logo mb-30">
-                            <a href="{{route('client.index')}}" class="mb-15"><img src="{{config('constantes.logo')}}" alt="logo" style="max-height:80px;width:auto;max-width:100%;height:auto;" /></a>
+                            <a href="{{route('client.index')}}" class="mb-15"><img src="{{ asset(config('constantes.logo')) }}" alt="logo" style="max-height:80px;width:auto;max-width:100%;height:auto;" /></a>
                             <p class="font-lg text-heading">Meilleur endroit pour vos matériels de construction</p>
                         </div>
                         <ul class="contact-infor">
                             {{-- Chemins corrigés : « assets/… » manquait le préfixe « frontend/ »,
                                  et ces quatre icônes tombaient en 404 sur toutes les pages. --}}
-                            <li><img src="{{ asset('frontend/assets/imgs/theme/icons/icon-location.svg') }}" alt="" /><strong>Adresse: </strong> <span>Abidjan - Yopougon Rue 12 Avenu Jean Marshall</span></li>
-                            <li><img src="{{ asset('frontend/assets/imgs/theme/icons/icon-contact.svg') }}" alt="" /><strong>Contact:</strong><span>(+225) - 07 27 3333 - 3333</span></li>
-                            <li><img src="{{ asset('frontend/assets/imgs/theme/icons/icon-email-2.svg') }}" alt="" /><strong>Email:</strong><span><a href="mailto:info@fneconnect.net">info@fneconnect.net</a></span></li>
-                            <li><img src="{{ asset('frontend/assets/imgs/theme/icons/icon-clock.svg') }}" alt="" /><strong>Heure d'ouverture:</strong><span>08:00 - 18:00, du lundi au Samedi</span></li>
+                            <li><img src="{{ asset('frontend/assets/imgs/theme/icons/icon-location.svg') }}" alt="" /><strong>Adresse: </strong> <span>Abidjan - Yopougon, rue 12, avenue Jean Marshall</span></li>
+                            <li><img src="{{ asset('frontend/assets/imgs/theme/icons/icon-contact.svg') }}" alt="" /><strong>Contact:</strong><span><a href="tel:+2250700130798" style="color:inherit;">(+225) - 07 00 13 07 98</a></span></li>
+                            <li><img src="{{ asset('frontend/assets/imgs/theme/icons/icon-email-2.svg') }}" alt="" /><strong>Email:</strong><span><a href="mailto:{{ \Help::emailContact() }}">{{ \Help::emailContact() }}</a></span></li>
+                            <li><img src="{{ asset('frontend/assets/imgs/theme/icons/icon-clock.svg') }}" alt="" /><strong>Heure d'ouverture:</strong><span>08:00 - 18:00, du lundi au samedi</span></li>
                         </ul>
                     </div>
                 </div>
@@ -153,7 +161,7 @@
                     </ul>
                 </div> --}}
                 <div class="footer-link-widget col">
-                    <h4 class="widget-title">Coorperation</h4>
+                    <h4 class="widget-title">Partenaires</h4>
                     <ul class="footer-list mb-sm-5 mb-md-0">
                         {{-- Pages publiques de candidature, à ne pas confondre avec
                              show.registerLivreur / show.registerSeller, qui sont les
@@ -166,9 +174,19 @@
                         <li><a href="#">Accessibility</a></li>
                         <li><a href="#">Promotions</a></li> --}}
                     </ul>
+                    {{-- Lot 108 bis (17/09/2026) : l'application mobile sous les éléments « Partenaires ». --}}
+                    <div class="widget-install-app mt-30">
+                        <h4 class="widget-title">Installez l'application mobile</h4>
+                        <p class="wow fadeIn animated">Sur l'App store ou Play store</p>
+                        <div class="download-app">
+                            {{-- Lot 110 : vers la section « applications mobiles » de l'accueil (téléchargement direct). --}}
+                            <a href="{{ route('client.index') }}#applications" class="hover-up mb-sm-2 mb-lg-0"><img class="active" src="{{asset('frontend/assets/imgs/theme/app-store.jpg')}}" alt="Applications mobiles" /></a>
+                            <a href="{{ route('client.index') }}#applications" class="hover-up mb-sm-2"><img src="{{asset('frontend/assets/imgs/theme/google-play.jpg')}}" alt="Applications mobiles" /></a>
+                        </div>
+                    </div>
                 </div>
                 <div class="footer-link-widget col">
-                    <h4 class="widget-title">Populaire</h4>
+                    <h4 class="widget-title">Nos produits</h4>
                     <ul class="footer-list mb-sm-5 mb-md-0">
                         @foreach ($categories as $categorie )
                             <li><a href="{{route('product.categorie',$categorie->nom)}}"> {{$categorie->nom}} </a></li>
@@ -181,49 +199,27 @@
                         <li><a href="#">Peinture</a></li> --}}
                     </ul>
                 </div>
-                <div class="footer-link-widget widget-install-app col">
-                    <h4 class="widget-title">Installez l'application mobile</h4>
-                    <p class="wow fadeIn animated">Sur l'App store ou Play store</p>
-                    <div class="download-app">
-                        <a href="{{route('enConstruction')}}" class="hover-up mb-sm-2 mb-lg-0"><img class="active" src="{{asset('frontend/assets/imgs/theme/app-store.jpg')}}" alt="" /></a>
-                        <a href="{{route('enConstruction')}}" class="hover-up mb-sm-2"><img src="{{asset('frontend/assets/imgs/theme/google-play.jpg')}}" alt="" /></a>
-                    </div>
-                    {{-- <p class="mb-20">Secured Payment Gateways</p>
-                    <img class="wow fadeIn animated" src="{{asset('frontend/assets/imgs/theme/payment-method.png')}}" alt="" /> --}}
-                </div>
             </div>
         </div>
     </section>
 
     {{-- Info entreprise --}}
-    <div class="container pb-30">
+    <div class="container barre-du-bas">
         <div class="row align-items-center">
-            <div class="col-12 mb-30">
+            <div class="col-12">
                 <div class="footer-bottom"></div>
             </div>
-            <div class="col-xl-4 col-lg-6 col-md-6">
+            <div class="col-xl-6 col-lg-6 col-md-6">
                 {{-- Année courante : le pied de page annonçait 2024 en dur, ce qui
                      vieillit le site chaque 1er janvier sans que personne n'y pense. --}}
-                <p class="font-sm mb-0">&copy; {{ date('Y') }}, <strong class="text-brand">gravierci</strong> - DALAKOUN SARL <br />Tous droits reservés</p>
+                <p class="font-sm mb-0" style="white-space:nowrap;">&copy; {{ date('Y') }}, <strong class="text-brand">Mon Gravier</strong> - <a href="https://www.dalakoun.com" target="_blank" rel="noopener" class="ck-lien-pied" title="Site de DALAKOUN SARLU">DALAKOUN SARLU</a>. Tous droits réservés <span class="ck-sep">·</span> <a href="#" data-ck-ouvrir class="ck-lien-pied">Gérer mes cookies</a></p>
             </div>
-            <div class="col-xl-4 col-lg-6 text-center d-none d-xl-block">
-                <div class="hotline d-lg-inline-flex mr-30">
-                    <img src="{{asset('frontend/assets/imgs/theme/icons/phone-call.svg')}}" alt="hotline" />
-                    <p class="h5">+225 07 333 - 333<span>Ouvert de 8:00 à 22:00</span></p>
-                    {{-- <p><span>24/7 Centre d'aide</span></p> --}}
-                </div>
-                <div class="hotline d-lg-inline-flex">
-                    {{-- <img src="{{asset('frontend/assets/imgs/theme/icons/phone-call.svg')}}" alt="hotline" /> --}}
-                    <span></span>
-                </div>
-            </div>
-            <div class="col-xl-4 col-lg-6 col-md-6 text-end d-none d-md-block">
+            {{-- Lot 108 bis (17/09/2026) : la « hotline » du gabarit (numéro fictif) est retirée. --}}
+            <div class="col-xl-6 col-lg-6 col-md-6 text-end d-none d-md-block">
                 <div class="mobile-social-icon">
                     <h6>Suivez-nous</h6>
                     <a href="#"><img src="{{ asset('frontend/assets/imgs/theme/icons/icon-facebook-white.svg') }}" alt="" /></a>
                     <a href="#"><img src="{{ asset('frontend/assets/imgs/theme/icons/icon-twitter-white.svg') }}" alt="" /></a>
-                    <a href="#"><img src="{{ asset('frontend/assets/imgs/theme/icons/icon-instagram-white.svg') }}" alt="" /></a>
-                    <a href="#"><img src="{{ asset('frontend/assets/imgs/theme/icons/icon-pinterest-white.svg') }}" alt="" /></a>
                     <a href="#"><img src="{{ asset('frontend/assets/imgs/theme/icons/icon-youtube-white.svg') }}" alt="" /></a>
                 </div>
                 <p class="font-sm"></p>
@@ -231,6 +227,12 @@
         </div>
     </div>
 
+    {{-- Lot 108 quater (17/09/2026) : bouton WhatsApp flottant, au-dessus du bouton « remonter »
+         (#scrollUp, posé par le thème en bas à droite). Le rappel des cookies (.ck-rappel) monte
+         d'un cran, même axe vertical. --}}
+    <a class="whatsapp-flottant" href="https://wa.me/2250700130798" target="_blank" rel="noopener" title="Nous écrire sur WhatsApp" aria-label="Nous écrire sur WhatsApp">
+        <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8.6 8.9c.2-.5.5-.5.8-.5h.6c.2 0 .4.1.5.4l.8 1.9c.1.2 0 .4-.1.6l-.5.6c-.1.1-.1.3 0 .4a6 6 0 0 0 2.9 2.7c.2.1.3 0 .4-.1l.6-.7c.2-.2.4-.2.6-.1l1.9.9c.2.1.3.3.3.5 0 .5-.2 1.1-.6 1.4-.5.5-1.1.7-1.8.6a8.3 8.3 0 0 1-6.6-6.3c-.1-.8.1-1.6.6-2.3z" fill="currentColor"/></svg>
+    </a>
 </footer>
 <!-- Preloader Start -->
 {{-- <div id="preloader-active">
@@ -282,13 +284,15 @@
 <script src="{{ asset('frontend/assets/js/plugins/jquery.theia.sticky.js') }}"></script>
 <script src="{{ asset('frontend/assets/js/plugins/jquery.elevatezoom.js') }}"></script>
 <!-- Template  JS -->
-<script src="{{ asset('frontend/assets/js/main.js?v=6.0') }}"></script>
+<script src="{{ asset('frontend/assets/js/main.js?v=6.3') }}"></script>
+<script src="{{ asset('frontend/assets/js/responsive-dalakoun.js?v=1.0') }}"></script>
 <script src="{{ asset('frontend/assets/js/shop.js?v=6.0') }}"></script>
 <!-- Leaflet + Geocoder (hébergés en local pour éviter la dépendance au CDN unpkg) -->
 <link rel="stylesheet" href="{{ asset('frontend/assets/leaflet/leaflet.css') }}" />
 <link rel="stylesheet" href="{{ asset('frontend/assets/leaflet/Control.Geocoder.css') }}" />
 <script src="{{ asset('frontend/assets/leaflet/leaflet.js') }}"></script>
 <script src="{{ asset('frontend/assets/leaflet/Control.Geocoder.js') }}"></script>
+<script src="{{ asset('frontend/assets/leaflet/recherche-lieu.js') }}"></script>
 <script>
     let notification = document.getElementById('notify');
 

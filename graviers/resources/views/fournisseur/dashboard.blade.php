@@ -26,7 +26,7 @@
             <div class="dash-welcome-actions d-none d-md-flex">
                 <div class="dash-time-pill">
                     <i class="material-icons md-access_time"></i>
-                    <span id="dashLiveClock">{{ now()->format('H:i') }}</span>
+                    <span id="dashLiveClock">{{ now()->format('H:i:s') }}</span>
                 </div>
             </div>
         </div>
@@ -141,7 +141,7 @@
                         </div>
                     </div>
                     <div class="dash-counter">
-                        <div class="dash-counter-icon dash-counter-icon-primary"><i class="material-icons md-calendar_month"></i></div>
+                        <div class="dash-counter-icon dash-counter-icon-primary"><i class="material-icons md-calendar_today"></i></div>
                         <div class="flex-grow-1">
                             <div class="dash-counter-label">Ce mois</div>
                             <div class="dash-counter-value">{{ $bonsCeMois }}</div>
@@ -177,9 +177,12 @@
                 Voir tout <i class="material-icons md-arrow_forward"></i>
             </a>
         </div>
-        <div class="card-body p-0">
+        <div class="card-body">
+            <x-export-buttons table-id="dernieresLivraisonsFournisseur"
+                              filename="dernieres-livraisons"
+                              title="Dernières livraisons" />
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
+                <table class="table table-hover align-middle mb-0" id="dernieresLivraisonsFournisseur">
                     <thead class="table-light">
                         <tr>
                             <th>Code</th>
@@ -209,7 +212,7 @@
                                         —
                                     @endif
                                 </td>
-                                <td><small>{{ Carbon::parse($bon->created_at)->format('d/m/Y H:i') }}</small></td>
+                                <td><small>{{ Carbon::parse($bon->created_at)->format('d/m/Y H:i:s') }}</small></td>
                                 <td class="text-center">
                                     @if($estValide)
                                         <span class="badge bg-success">Validé</span>
@@ -232,7 +235,30 @@
     </div>
 @endsection
 
+@section('cssParts')
+    <link rel="stylesheet" href="{{ asset('backend/plugins/DataTables/datatables.min.css') }}">
+@endsection
+
 @section('jsParts')
+    <script src="{{ asset('backend/plugins/DataTables/datatables.min.js') }}"></script>
+    <script type="text/javascript">
+        $(function () {
+            // Même garde-fou que partout ailleurs : une liste vide dont la seule
+            // ligne porte un « colspan » fait lever « Requested unknown
+            // parameter », et le tableau reste alors brut.
+            var $table = $('#dernieresLivraisonsFournisseur');
+
+            if ($table.find('tbody tr').length > 0 &&
+                $table.find('tbody tr td[colspan]').length === 0) {
+                $table.DataTable({
+                    columnDefs: [{ targets: '_all', defaultContent: '-' }],
+                    language: { url: '{{ asset('backend/plugins/DataTables/i18n/fr-FR.json') }}' },
+                    order: [],
+                    pageLength: 10,
+                });
+            }
+        });
+    </script>
     <script>
         (function () {
             var clock = document.getElementById('dashLiveClock');

@@ -3,7 +3,6 @@ import 'package:mon_gravier_com/models/ConfigModel.dart';
 
 import '../../../components/rounded_icon_btn.dart';
 import '../../../constants.dart';
-import '../../../models/Product.dart';
 
 class ColorDots extends StatelessWidget {
   const ColorDots({

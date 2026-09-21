@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:mon_gravier_com_apporteur/globale.dart';
 
@@ -92,7 +91,7 @@ class _SignFormState extends State<SignForm> {
               return null;
             },
             decoration: const InputDecoration(
-              labelText: "Login",
+              labelText: "Login *",
               hintText: "Entrez votre login",
               // If  you are using latest version of flutter then lable text and hint text shown like this
               // if you r using flutter less then 1.20.* then maybe this is not working properly
@@ -123,7 +122,7 @@ class _SignFormState extends State<SignForm> {
               return null;
             },
             decoration: InputDecoration(
-              labelText: "Mot de passe",
+              labelText: "Mot de passe *",
               hintText: "Entrez votre mot de passe",
               // If  you are using latest version of flutter then lable text and hint text shown like this
               // if you r using flutter less then 1.20.* then maybe this is not working properly

@@ -6,7 +6,7 @@
     <div class="content-header">
         <h2 class="content-title">Liste des livreurs - </h2>
         <div>
-            <a href="{{ route('show.registerLivreur') }}" class="btn btn-primary"><i class="material-icons md-plus"></i> Ajouter Nouveau</a>
+            <a href="{{ route('show.registerLivreur') }}" class="btn btn-primary"><i class="material-icons md-plus"></i> Ajouter nouveau</a>
         </div>
     </div>
     <div class="card mb-4">
@@ -48,7 +48,7 @@
                 <table class="table table-striped" id="liste">
                     <thead style="background-color: #1c57a3; color: white;">
                         <tr>
-                            <th class="text-center">Code Livreur</th>
+                            <th class="text-center">Code livreur</th>
                             <th class="text-center">Nom &amp; Prénom</th>
                             <th class="text-center">Téléphone</th>
                             <th class="text-center">CNI/Pièce</th>
@@ -59,6 +59,11 @@
                             <th class="text-end">Tarif km</th>
                             <th class="text-end">Tarif forfait base</th>
                             <th class="text-center">Statut</th>
+                            {{-- L'IDENTIFIANT INTERNE, LISIBLE ET COPIABLE.
+                                 Il est demandé par l'attribution de la grille
+                                 tarifaire ; il fallait jusqu'ici aller le lire
+                                 dans l'adresse d'une page. --}}
+                            <th class="text-center">ID livreur</th>
                             <th class="text-end">Action</th>
                         </tr>
                     </thead>
@@ -120,7 +125,16 @@
                                     <span class="badge bg-success">Actif</span>
                                 @endif
                             </td>
-                            <td class="text-end">
+                            <td class="text-nowrap text-center">
+                                <button type="button"
+                                        class="btn btn-sm btn-secondary js-copier-id"
+                                        data-valeur="{{ $livreur->id }}"
+                                        title="Copier l'identifiant">
+                                    <i class="material-icons md-content_copy align-middle"></i>
+                                    <strong>{{ $livreur->id }}</strong>
+                                </button>
+                            </td>
+                            <td class="text-nowrap text-end">
                                 <div class="dropdown">
                                     <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm"> <i class="material-icons md-more_horiz"></i> Actions </a>
                                     <div class="dropdown-menu">
@@ -259,6 +273,54 @@
     <link rel="stylesheet" href="{{ asset('backend/plugins/DataTables/datatables.min.css') }}">
 @endsection
 @section('jsParts')
+    <script>
+        /**
+         * COPIER L'IDENTIFIANT D'UN CLIC.
+         *
+         * `navigator.clipboard` n'existe QUE sur une origine sûre (https ou
+         * localhost). Le back-office est en https, mais un accès par adresse IP
+         * ou en http le laisserait sans presse-papiers : on garde donc le repli
+         * par `document.execCommand`, qui marche partout.
+         */
+        document.addEventListener('click', function (e) {
+            var bouton = e.target.closest('.js-copier-id');
+            if (!bouton) return;
+
+            var valeur = bouton.getAttribute('data-valeur') || '';
+            var confirmer = function () {
+                var ancien = bouton.innerHTML;
+                bouton.innerHTML = '<i class="material-icons md-check align-middle"></i> Copié';
+                bouton.classList.add('btn-success');
+                bouton.classList.remove('btn-light');
+                setTimeout(function () {
+                    bouton.innerHTML = ancien;
+                    bouton.classList.remove('btn-success');
+                    bouton.classList.add('btn-light');
+                }, 1200);
+            };
+
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(valeur).then(confirmer).catch(function () {
+                    replier(valeur, confirmer);
+                });
+            } else {
+                replier(valeur, confirmer);
+            }
+        });
+
+        function replier(valeur, confirmer) {
+            var zone = document.createElement('textarea');
+            zone.value = valeur;
+            zone.setAttribute('readonly', '');
+            zone.style.position = 'fixed';
+            zone.style.left = '-9999px';
+            document.body.appendChild(zone);
+            zone.select();
+            try { document.execCommand('copy'); confirmer(); } catch (err) { /* rien à faire */ }
+            document.body.removeChild(zone);
+        }
+    </script>
+
     <script src="{{ asset('backend/plugins/DataTables/datatables.min.js') }}"></script>
     <script type="text/javascript">
         $(function() {

@@ -10,7 +10,7 @@
     <div class="content-header">
         <h2 class="content-title">Client à termes - </h2>
         {{-- <div>
-            <a href="{{ route('sellers.register') }}" class="btn btn-primary"><i class="material-icons md-plus"></i> Ajouter Nouveau</a>
+            <a href="{{ route('sellers.register') }}" class="btn btn-primary"><i class="material-icons md-plus"></i> Ajouter nouveau</a>
         </div> --}}
     </div>
     <div class="card mb-4">
@@ -52,14 +52,14 @@
                     <tbody>
                         @forelse ($lignes as $l)
                             <tr>
-                                <td class="text-center">{{ $l->date ? \Carbon\Carbon::parse($l->date)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date ? \Help::dateHeure($l->date) : '-' }}</td>
                                 <td class="text-center">{{ $l->client_id ?? '-' }}</td>
                                 <td class="text-center">{{ $l->client_nom }}</td>
                                 <td class="text-center">{{ $l->numero }}</td>
                                 <td class="text-end">{{ number_format($l->total_a_payer, 0, ',', ' ') }}</td>
                                 <td class="text-end">{{ number_format($l->montant_paye, 0, ',', ' ') }}</td>
                                 <td class="text-end fw-bold">{{ number_format($l->reste, 0, ',', ' ') }}</td>
-                                <td class="text-center">{{ $l->date_echeance ? \Carbon\Carbon::parse($l->date_echeance)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date_echeance ? \Help::dateHeure($l->date_echeance) : '-' }}</td>
                                 <td class="text-center">{{ $l->facture?->statutCreance() }}</td>
                                 <td class="text-center">{{ $l->jours_retard > 0 ? $l->jours_retard . ' j' : '-' }}</td>
                             </tr>

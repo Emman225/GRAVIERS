@@ -13,19 +13,12 @@
                 {{ $abonnes->count() }} adresse(s) — dont {{ $abonnes->where('statut', 1)->whereNull('deleted_at')->count() }} abonnée(s)
             </p>
         </div>
-        {{-- Exports côté serveur : le fichier produit contient TOUTE la liste,
-             et non la seule page affichée à l'écran. La corbeille en est exclue. --}}
-        <div>
-            <a href="{{ route('newsletter.exportExcel') }}" class="btn btn-success">
-                <i class="material-icons md-download"></i> Excel
-            </a>
-            <a href="{{ route('newsletter.exportWord') }}" class="btn btn-primary">
-                <i class="material-icons md-download"></i> Word
-            </a>
-            <a href="{{ route('newsletter.exportPdf') }}" class="btn btn-danger">
-                <i class="material-icons md-download"></i> PDF
-            </a>
-        </div>
+        {{-- LES BOUTONS D'EXPORT ONT REJOINT LE TABLEAU.
+             Ils étaient ici, en haut à droite ; le balayage du 29/08/2026 en a
+             posé un second jeu au-dessus du tableau, comme sur toutes les
+             autres listes. Deux jeux pour la même chose : celui-ci part.
+             Mais ce sont bien CES adresses-là que l'autre jeu appelle
+             désormais — voir « excel-url / word-url / pdf-url » plus bas. --}}
     </div>
 
     @if(session('success'))
@@ -39,6 +32,18 @@
         <div class="col-md-12">
             <div class="card mb-4">
                 <div class="card-body">
+                    {{-- LES DOCUMENTS VIENNENT DU SERVEUR, ET NON DU TABLEAU.
+                         L'écran affiche AUSSI la corbeille (`withTrashed`) :
+                         un export reconstitué depuis les lignes affichées y
+                         embarquerait les adresses mises au rebut. Les trois
+                         adresses ci-dessous produisent la liste entière, la
+                         corbeille exclue. --}}
+                    <x-export-buttons table-id="listeNewsletter"
+                                      filename="abonnes-lettre-information"
+                                      title="Abonnés à la lettre d information"
+                                      :excel-url="route('newsletter.exportExcel')"
+                                      :word-url="route('newsletter.exportWord')"
+                                      :pdf-url="route('newsletter.exportPdf')" />
                     <div class="table-responsive">
                         <table class="table table-hover table-bordered" id="listeNewsletter">
                             <thead>
@@ -67,7 +72,7 @@
                                         </td>
                                         <td>{{ $abonne->origine ?: '—' }}</td>
                                         <td class="text-center">
-                                            {{ $abonne->created_at ? $abonne->created_at->format('d/m/Y H:i') : '—' }}
+                                            {{ $abonne->created_at ? $abonne->created_at->format('d/m/Y H:i:s') : '—' }}
                                         </td>
                                         <td class="text-center text-nowrap">
                                             @if (!$abonne->trashed())

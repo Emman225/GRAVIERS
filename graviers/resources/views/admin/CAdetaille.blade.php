@@ -72,6 +72,34 @@
         </header>
 
         <div class="card-body">
+            {{-- CE QUI A ÉTÉ MIS DE CÔTÉ, ET POURQUOI.
+
+                 Un chiffre qui disparaît sans un mot est un chiffre qu'on croit
+                 perdu. Ces deux ensembles ne sont pas des ventes ; ils sont
+                 nommés, comptés, et renvoyés là où ils se lisent. --}}
+            @if (($bonsDeLocation ?? 0) > 0 || ($sansPrix['bons'] ?? 0) > 0)
+                <div class="alert alert-warning">
+                    @if (($bonsDeLocation ?? 0) > 0)
+                        <div>
+                            <strong>{{ $bonsDeLocation }} bon(s) de location</strong> ne sont pas comptés ici :
+                            une location n'est pas une vente. Son coût est un tarif journalier
+                            multiplié par le nombre de jours, sans prix de vente en face.
+                            Elles se lisent sur l'état des locations.
+                        </div>
+                    @endif
+                    @if (($sansPrix['bons'] ?? 0) > 0)
+                        <div @class(['mt-2' => ($bonsDeLocation ?? 0) > 0])>
+                            <strong>{{ $sansPrix['bons'] }} bon(s) ne retrouvent plus leur ligne de commande</strong>,
+                            pour {{ $fmt($sansPrix['qte']) }} en quantité servie et
+                            {{ $fmt($sansPrix['cout']) }} fcfa versés aux fournisseurs.
+                            Le prix facturé au client est inconnu : lui prêter celui du catalogue
+                            inventerait une recette. Ils sont donc écartés du tableau et des totaux,
+                            et restent à traiter.
+                        </div>
+                    @endif
+                </div>
+            @endif
+
             <x-export-buttons table-id="liste" filename="chiffre-d-affaire-detaille" title="Etat chiffre d'affaire détaillé" />
 
             <div class="table-responsive">

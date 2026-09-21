@@ -2,6 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:mon_gravier_com/screens/init_screen.dart';
 
+import '../../constants.dart';
+
+/// CONFIRMATION DE COMMANDE.
+///
+/// Le message du serveur s'affichait en 30 px gras noir, sous une image occupant
+/// 40 % de la hauteur, dans une colonne NON défilante encadrée de deux `Spacer`.
+/// Un message de deux phrases faisait donc déborder l'écran — et le dernier
+/// écran d'un parcours de commande est le pire endroit pour cela.
+///
+/// Le message arrive toujours par `Get.arguments` et n'est pas modifié.
 class CommandeSuccessScreen extends StatefulWidget {
   static String routeName = "/commande_success";
 
@@ -12,7 +22,6 @@ class CommandeSuccessScreen extends StatefulWidget {
 }
 
 class _CommandeSuccessScreenState extends State<CommandeSuccessScreen> {
-
   String message = '';
 
   @override
@@ -26,37 +35,59 @@ class _CommandeSuccessScreenState extends State<CommandeSuccessScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: const SizedBox(),
-        title: const Text("Félicitations"),
+        title: const Text("Commande enregistrée"),
       ),
-      body: Column(
-        children: [
-          const SizedBox(height: 16),
-          Image.asset(
-            "assets/images/success.png",
-            height: MediaQuery.of(context).size.height * 0.4, //40%
-          ),
-          const SizedBox(height: 16),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 30,
-              fontWeight: FontWeight.bold,
-              color: Colors.black,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: kSpaceXl, vertical: kSpaceXxl),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 96,
+                      height: 96,
+                      decoration: const BoxDecoration(
+                        color: kSuccessSoftColor,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.check_rounded,
+                          size: 48, color: kSuccessColor),
+                    ),
+                    const SizedBox(height: kSpaceXl),
+                    const Text(
+                      "C'est enregistré",
+                      textAlign: TextAlign.center,
+                      style: headingStyle,
+                    ),
+                    const SizedBox(height: kSpaceMd),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 340),
+                      child: Text(
+                        message,
+                        textAlign: TextAlign.center,
+                        style: kCorpsStyle.copyWith(
+                          fontSize: 15,
+                          color: kTextSecondaryColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
-          const Spacer(),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: ElevatedButton(
-              onPressed: () {
-                Get.offAllNamed(InitScreen.routeName);
-              },
-              child: const Text("Aller à l'accueil"),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  kSpaceXl, 0, kSpaceXl, kSpaceXl),
+              child: ElevatedButton(
+                onPressed: () => Get.offAllNamed(InitScreen.routeName),
+                child: const Text("Retour à l'accueil"),
+              ),
             ),
-          ),
-          const Spacer(),
-        ],
+          ],
+        ),
       ),
     );
   }

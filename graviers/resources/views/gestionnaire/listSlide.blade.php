@@ -95,6 +95,9 @@
     {{-- ===== TABLEAU ===== --}}
     <div class="card dash-card mb-4">
         <div class="card-body">
+            <x-export-buttons table-id="listeSlides"
+                              filename="liste-des-diapositives"
+                              title="Diapositives du carrousel" />
             <div class="table-responsive">
                 <table class="table dash-table align-middle mb-0" id="listeSlides">
                     <thead>
@@ -187,7 +190,7 @@
                                               data-confirm-text="La diapositive et son image seront supprimées définitivement. Cette action est irréversible.">
                                             @csrf
                                             @method('DELETE')
-                                            <button type="submit" class="btn btn-sm btn-dark" title="Supprimer définitivement">
+                                            <button type="submit" class="btn btn-sm btn-danger" title="Supprimer définitivement">
                                                 <i class="material-icons md-delete_forever"></i>
                                             </button>
                                         </form>

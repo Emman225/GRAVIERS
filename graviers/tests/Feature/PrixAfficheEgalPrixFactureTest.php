@@ -80,11 +80,15 @@ class PrixAfficheEgalPrixFactureTest extends TestCase
         // Le cas signalé : annoncée 20 000, facturée 100.
         $produit = $this->unProduitAvecEcart('LOCATION', prixMoyen: 20000, prixStock: 100);
 
-        $this->assertSame(100.0, round($produit->prixPour(null), 2),
-            'Le panier retient le prix fournisseur le plus bas.');
-
-        $this->assertSame(100.0, round($this->prixAffichePar('/location-materiel-construction', $produit) ?? -1, 2),
-            'Le catalogue de location annonçait un prix que le panier ne confirmait pas.');
+        // On ne fige plus le montant : depuis que le prix de vente porte le
+        // pourcentage DALAKOUN, il dépend du taux en vigueur. Ce qui doit
+        // rester vrai, quel que soit ce taux, c'est l'ÉGALITÉ entre le prix
+        // montré et le prix facturé.
+        $this->assertSame(
+            round($produit->prixPour(null), 2),
+            round($this->prixAffichePar('/location-materiel-construction', $produit) ?? -1, 2),
+            'Le catalogue de location annonçait un prix que le panier ne confirmait pas.'
+        );
     }
 
     public function test_l_alignement_traverse_la_pagination(): void
@@ -94,7 +98,7 @@ class PrixAfficheEgalPrixFactureTest extends TestCase
         // laisserait la moitie du catalogue avec son ancien prix.
         $produit = $this->unProduitAvecEcart('VENTE', prixMoyen: 150, prixStock: 5000);
 
-        $this->assertSame(5000.0, round($produit->prixPour(null), 2));
+        $attendu = round($produit->prixPour(null), 2);
 
         $page = new \Illuminate\Pagination\LengthAwarePaginator(
             collect([$produit->fresh()]), 1, 12, 1
@@ -102,7 +106,7 @@ class PrixAfficheEgalPrixFactureTest extends TestCase
 
         Produit::alignerPrixAffiche($page);
 
-        $this->assertSame(5000.0, round((float) $page->getCollection()->first()->prix_moyen, 2),
+        $this->assertSame($attendu, round((float) $page->getCollection()->first()->prix_moyen, 2),
             'Le prix annonce au catalogue doit etre celui que le panier facturera.');
     }
 
@@ -143,26 +147,43 @@ class PrixAfficheEgalPrixFactureTest extends TestCase
 
         // Le stock retiré du circuit ne dicte plus le prix — ni à l'écran, ni
         // au panier.
+        // Le stock retire du circuit ne dicte plus le prix : le produit retombe
+        // sur son prix catalogue, sans marge appliquee faute de cout connu.
         $this->assertSame(9000.0, round((float) $liste->first()->prix_moyen, 2));
         $this->assertSame(9000.0, round($produit->fresh()->prixPour(null), 2));
     }
 
-    public function test_l_alignement_tient_en_une_seule_requete(): void
+    public function test_l_alignement_ne_depend_pas_du_nombre_de_produits(): void
     {
         $a = $this->unProduitAvecEcart('VENTE', prixMoyen: 100, prixStock: 900);
         $b = $this->unProduitAvecEcart('VENTE', prixMoyen: 200, prixStock: 800);
+        $c = $this->unProduitAvecEcart('VENTE', prixMoyen: 300, prixStock: 700);
 
-        $liste = collect([$a, $b]);
+        // C'est l'INVARIANT qui compte, pas un nombre figé : le coût ne doit pas
+        // croître avec la taille du catalogue. Appelé produit par produit,
+        // prixPour() déclencherait une requête par article — 80 pour 80 produits.
+        $mesure = function (array $produits): int {
+            // Le journal s'accumule : sans purge, la seconde mesure contient
+            // aussi les requêtes de la première.
+            \Illuminate\Support\Facades\DB::enableQueryLog();
+            \Illuminate\Support\Facades\DB::flushQueryLog();
+            Produit::alignerPrixAffiche(collect($produits));
+            $n = count(\Illuminate\Support\Facades\DB::getQueryLog());
+            \Illuminate\Support\Facades\DB::disableQueryLog();
 
-        \Illuminate\Support\Facades\DB::enableQueryLog();
-        Produit::alignerPrixAffiche($liste);
-        $requetes = \Illuminate\Support\Facades\DB::getQueryLog();
-        \Illuminate\Support\Facades\DB::disableQueryLog();
+            return $n;
+        };
 
-        // Appelé produit par produit, prixPour() en déclencherait un par
-        // article : 80 requêtes pour un catalogue de 80.
-        $this->assertCount(1, $requetes);
-        $this->assertSame(900.0, round((float) $liste[0]->prix_moyen, 2));
-        $this->assertSame(800.0, round((float) $liste[1]->prix_moyen, 2));
+        $pourDeux  = $mesure([$a, $b]);
+        $pourTrois = $mesure([$a, $b, $c]);
+
+        $this->assertSame($pourDeux, $pourTrois,
+            'Le nombre de requêtes doit rester le même quel que soit le nombre de produits.');
+        $this->assertLessThanOrEqual(2, $pourDeux,
+            'Une requête pour les prix d\'achat, une pour le taux en vigueur : pas davantage.');
+
+        // Et le calcul reste juste — au taux en vigueur, quel qu'il soit.
+        $this->assertSame(round($a->fresh()->prixPour(null), 2), round((float) $a->prix_moyen, 2));
+        $this->assertSame(round($b->fresh()->prixPour(null), 2), round((float) $b->prix_moyen, 2));
     }
 }

@@ -5,6 +5,7 @@ import 'package:mon_gravier_com/globale.dart';
 import 'package:mon_gravier_com/screens/details_demande_livraison/components/check_out_card.dart';
 import 'package:select_searchable_list/select_searchable_list.dart';
 
+import '../../components/bouton_retour.dart';
 import '../../helper/constants.dart';
 import '../../models/Cart.dart';
 import '../../models/ConfigModel.dart';
@@ -53,29 +54,9 @@ class _DetailsDemandeLivraisonScreenState
       appBar: AppBar(
         title: const Text(
           "Détails des produits à livrer",
-          style: TextStyle(color: Colors.black),
         ),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       body: paniers.isEmpty
           ? Center(
@@ -84,13 +65,6 @@ class _DetailsDemandeLivraisonScreenState
           : Container(
               width: double.infinity,
               height: heightOfScreen(context),
-              decoration: const BoxDecoration(
-                image: DecorationImage(
-                  image: AssetImage("assets/images/bg.jpg"),
-                  fit: BoxFit.cover,
-                  opacity: 0.1,
-                ),
-              ),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 5),
                 child: ListView.builder(
@@ -165,7 +139,7 @@ class _DetailsDemandeLivraisonScreenState
                     keyboardType: TextInputType.text,
                     textInputAction: TextInputAction.next,
                     decoration: const InputDecoration(
-                      labelText: "Produit ou article",
+                      labelText: "Produit ou article *",
                       hintText: "Article à livrer",
                     ),
                   ),
@@ -176,14 +150,14 @@ class _DetailsDemandeLivraisonScreenState
                     textInputAction: TextInputAction.next,
                     textCapitalization: TextCapitalization.characters,
                     decoration: const InputDecoration(
-                      labelText: "Quantité totale",
+                      labelText: "Quantité totale *",
                       hintText: "Quantité à livrer",
                     ),
                   ),
                   const SizedBox(height: 10),
                   DropDownTextField(
                     textEditingController: uniteController,
-                    title: 'Unité de mesure',
+                    title: 'Unité de mesure *',
                     hint: 'Choisir l\'unité de mesure',
                     options: { for (var p in _listUnite) p.id ?? 0 : p.libelle.toString() },
                     multiple: false,

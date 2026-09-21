@@ -158,8 +158,11 @@ class LivreurController extends Controller
                 'montant'       => (float) $d->montant,
                 // 1 = acceptée, 2 = refusée, NULL/0 = en attente.
                 'statut'        => (int) ($d->paye ?? 0),
+                // Point 20 : validée → « À payer » → « Effectuée ».
+                'etat_reglement' => $d->etat_reglement,
+                'libelle_etat'   => $d->libelleReglement(),
                 'mode'          => $d->modePaiement?->libelle,
-                'date_paiement' => (int) $d->paye === 1 ? $d->updated_at : null,
+                'date_paiement' => (int) $d->paye === 1 ? ($d->date_effectuee ?? $d->updated_at) : null,
                 'origine'       => 'Vous',
                 'detail'        => 'Demande de paiement',
             ]);
@@ -188,6 +191,9 @@ class LivreurController extends Controller
                     'montant'       => (float) $p->montant,
                     // Un règlement enregistré est un versement fait.
                     'statut'        => 1,
+                    // Point 20 (09/09/2026) : « À payer » puis « Effectuée », comme une demande.
+                    'etat_reglement' => $p->etat_reglement,
+                    'libelle_etat'   => $p->libelleReglement(),
                     'mode'          => $p->modePaiement?->libelle,
                     'date_paiement' => $p->date_paiement ?? $p->created_at,
                     'origine'       => "L'entreprise",
@@ -518,6 +524,38 @@ class LivreurController extends Controller
                 return back()->with('info', 'Vous avez déjà validé cette livraison');
             }
 
+            // LE FOURNISSEUR DOIT AVOIR SERVI LE BON.
+            //
+            // Même règle que dans l'API du livreur : sans elle, une course
+            // pouvait être clôturée — et le livreur crédité — alors que le bon
+            // d'enlèvement n'avait jamais été servi. La commande passait
+            // TERMINEE et rejoignait « commandes traitées » pendant que le bon
+            // restait « en attente d'enlèvement » chez le fournisseur, et la
+            // vente n'entrait dans AUCUN chiffre d'affaires : les trois écrans
+            // de CA ne comptent que les bons portant une `fournisseur_validation`.
+            //
+            // Deux points d'entrée, deux gardes : le livreur clôture depuis son
+            // application OU depuis le site, et n'en protéger qu'un laisserait
+            // la porte ouverte.
+            //
+            // Le contrôle ne s'applique QUE s'il existe un bon : une location ou
+            // une demande de livraison n'en a pas, et les bloquer arrêterait des
+            // flux qui ne concernent aucun fournisseur.
+            $bon = Enlevement::where('livraison_id', $livraison->id)
+                ->where('statut', Help::$STATUT_ACTIF)
+                ->first();
+
+            if ($bon && empty($bon->fournisseur_validation)) {
+                // Cle « fail » et non « error » : Flasher capte error/success et
+                // les rejoue en bulle flottante, qui s efface d elle-meme. Ce
+                // message doit rester a l ecran — le livreur est chez le client
+                // et doit pouvoir le lire, voire le montrer.
+                return back()->with('fail',
+                    'Le fournisseur n\'a pas encore validé le bon d\'enlèvement'
+                    . ($bon->code_enleve ? ' (' . $bon->code_enleve . ')' : '')
+                    . ' : la livraison ne peut pas être clôturée. Demandez-lui de valider son bon.');
+            }
+
             // La colonne etat_livraison contient des LIBELLÉS ("EN ATTENTE",
             // "EN COURS LIVRAISON", "LIVREE") et non des numéros. Écrire 3 y plaçait
             // la chaîne « 3 » : la livraison n'était donc reconnue comme livrée
@@ -529,6 +567,9 @@ class LivreurController extends Controller
                 'statut' => 1
                 //'statut' => 2
             ]);
+            // Le bon de livraison part au client entreprise (lot 84, 15/09/2026),
+            // une seule fois par bon, différé, jamais bloquant.
+            \App\Services\BonDeLivraisonClient::envoyerApresLivraison($livraison);
 
             if ($livraison->provenance == 'COMMANDE') {
                 $ligne = $livraison->detailCommande;
@@ -536,9 +577,16 @@ class LivreurController extends Controller
                 // Quantité livrée cumulée : seule l'application mobile du livreur
                 // la tenait à jour. Une validation faite depuis le site laissait la
                 // ligne à 0, d'où le statut « Non livrée » sur la fiche commande.
+                // CE QUE LE FOURNISSEUR A SERVI, ET NON CE QUI A ÉTÉ DEMANDÉ.
+                //
+                // On ajoutait `livraison->qte`, la quantité demandée. Un
+                // enlèvement partiel — 5 t servies sur 15 — créditait donc le
+                // client de 15, la ligne passait LIVREE et la commande TERMINEE :
+                // elle quittait la liste des commandes à traiter alors qu'il
+                // restait 10 t à servir. Constaté sur la commande 627042.
                 $qteLivree = min(
                     (float) $ligne->qte,
-                    (float) ($ligne->qte_livree ?? 0) + (float) $livraison->qte
+                    (float) ($ligne->qte_livree ?? 0) + $livraison->quantiteRemise()
                 );
 
                 $ligne->update([
@@ -599,7 +647,51 @@ class LivreurController extends Controller
                 //     ]);
                 // }
 
+            } elseif ($livraison->provenance == Help::$LOCATION) {
+                // LOCATION (10/09/2026) : cette course tombait dans la branche des
+                // demandes de livraison, dont elle n'a aucune relation (detailLivraison
+                // à null) — une clôture depuis le site échouait. Même règle que
+                // l'API : la livraison du matériel ne TERMINE pas la location, elle
+                // reste EN COURS jusqu'au retour ; la ligne livrée passe EN COURS.
+                $ligneLocation = \App\Models\DetailLocation::find($livraison->detail_commande_id);
+                if ($ligneLocation) {
+                    if ($ligneLocation->etat_location === Help::$LOCATION_EN_ATTENTE) {
+                        $ligneLocation->update(['etat_location' => Help::$LOCATION_EN_COURS]);
+                    }
+                    $locationLivree = \App\Models\Location::find($ligneLocation->location_id);
+                    if ($locationLivree && $locationLivree->etatLibelle() === Help::$LOCATION_EN_ATTENTE) {
+                        $locationLivree->update(['etat_location' => Help::$LOCATION_EN_COURS]);
+                    }
+                }
             } else { //demande de livraison
+
+                // LA LIGNE TRANSPORTÉE EST MARQUÉE, elle aussi.
+                //
+                // La clôture mettait à jour la ligne d'une COMMANDE — quantité
+                // livrée, état — mais laissait celle d'une DEMANDE DE LIVRAISON
+                // intacte : l'article restait « EN TRAITEMENT » pour toujours au
+                // back-office, alors qu'il avait été transporté et remis.
+                //
+                // L'application mobile du livreur, elle, la met à jour depuis sa
+                // correction. Le résultat dépendait donc du CANAL par lequel le
+                // livreur clôturait : même course, deux états en base.
+                //
+                // Une ligne peut demander plusieurs camions : elle n'est LIVREE
+                // que lorsque la quantité livrée couvre la quantité demandée.
+                $ligneTransport = $livraison->detailLivraison;
+
+                if ($ligneTransport) {
+                    $livreePourLaLigne = (float) Livraison::where('detail_livraison_id', $ligneTransport->id)
+                        ->where('etat_livraison', Help::$LIVRAISON_LIVREE)
+                        ->whereNull('deleted_at')
+                        ->sum('qte');
+
+                    $ligneTransport->update([
+                        'etat_livraison' => ($livreePourLaLigne >= (float) $ligneTransport->qte)
+                            ? Help::$LIVRAISON_LIVREE
+                            : Help::$LIVRAISON_EN_COURS,
+                    ]);
+                }
 
                 $demandeLivraison = $livraison->detailLivraison->demandeLivraison;
                 $qteALivrer = $demandeLivraison->detailLivraison->sum('qte');
@@ -699,18 +791,32 @@ class LivreurController extends Controller
 
     public function bonImprime(Enlevement $enlevement)
     {
-
-        $data['enlevement'] = $enlevement;
-        $pdf = PDF::loadView('livreur.bonImprime', $data);
-        return $pdf->download($enlevement->code_enleve . '.pdf');
+        // Le même document que le courriel du client (lot 84) : date, historique.
+        return \App\Services\BonDeLivraisonClient::pdf($enlevement)->download($enlevement->code_enleve . '.pdf');
     }
 
     public function afficheBon(Enlevement $enlevement)
     {
+        return \App\Services\BonDeLivraisonClient::pdf($enlevement)->stream();
+    }
 
-        $data['enlevement'] = $enlevement;
-        $pdf = PDF::loadView('livreur.bonImprime', $data);
-        return $pdf->stream();
+    /**
+     * L'application des livreurs clôture une course dans l'API ; celle-ci
+     * demande au site d'envoyer le bon de livraison au client entreprise, en
+     * présentant le jeton partagé JETON_INTERNE (lot 84, 15/09/2026).
+     */
+    public function envoyerBonInterne(Request $request, $livraisonId)
+    {
+        $jeton = (string) config('constantes.jeton_interne');
+        if ($jeton === '' || !hash_equals($jeton, (string) $request->input('jeton', ''))) {
+            return response()->json(['code' => 403, 'message' => 'Jeton interne absent ou invalide'], 403);
+        }
+        $livraison = Livraison::find($livraisonId);
+        if (!$livraison) {
+            return response()->json(['code' => 404, 'message' => 'Livraison introuvable'], 404);
+        }
+
+        return response()->json(['code' => 200, 'envoye' => \App\Services\BonDeLivraisonClient::envoyerApresLivraison($livraison, true)]);
     }
 
     public function livraisonValides()

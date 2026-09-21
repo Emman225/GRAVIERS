@@ -9,6 +9,74 @@
 <div class="container mt-60">
     <h1>Demandes de livraison</h1>
 
+    {{-- L'ÉCHEC D'ENVOI DU CODE, ANNONCÉ.
+         Clé propre : Flasher capte success/error/warning/info et les rejoue en
+         bulle éphémère. Cet avertissement doit rester tant que le gestionnaire
+         n'a pas agi. --}}
+    @if (session('code_non_envoye'))
+        <div class="alert alert-danger">
+            <strong>Code de validation non transmis.</strong><br>
+            {{ session('code_non_envoye') }}
+        </div>
+    @endif
+
+    @if (session('code_renvoye'))
+        <div class="alert alert-success">{{ session('code_renvoye') }}</div>
+    @endif
+
+    {{-- LES CODES DES COURSES EN COURS.
+         Le code est le numéro de la course : le client le donne au livreur, qui
+         le saisit pour clore la livraison. Il n'apparaissait nulle part au
+         back-office — un courriel perdu et plus personne ne pouvait le
+         retrouver, ni le dicter au téléphone, ni le renvoyer. --}}
+    @php
+        $coursesEnCours = collect();
+        foreach ($livraisons->detailLivraison as $uneLigne) {
+            foreach ($uneLigne->livraisons as $uneCourse) {
+                if ((int) $uneCourse->accepte !== 3) {
+                    $coursesEnCours->push([$uneLigne, $uneCourse]);
+                }
+            }
+        }
+    @endphp
+
+    @if ($coursesEnCours->isNotEmpty())
+        <div class="card border-secondary mb-4">
+            {{-- PLUS DE CODE À L'ÉCRAN (10/09/2026) : le code de livraison est
+                 envoyé au client, qui le lit sur Mon compte et dans l'application ;
+                 le gestionnaire peut le lui renvoyer sans le voir. --}}
+            <div class="card-header">Courses affectées — code de livraison envoyé au client</div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0 align-middle">
+                    <thead>
+                        <tr>
+                            <th>Marchandise</th>
+                            <th>Livreur</th>
+                            <th class="text-end">&nbsp;</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($coursesEnCours as [$uneLigne, $uneCourse])
+                            <tr>
+                                <td>{{ ucfirst($uneLigne->nom_produit) }}</td>
+                                <td>{{ $uneCourse->livreur?->user?->nom_prenoms ?? '—' }}</td>
+                                <td class="text-end">
+                                    <form action="{{ route('show.renvoyerCodeDemandeLivraison', $uneCourse) }}"
+                                          method="post" class="d-inline">
+                                        @csrf
+                                        <button type="submit" class="btn btn-sm btn-outline-primary">
+                                            Renvoyer le code
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    @endif
+
     {{-- ============================================================
          Bon de commande joint par le client à sa demande.
 
@@ -23,9 +91,6 @@
     @if ($livraisons->blClient && $livraisons->blClient->fichier)
         @php
             $bonClient = $livraisons->blClient;
-            $extensionBon = strtolower(pathinfo($bonClient->fichier, PATHINFO_EXTENSION));
-            $bonEstPdf = $extensionBon === 'pdf';
-            $bonEstImage = in_array($extensionBon, ['jpg', 'jpeg', 'png', 'webp', 'gif']);
             $urlBon = route('orders.fichierBlClient', ['bl' => $bonClient->id, 'mode' => 'inline']);
             $urlBonTelecharger = route('orders.fichierBlClient', ['bl' => $bonClient->id, 'mode' => 'download']);
         @endphp
@@ -48,29 +113,43 @@
                     </a>
                 </div>
             </div>
-            <div class="card-body">
-                @if ($bonEstPdf)
-                    <embed src="{{ $urlBon }}" type="application/pdf"
-                           width="100%" height="520px" style="border: 1px solid #ddd;" />
-                @elseif ($bonEstImage)
-                    <div class="text-center">
-                        <img src="{{ $urlBon }}" alt="Bon de commande"
-                             style="max-width: 100%; max-height: 520px; border: 1px solid #ddd;">
-                    </div>
-                @else
-                    <p class="text-muted mb-0">
-                        Format non prévisualisable ({{ $extensionBon ?: 'inconnu' }}).
-                        Utilisez « Consulter » ou « Télécharger ».
-                    </p>
-                @endif
-            </div>
+            {{-- PLUS D'APERÇU EN GRAND (10/09/2026) : le fichier occupait 520 px
+                 au milieu de l'écran de traitement ; la ligne « Consulter /
+                 Télécharger » suffit, le fichier s'ouvre dans un autre onglet. --}}
         </div>
     @endif
 
     @foreach ($livraisons->detailLivraison as $detail )
+        {{-- TROIS CHIFFRES, TROIS RÉALITÉS DIFFÉRENTES.
+             L'écran n'affichait que le reste à confier. Un article livré à 20
+             sur 25 y ressemblait donc à un article dont on n'avait rien fait :
+             le gestionnaire ne pouvait pas voir que la marchandise était partie
+             et que le client l'avait reçue. --}}
+        <div class="card border-secondary mb-2">
+            <div class="card-body py-2 d-flex flex-wrap justify-content-between align-items-center">
+                <span class="fw-bold">{{ ucfirst($detail->nom_produit) }}</span>
+                <span>Demandé : <span class="fw-bold">{{ $detail->qte }}</span> {{ $detail->unite }}</span>
+                <span>Livré :
+                    <span class="fw-bold {{ $detail->qteLivree() > 0 ? 'text-success' : 'text-muted' }}">
+                        {{ $detail->qteLivree() }}
+                    </span>
+                </span>
+                <span>Confié aux camions : <span class="fw-bold">{{ $detail->qteAffectee() }}</span></span>
+                <span>Reste à confier : <span class="fw-bold">{{ $detail->qteRestanteAAffecter() }}</span></span>
+                @if ($detail->estEntierementLivree())
+                    <span class="badge bg-success">Livré au client</span>
+                @elseif ($detail->qteLivree() > 0)
+                    <span class="badge bg-info text-dark">Livraison partielle</span>
+                @endif
+            </div>
+        </div>
+
         @if ($detail->estEntierementAffectee())
+            {{-- « Déjà traité » disait seulement que tout est CONFIÉ à des
+                 camions — pas que le client a reçu quoi que ce soit. Le libellé
+                 le dit maintenant. --}}
             <span class="text-white col-12 text-center bg-success h4">
-                {{ucfirst($detail->nom_produit).': Déjà traité '}}
+                {{ ucfirst($detail->nom_produit) . ' : entièrement confié aux camions' }}
             </span><br><br>
         @else
 
@@ -85,14 +164,25 @@
                             </div>
                         @endif
                         <div>
+                            {{-- data-demande : la quantite a confier au chargement.
+                                 Le restant se recalcule a partir d'elle et de la
+                                 somme des quantites saisies, pour rester juste
+                                 meme quand le gestionnaire les modifie. --}}
                             <h4 class="card-title mb-4">Quantité restant: <span
-                                    id="qte{{$detail->id}}">{{ Help::qteDetaillivraisonRestante($detail) }}</span>
+                                    id="qte{{$detail->id}}"
+                                    data-demande="{{ Help::qteDetaillivraisonRestante($detail) }}">{{ Help::qteDetaillivraisonRestante($detail) }}</span>
                             </h4>
                         </div>
 
+                            {{-- PLUS DE DATE À SAISIR (10/09/2026). Le client choisit sa date de
+                                 livraison en passant sa demande, et la course la reprend telle
+                                 quelle ; la date que le gestionnaire tapait ici n'était jamais
+                                 utilisée. Elle se lit, elle ne se ressaisit pas. --}}
                             <div class="mb-3">
-                                <label class="form-label">Date de livraison : <span class="text-danger">*</span></label>
-                                <input class="form-control"  name="date" type="date" />
+                                <label class="form-label">Date de livraison demandée par le client</label>
+                                <div class="form-control bg-light" id="dateLivraisonClient">
+                                    {{ $livraisons->date_livraison ? \Help::dateHeure($livraisons->date_livraison) : '—' }}
+                                </div>
                                 <span class="text-danger">
                                     @error('prix')
                                         {{ $message }}
@@ -101,6 +191,20 @@
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Vehicule : <span class="text-danger">*</span></label>
+                                {{-- UNE LISTE VIDE NE DIT RIEN.
+                                     Quand tous les camions sont pris, le champ
+                                     s'affichait vide, sans un mot : impossible de
+                                     savoir si c'etait une panne, un droit manquant
+                                     ou simplement des camions occupes. --}}
+                                @php $vehiculesLibres = $vehicules->where('disponible', true); @endphp
+
+                                @if ($vehiculesLibres->isEmpty())
+                                    <div class="alert alert-warning mb-0">
+                                        <strong>Aucun véhicule disponible.</strong><br>
+                                        Tous les camions sont engagés sur une course en cours. Un camion
+                                        redevient disponible dès que sa course est clôturée par le livreur.
+                                    </div>
+                                @else
                                 <select class="form-control" name="matricule" multiple style="height: 150px" id="">
                                     {{-- <option value="">Selectionner un vehicule</option> --}}
                                     @foreach ($vehicules as $vehicule)
@@ -119,6 +223,7 @@
 
 
                                 </select>
+                                @endif
                                 <span class="text-danger">
                                     @error('prix')
                                         {{ $message }}
@@ -150,6 +255,10 @@
                                     <th class="text-center">marque</th>
                                     <th class="text-center">Capacité</th>
                                     <th class="text-center">Matricule</th>
+                                    {{-- La quantite confiee a CE camion. Pre-remplie avec sa
+                                         capacite : ne pas y toucher revient au comportement
+                                         d'avant. Au-dela, le systeme compte les voyages. --}}
+                                    <th class="text-center">Quantité</th>
                                     <th class="text-center">Action</th>
                                 </thead>
                                 <tbody id="listCar{{$detail->id}}">
@@ -188,10 +297,13 @@ function supprimerUneLigne(capacite,detail,vehicule,qteEnleve){
 
     for(let i = 0; i<lignes.length; i++){
     let lesCellules = lignes[i].getElementsByTagName('td')
-        if(lesCellules[4].textContent == vehicule){
+        // La cellule cachee portant l'identifiant du vehicule est passee en
+        // 6e position : la colonne « Quantite » s'est intercalee avant elle.
+        if(lesCellules[5].textContent == vehicule){
             lesInputs.deleteRow(i)
-            // let qte = parseInt($('#qte'+detail).text())+(capacite);
-            $('#qte'+detail).html(qteEnleve)
+            // Le restant se relit sur les quantites encore saisies, plutot que
+            // de se deviner : une ligne retiree, et il remonte de lui-meme.
+            recalculerRestantLivraison(detail)
         }
     }
 

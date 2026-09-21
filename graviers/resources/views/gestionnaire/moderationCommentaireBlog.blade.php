@@ -105,6 +105,9 @@
     {{-- ===== TABLEAU ===== --}}
     <div class="card dash-card mb-4">
         <div class="card-body">
+            <x-export-buttons table-id="moderationBlog"
+                              filename="moderation-commentaires-blog"
+                              title="Modération des commentaires du blog" />
             <div class="table-responsive">
                 <table class="table dash-table align-middle mb-0" id="moderationBlog">
                     <thead>

@@ -32,8 +32,11 @@
                     <button type="submit" id="paiement" style="display:none"></button>
                     <!-- card-header end// -->
                     <div class="card-body">
+                        <x-export-buttons table-id="listePaiementsClient"
+                                          filename="paiements-du-client"
+                                          title="Paiements du client" />
                         <div class="table-responsive">
-                            <table class="table table-hover table-bordered tablee">
+                            <table id="listePaiementsClient" class="table table-hover table-bordered tablee">
                                 <thead>
                                     <tr>
                                         <th class="text-center" style="background-color: #1c57a3; color: white"></th>
@@ -61,7 +64,7 @@
                                                     <td class="text-start">{{$paiement->code}}</td>
                                                     <td class="text-center">{{$paiement->libelle}}</td>
                                                     <td class="text-center">{{number_format($paiement->montant_total,'0','',' ')}}fcfa</td>
-                                                    <td class="text-center">{{($paiement->created_at)->format('d-m-Y à H:i')}}</td>
+                                                    <td class="text-center">{{($paiement->created_at)->format('d/m/Y à H:i:s')}}</td>
                                                 </tr>
                                             @endif
                                         @endforeach

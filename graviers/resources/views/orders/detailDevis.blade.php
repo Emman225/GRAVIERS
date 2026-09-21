@@ -15,7 +15,7 @@
         <header class="card-header">
             <div class="row align-items-center">
                 <div class="col-lg-6 col-md-6 mb-lg-0 mb-15">
-                    <span> <i class="material-icons md-calendar_today"></i> <b>{{ $devis->created_at->format('d-m-Y à H:i') }}</b> </span>
+                    <span> <i class="material-icons md-calendar_today"></i> <b>{{ $devis->created_at->format('d/m/Y à H:i:s') }}</b> </span>
                     <br />
                     <small class="text-muted">ID commande: {{ $devis->numero }}</small>
                 </div>
@@ -92,8 +92,12 @@
             <!-- row // -->
             <div class="row">
                 <div class="col-lg-12">
+                    {{-- Les trois exports du tableau (08/09/2026). --}}
+                    <x-export-buttons table-id="tableDetailDevis"
+                                      filename="devis-{{ $devis->numero ?? $devis->id }}"
+                                      title="Détail du devis {{ $devis->numero ?? $devis->id }}" />
                     <div class="table-responsive">
-                        <table disabled class="table">
+                        <table class="table" id="tableDetailDevis">
                             <thead>
                                 <tr>
                                     <th width="40%">Produit</th>

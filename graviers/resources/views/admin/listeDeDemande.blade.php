@@ -25,19 +25,15 @@
 
                 </div>
                 <div class="card mb-4">
-                    {{-- <header class="card-header">
-                        <div class="row gx-3">
-                            <div class="col col-check flex-grow-0">
-                                <div class="form-check ms-2">
-                                    <input class="form-check-input" type="checkbox" value="" />
-                                </div>
-                            </div>
+                    {{-- En-tete du gabarit retiree : elle ne portait qu'une case a
+                         cocher sans nom ni script — un « tout selectionner » qui n'a
+                         jamais rien selectionne — et un champ de date fige au
+                         02.05.2021, qui ne filtrait rien.
 
-                            <div class="col-md-2 col-6">
-                                <input type="date" value="02.05.2021" class="form-control" />
-                            </div>
-                        </div>
-                    </header> --}}
+                         Elle avait ete mise en commentaire, et un second commentaire
+                         ecrit a l'interieur : un commentaire Blade NE S'IMBRIQUE PAS,
+                         le premier se fermait donc trop tot et la fin du bloc
+                         s'affichait en clair dans la page. --}}
                     <div class="card-body">
                         <x-export-buttons table-id="liste" filename="demandes-paiement-livreurs" title="Etat des paiements - livreurs" />
                         <div class="table-responsive">
@@ -69,25 +65,25 @@
                                                 <td class="text-center"> {{$demande->user?->contact ?? '-'}} </td>
                                                 <td class="text-center"> {{$demande->numero_compte ?? '-'}} </td>
                                                 <td class="text-center"> {{$demande->montant}} fcfa </td>
-                                                <td class="text-center"> {{Carbon::parse($demande->created_at)->format('d-m-Y à H:i')}} </td>
+                                                <td class="text-center"> {{Carbon::parse($demande->created_at)->format('d/m/Y à H:i:s')}} </td>
                                                 {{-- accepter --}}
-                                                <td class="text-center">
+                                                <td class="text-nowrap text-center">
                                                     @if($estDejaFinalisee)
                                                         <span class="badge bg-success">Validée</span>
                                                     @elseif($estEnAttente1)
-                                                        <a href="{{route('show.valideDemande',['id'=>$demande->id, 'type' => 'livreur','reponse' => 'accepter'])}}" class="btn btn-sm font-sm rounded btn-success" onclick="return confirm('Donner la 1re validation a cette demande ? Un SECOND administrateur devra ensuite accepter pour que ce livreur soit paye.'accepter pour que le livreur soit paye.');"><i class="material-icons md-check"></i> 1re validation</a>
+                                                        <a href="{{route('show.valideDemande',['id'=>$demande->id, 'type' => 'livreur','reponse' => 'accepter'])}}" class="btn btn-sm font-sm rounded btn-success" onclick="return confirm('Donner la 1re validation a cette demande ? Un SECOND administrateur devra ensuite accepter pour que ce livreur soit paye.'accepter pour que le livreur soit paye.');" title="1re validation"><i class="material-icons md-check"></i></a>
                                                     @elseif($estEnAttente2 && $estInitiateur)
                                                         <span class="text-muted" title="Vous êtes le 1er validateur">En attente d'un autre admin</span>
                                                     @elseif($estEnAttente2)
-                                                        <a href="{{route('show.valideDemande',['id'=>$demande->id, 'type' => 'livreur','reponse' => 'accepter'])}}" class="btn btn-sm font-sm rounded btn-success" onclick="return confirm('Accepter et PAYER cette demande ? Le versement sera enregistre et impute sur les pieces de ce livreur. Cette action est definitive.');"><i class="material-icons md-check"></i> 2e validation (accepter)</a>
+                                                        <a href="{{route('show.valideDemande',['id'=>$demande->id, 'type' => 'livreur','reponse' => 'accepter'])}}" class="btn btn-sm font-sm rounded btn-success" onclick="return confirm('Accepter et PAYER cette demande ? Le versement sera enregistre et impute sur les pieces de ce livreur. Cette action est definitive.');" title="2e validation (accepter)"><i class="material-icons md-check"></i></a>
                                                     @endif
                                                 </td>
                                                 {{-- refuser --}}
-                                                <td class="text-center">
+                                                <td class="text-nowrap text-center">
                                                     @if($estDejaFinalisee)
                                                         —
                                                     @elseif($estEnAttente2 && !$estInitiateur)
-                                                        <a href="{{route('show.valideDemande',['id'=>$demande->id, 'type' => 'livreur','reponse' => 'refuser'])}}" class="btn btn-sm font-sm rounded btn-danger" onclick="return confirm('Refuser cette demande ? Le montant sera restitue au solde de ce livreur.');"><i class="material-icons md-denied"></i> Rejeter</a>
+                                                        <a href="{{route('show.valideDemande',['id'=>$demande->id, 'type' => 'livreur','reponse' => 'refuser'])}}" class="btn btn-sm font-sm rounded btn-danger" onclick="return confirm('Refuser cette demande ? Le montant sera restitue au solde de ce livreur.');" title="Rejeter"><i class="material-icons md-block"></i></a>
                                                     @endif
                                                 </td>
                                             </tr>

@@ -2,6 +2,10 @@
 
 namespace App\Http\Controllers;
 
+// Help vit dans l'espace de noms RACINE : sans cet import, « Help:: » se
+// chercherait dans App\Http\Controllers et la page tomberait en « Class not
+// found » — à l'exécution seulement, donc en production.
+use Help;
 use App\Models\Agence;
 use App\Models\Client;
 use App\Models\Commande;
@@ -18,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 class CommandeComptantController extends Controller
 {
     use DoubleValidationPaiement;
+    use \App\Traits\PreuveDeReglementPartenaire;
 
     /**
      * Liste des commandes comptant (clients ordinaires) avec calcul des
@@ -40,12 +45,60 @@ class CommandeComptantController extends Controller
             ->orderByDesc('date_commande')
             ->get();
 
+        // L'AGENCE DE RETRAIT SE LIT SUR LE REGLEMENT, PAS SUR LA COMMANDE.
+        //
+        // La colonne `commande.agence_id` existe mais n'est ecrite NULLE PART :
+        // le client ne choisit aucune agence a la commande. Elle valait donc
+        // toujours NULL, et la colonne « Agence de retrait » restait vide.
+        //
+        // L'agence devient connue a l'ENCAISSEMENT : c'est celle du caissier,
+        // renseignee par les trois guichets. On la reprend de la, et on garde
+        // `commande.agence_id` en premier recours si elle venait a etre remplie.
+        $agencesParCommande = Paiement::with('agence')
+            ->where('service', Help::$COMMANDE)
+            ->whereIn('service_id', $commandes->pluck('id'))
+            ->whereNotNull('agence_id')
+            ->orderBy('id')
+            ->get()
+            ->keyBy('service_id');
+
+        // TROISIEME SOURCE : L'AGENCE DE L'AGENT QUI A EMIS LE BON.
+        //
+        // Les deux precedentes ne servent que pour une commande DEJA reglee.
+        // Or cet ecran liste justement celles qui ATTENDENT leur reglement :
+        // la colonne restait donc vide sur toutes ses lignes.
+        //
+        // L'agent qui traite la commande emet le bon d'enlevement et y laisse
+        // son identifiant (`enlevement.gestionnaire_id`). Son agence est celle
+        // ou la marchandise se retire : c'est la reponse attendue, et elle
+        // existe des le traitement.
+        $agencesParAgent = \App\Models\Enlevement::query()
+            ->join('livraison', 'livraison.id', '=', 'enlevement.livraison_id')
+            ->join('detail_commande', 'detail_commande.id', '=', 'livraison.detail_commande_id')
+            ->join('users', 'users.id', '=', 'enlevement.gestionnaire_id')
+            ->join('agence', 'agence.id', '=', 'users.agence_id')
+            ->whereIn('detail_commande.commande_id', $commandes->pluck('id'))
+            ->whereNull('enlevement.deleted_at')
+            ->orderBy('enlevement.id')
+            ->pluck('agence.nom', 'detail_commande.commande_id');
+
+        $codesParAgent = \App\Models\Enlevement::query()
+            ->join('livraison', 'livraison.id', '=', 'enlevement.livraison_id')
+            ->join('detail_commande', 'detail_commande.id', '=', 'livraison.detail_commande_id')
+            ->join('users', 'users.id', '=', 'enlevement.gestionnaire_id')
+            ->join('agence', 'agence.id', '=', 'users.agence_id')
+            ->whereIn('detail_commande.commande_id', $commandes->pluck('id'))
+            ->whereNull('enlevement.deleted_at')
+            ->orderBy('enlevement.id')
+            ->pluck('agence.code', 'detail_commande.commande_id');
+
         $config       = Configuration::first();
         $tauxTva      = (float) ($config?->tva ?? 18);
         $delaiAgence  = (int) ($config?->delai_max_paiement_agence ?? 3);
         $delaiAnnul   = (int) ($config?->delai_annulation_auto ?? 7);
 
-        $lignes = $commandes->map(function (Commande $cmd) use ($tauxTva, $delaiAgence) {
+        $lignes = $commandes->map(function (Commande $cmd) use (
+            $tauxTva, $delaiAgence, $agencesParCommande, $agencesParAgent, $codesParAgent) {
             $client  = $cmd->client;
             $details = $cmd->detailCommande ?? collect();
 
@@ -96,8 +149,15 @@ class CommandeComptantController extends Controller
                 'nom_client'         => $client?->display_name ?? '-',
                 'telephone'          => $client?->contact1,
                 'email'              => $client?->user?->email ?? $client?->email,
-                'agence_code'        => $cmd->agence?->code ?? '-',
-                'agence_nom'         => $cmd->agence?->nom ?? '-',
+                // Voir la note sur l'agence de retrait, plus haut.
+                // Trois sources, de la plus precise a la plus disponible :
+                // la commande, puis le reglement, puis l'agent qui a traite.
+                'agence_code'        => $cmd->agence?->code
+                    ?? $agencesParCommande[$cmd->id]?->agence?->code
+                    ?? ($codesParAgent[$cmd->id] ?? null) ?? '-',
+                'agence_nom'         => $cmd->agence?->nom
+                    ?? $agencesParCommande[$cmd->id]?->agence?->nom
+                    ?? ($agencesParAgent[$cmd->id] ?? null) ?? '-',
                 'produit_principal'  => $produitPrincipal,
                 'quantite'           => $quantite,
                 'pu_ht'              => $puHt,
@@ -139,7 +199,18 @@ class CommandeComptantController extends Controller
         // initiés via le modal "Encaissement en agence" (storeEncaissement), donc avec
         // agence_id ET caissier_id renseignés. Les paiements issus du flow normal
         // (mobile money, web, etc.) qui ont un mode hors-ligne mais pas d'agence sont exclus.
+        // CE GUICHET NE MONTRE QUE LES VENTES.
+        //
+        // Il ne filtrait PAS sur le service, à la différence des deux autres
+        // guichets (locations, demandes de livraison) qui le font depuis
+        // toujours. Un encaissement de LOCATION ou de LIVRAISON fait au guichet
+        // pour un client ordinaire atterrissait donc ici : sans numéro de
+        // commande — il n'y en a pas — et surtout compté dans « Total encaissé »
+        // des ventes, qu'il gonflait d'un montant qui n'en est pas une.
+        //
+        // C'est l'origine des cases vides de la colonne « N° Commande ».
         $paiements = Paiement::with(['client', 'client.user', 'agence', 'caissier', 'initiateur', 'validateur'])
+            ->where('service', Help::$COMMANDE)
             ->whereIn('client_id', $clientsOrdinaires)
             ->whereIn('statut', [1, 2])
             ->whereNotNull('agence_id')
@@ -151,8 +222,12 @@ class CommandeComptantController extends Controller
         $estAdmin = in_array((int) (Auth::user()?->type_user_id ?? 0), [1, 2], true);
 
         $lignes = $paiements->map(function (Paiement $p) use ($userId, $estAdmin) {
+            // `withTrashed` : une commande mise à la corbeille APRÈS son
+            // encaissement laissait la ligne sans numéro. Le règlement, lui, a
+            // bien eu lieu et son reçu porte ce numéro : le caissier doit
+            // pouvoir le retrouver.
             $cmd = $p->service === 'COMMANDE' && $p->service_id
-                ? Commande::find($p->service_id)
+                ? Commande::withTrashed()->find($p->service_id)
                 : null;
             $ligne = LignePaiement::where('paiement_id', $p->id)->first();
             $mode  = null;
@@ -171,7 +246,11 @@ class CommandeComptantController extends Controller
                 'initie_par'       => $p->initie_par,
                 'valide_par'       => $p->valide_par,
                 'date_encaissement' => $p->created_at,
-                'numero_commande'   => $cmd?->numero ?? '-',
+                // Jamais une case vide : si la commande reste introuvable, on
+                // dit POURQUOI plutôt que de laisser le caissier deviner.
+                'numero_commande'   => $cmd?->numero
+                    ?: ($p->service_id ? 'Commande n° ' . $p->service_id . ' introuvable' : 'Non rattaché'),
+                'commande_supprimee' => (bool) ($cmd?->trashed()),
                 'client_nom'        => $p->client?->display_name ?? '-',
                 'agence_code'       => $p->agence?->code ?? '-',
                 'agence_nom'        => $p->agence?->nom ?? '-',
@@ -179,8 +258,20 @@ class CommandeComptantController extends Controller
                 'mode_paiement'     => $mode ?: '-',
                 'caissier'          => $p->caissier?->nom_prenoms ?? '-',
                 'numero_recu'       => $p->numero_recu ?? $p->code,
+                // Le champ « Notes / Observations » du formulaire (libellé du règlement).
+                'observations'      => $p->libelle,
                 'en_attente'        => $enAttente,
                 'peut_valider'      => $peutValider,
+                // Point 20 (09/09/2026) : « À payer » après la 2e validation, preuve, « Effectuée ».
+                // Le TROISIÈME administrateur : celui qui a finalisé, sinon celui qui a joint la preuve.
+                'troisieme_par'     => \Help::compteAvecIdentifiant($p->agentEffectuee ?? $p->agentPreuve),
+                'etat_reglement'    => $p->etat_reglement,
+                'libelle_etat'      => $p->libelleReglement(),
+                'a_preuve'          => !empty($p->preuve_paiement),
+                'peut_joindre'      => $p->peutJoindrePreuve() && $p->troisiemeAdministrateur(Auth::user()),
+                'peut_finaliser'    => $p->peutFinaliser() && $p->troisiemeAdministrateur(Auth::user()),
+                // Sécurité : un TROISIÈME administrateur téléverse et finalise ; les validateurs voient pourquoi ils ne peuvent pas.
+                'attend_troisieme'  => ($p->peutJoindrePreuve() || $p->peutFinaliser()) && !$p->troisiemeAdministrateur(Auth::user()),
             ];
         });
 
@@ -193,6 +284,7 @@ class CommandeComptantController extends Controller
         // porté par le champ Agence. Ce qu'il faut saisir ici, c'est l'instrument
         // réel (Espèces, Chèque, Virement, mobile money…).
         $modesPaiement = ModePaiement::listePourAgent();
+        $soldesAvance  = \App\Models\AvanceClient::soldesParClient();
         $commandesNonSoldees = Commande::with(['client'])
             ->whereIn('client_id', $clientsOrdinaires)
             ->where('statut', '!=', 0)
@@ -211,13 +303,23 @@ class CommandeComptantController extends Controller
                 // divergeait de l'écran « Solder la commande ».
                 return (object) [
                     'numero'        => $c->numero,
+                    'client_id'     => $c->client_id,
                     'client_nom'    => $c->client?->display_name ?? '-',
+                    'date'          => $c->date_commande ?? $c->created_at,
                     'total_a_payer' => $c->montantAPayer(),
                     'reste'         => $c->montantRestantDu(),
                     'agence_id'     => $c->agence_id,
+                    // Avance disponible du client (point 19) : information
+                    // pour le caissier, l'imputation est automatique.
+                    'solde_avance'  => (float) ($soldesAvance[$c->client_id] ?? 0),
+                    // L'état de l'affaire décide, au même titre que le reste dû.
+                    // Une commande ANNULÉE, ou dont le paiement en ligne n'a
+                    // jamais abouti, ne doit pas être proposée au caissier :
+                    // elle n'est pas non plus dans la file du gestionnaire.
+                    'vivante'       => $c->affaireVivante(),
                 ];
             })
-            ->filter(fn($c) => $c->reste > 0)
+            ->filter(fn($c) => $c->reste > 0 && $c->vivante)
             ->values();
 
         return view('admin.comptant.encaissements', [
@@ -228,6 +330,12 @@ class CommandeComptantController extends Controller
             'monAgence'           => Auth::user()?->agence,
             'modesPaiement'       => $modesPaiement,
             'commandesNonSoldees' => $commandesNonSoldees,
+            // Dépôt d'avance depuis ce guichet (point 19).
+            'clientsPourAvance'   => AvanceClientController::clientsPourDepot(),
+            // Le filtre du guichet est une liste des clients ORDINAIRES, où l'on
+            // cherche par numéro de compte, nom, prénom ou courriel (08/09/2026).
+            'clientsPourFiltre'   => AvanceClientController::clientsPourFiltre(false),
+            'mentionAvance'       => \App\Services\Avances::MENTION,
         ]);
     }
 
@@ -305,13 +413,25 @@ class CommandeComptantController extends Controller
      */
     public function storeEncaissement(Request $request)
     {
+        // PLUSIEURS COMMANDES EN UN SEUL ENCAISSEMENT (point 22, 07/09/2026).
+        //
+        // Le formulaire coche une ou plusieurs commandes (numeros_commande[]) ;
+        // l'ancien champ unique reste accepté. Le montant saisi est imputé
+        // commande par commande, de la plus ancienne à la plus récente, sans
+        // jamais dépasser le reste dû de chacune — et chaque commande reçoit
+        // SON règlement et SON reçu, comme si elle avait été encaissée seule.
         $validated = $request->validate([
-            'numero_commande' => 'required|string|exists:commande,numero',
+            'numero_commande'    => 'nullable|string|exists:commande,numero',
+            'numeros_commande'   => 'nullable|array',
+            'numeros_commande.*' => 'string|exists:commande,numero',
             'mode_paiement_id'=> 'required|integer|exists:mode_paiement,id',
             'montant'         => 'required|numeric|min:1',
             'date_encaissement' => 'nullable|date',
             'reference'       => 'nullable|string|max:80',
-            'notes'           => 'nullable|string|max:500',
+            // Obligatoire depuis le 08/09/2026 : le journal porte une colonne
+            // « Observations », et un encaissement sans motif ne s'y lit pas.
+            'notes'           => 'required|string|max:500',
+            'surplus_en_avance' => 'nullable|boolean',
         ]);
 
         // L'agence vient de la personne connectée, jamais du formulaire : voir
@@ -322,17 +442,60 @@ class CommandeComptantController extends Controller
                 "Vous n'êtes rattaché à aucune agence : un administrateur doit vous affecter à un guichet avant que vous puissiez encaisser.");
         }
 
-        $cmd = Commande::where('numero', $validated['numero_commande'])->firstOrFail();
-        // Contrôle du dépassement sur le NET dû : avec montant_total brut, le plafond
-        // était sous-évalué et un encaissement du montant réel était refusé à tort.
-        $totalAPayer = $cmd->montantAPayer();
-        $totalPaye   = $cmd->montantPayeComptant();
-        $reste       = $cmd->montantRestantDu();
+        $numeros = array_values(array_unique(array_filter(array_merge(
+            (array) ($validated['numeros_commande'] ?? []),
+            [$validated['numero_commande'] ?? null]
+        ))));
+        if (empty($numeros)) {
+            return back()->withInput()->with('error', 'Cochez au moins une commande à encaisser.');
+        }
 
-        if ($validated['montant'] > $reste + 0.01) {
+        // De la plus ancienne à la plus récente : c'est l'ordre d'imputation.
+        $commandes = Commande::whereIn('numero', $numeros)->get()
+            ->sortBy(fn (Commande $c) => ($c->date_commande ?? $c->created_at) . '-' . $c->id)
+            ->values();
+
+        // Un encaissement vaut pour UN client : le reçu est à son nom.
+        if ($commandes->pluck('client_id')->unique()->count() > 1) {
+            return back()->withInput()->with('error',
+                "Les commandes cochées appartiennent à des clients différents : "
+                . "un encaissement se fait pour un seul client à la fois.");
+        }
+
+        // L'ÉTAT SE CONTRÔLE ICI AUSSI, PAS SEULEMENT DANS LA LISTE.
+        //
+        // Retirer une commande du menu ne la rend pas inencaissable : le
+        // formulaire poste des NUMÉROS, et rien n'empêche d'en poster un autre —
+        // un ancien onglet resté ouvert suffit. Le refus doit donc vivre là où
+        // l'argent s'enregistre.
+        foreach ($commandes as $cmd) {
+            if (!$cmd->affaireVivante()) {
+                return back()->withInput()->with('error',
+                    "La commande {$cmd->numero} est « {$cmd->etat_commande} » : elle "
+                    . "ne peut pas être encaissée. Une commande annulée, ou dont le "
+                    . "paiement en ligne n'a jamais abouti, n'est pas dans la file "
+                    . "de traitement.");
+            }
+        }
+
+        // Le plafond est la somme des restes AFFICHÉS, arrondis au franc :
+        // sans cela, l'écran proposait 28 813 et le serveur refusait 28 813.
+        $restes  = $commandes->mapWithKeys(fn (Commande $c) => [$c->id => Help::arrondiFranc($c->montantRestantDu())]);
+        $plafond = $restes->sum();
+
+        // LE SURPLUS DEVIENT UNE AVANCE (point 19, réponse Q3 du 07/09/2026).
+        //
+        // Un client qui verse plus que ce qu'il doit ne dépose pas une avance
+        // à part : c'est l'excédent de CET encaissement qui en devient une,
+        // avec sa propre double validation et son reçu RA. Il faut le dire
+        // explicitement (case « surplus en avance ») : une faute de frappe ne
+        // doit pas créer un avoir en silence.
+        $surplus = Help::arrondiFranc(max(0, (float) $validated['montant'] - $plafond));
+        if ($surplus >= 1 && !$request->boolean('surplus_en_avance')) {
             return back()
                 ->withInput()
-                ->with('error', "Le montant saisi ({$validated['montant']}) dépasse le reste à payer ({$reste}).");
+                ->with('error', "Le montant saisi ({$validated['montant']}) dépasse le reste à payer ({$plafond}). "
+                    . "Pour enregistrer l'excédent de {$surplus} FCFA comme avance du client, cochez « Enregistrer le surplus comme avance ».");
         }
 
         $modePaiement = ModePaiement::find($validated['mode_paiement_id']);
@@ -340,6 +503,14 @@ class CommandeComptantController extends Controller
 
         DB::beginTransaction();
         try {
+          $restant = (float) $validated['montant'];
+          $recus   = [];
+          foreach ($commandes as $cmd) {
+            $part = min((float) $restes[$cmd->id], $restant);
+            if ($part <= 0) {
+                continue;
+            }
+
             // Numéro de reçu : RC-YYYY-XXX
             $year = date('Y');
             $lastNum = (int) Paiement::where('numero_recu', 'like', "RC-{$year}-%")
@@ -351,7 +522,7 @@ class CommandeComptantController extends Controller
                 'client_id'      => $cmd->client_id,
                 'code'           => 'PAY-' . strtoupper(substr(md5(uniqid()), 0, 8)),
                 'libelle'        => $validated['notes'] ?? ('Encaissement agence - ' . $cmd->numero),
-                'montant_total'  => $validated['montant'],
+                'montant_total'  => $part,
                 'montant_restant'=> 0,
                 // statut=2 = en attente de la 2e validation
                 // statut=1 sera mis lors de la validation par un admin différent
@@ -371,7 +542,7 @@ class CommandeComptantController extends Controller
                 'reference'        => $validated['reference'] ?? null,
                 'moyen_paiement'   => $modePaiement?->libelle,
                 'date_paiement'    => $validated['date_encaissement'] ?? now(),
-                'montant'          => $validated['montant'],
+                'montant'          => $part,
                 // statut=2 aligné sur le paiement parent
                 'statut'           => 2,
                 'user_id'          => $caissier?->id,
@@ -382,6 +553,22 @@ class CommandeComptantController extends Controller
                 'updated_at'       => now(),
             ]);
 
+            $restant -= $part;
+            $recus[]  = $numeroRecu;
+          }
+
+          if ($surplus >= 1) {
+              $avance = \App\Services\Avances::deposer($commandes->first()->client, $surplus, array_merge([
+                  'mode_paiement_id' => $validated['mode_paiement_id'],
+                  'reference'        => $validated['reference'] ?? null,
+                  'libelle'          => 'Surplus de l\'encaissement ' . implode(', ', $recus),
+                  'date_depot'       => $validated['date_encaissement'] ?? now(),
+                  'origine'          => 'SURPLUS',
+                  'origine_recu'     => implode(', ', $recus),
+              ], $this->initierValidation()), $caissier, $agenceId);
+              $recus[] = $avance->numero_recu . ' (avance)';
+          }
+
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -390,7 +577,8 @@ class CommandeComptantController extends Controller
 
         return redirect()
             ->route('show.comptant.encaissements')
-            ->with('success', "Encaissement {$numeroRecu} créé. En attente de validation par un autre administrateur.");
+            ->with('success', (count($recus) > 1 ? 'Encaissements ' : 'Encaissement ') . implode(', ', $recus)
+                . (count($recus) > 1 ? ' créés' : ' créé') . '. En attente de validation par un autre administrateur.');
     }
 
     /**
@@ -410,78 +598,19 @@ class CommandeComptantController extends Controller
         // Activer aussi les lignes de paiement liées
         LignePaiement::where('paiement_id', $paiement->id)->update(['statut' => 1]);
 
-        // Activer le paiement (statut=1)
-        $paiement->update(['statut' => 1]);
+        // Activer le paiement (statut=1). Validé deux fois : la preuve du
+        // versement reste à joindre (point 20, 09/09/2026).
+        $paiement->update(['statut' => 1, 'etat_reglement' => \App\Models\DemandePaiement::A_PAYER]);
 
         $commande = $paiement->service_id ? Commande::find($paiement->service_id) : null;
 
         if ($commande) {
-            $this->crediterApporteur($commande, (float) $paiement->montant_total);
-
-            // Points de fidélité à la clôture, comme le faisait l'écran de
-            // paiement historique désormais retiré.
-            if ($commande->montantRestantDu() <= 0 && $commande->client) {
-                $commande->client->update([
-                    'point' => (float) $commande->client->point + 200,
-                ]);
-            }
+            // Commission de l'apporteur et points du client : une seule règle,
+            // partagée avec l'imputation des avances (App\Services\Avances).
+            \App\Services\ReglementValide::appliquer($commande, $paiement);
         }
 
         return back()->with('success', "Encaissement {$paiement->numero_recu} validé. Le reçu est maintenant disponible.");
-    }
-
-    /**
-     * Commission de l'apporteur qui a parrainé le client.
-     *
-     * Elle n'était calculée QUE par l'écran de paiement historique
-     * (/paiement/create/{commande}), retiré au profit de ce guichet : une vente
-     * encaissée ici ne rémunérait donc personne, et c'était l'unique endroit du
-     * projet créant une ligne CommissionApporteur.
-     *
-     * Elle est portée à la VALIDATION, et non à la saisie : un encaissement non
-     * validé n'existe pas comptablement. Elle porte sur la TRANCHE encaissée,
-     * jamais sur le total de la commande — sinon une vente réglée en trois fois
-     * paierait la commission trois fois.
-     */
-    private function crediterApporteur(Commande $commande, float $montantTranche): void
-    {
-        $client = $commande->client;
-
-        if (!$client || !$client->code_parrain) {
-            return;
-        }
-
-        // L'apporteur est lu AVANT d'accéder à son solde : un code_parrain
-        // orphelin provoquerait sinon une page d'erreur alors que le paiement
-        // vient d'être validé.
-        $apporteur = \App\Models\Apporteur::where('code', $client->code_parrain)->first();
-
-        if (!$apporteur) {
-            return;
-        }
-
-        // Taux propre à l'apporteur, à défaut celui de la configuration.
-        $taux = (float) ($apporteur->pourcentage ?? 0);
-        if ($taux <= 0) {
-            $taux = (float) (Configuration::first()?->taux_commission_standard ?? 3);
-        }
-
-        $commission = \App\Models\CommissionApporteur::create([
-            'commande_id'  => $commande->id,
-            'apporteur_id' => $apporteur->id,
-            // Arrondi au franc entier : le FCFA n'a pas de decimales. Sans lui,
-            // le solde de l'apporteur (arrondi) et la commission a payer (avec
-            // ses centimes) ne tombaient jamais d'accord : 104 contre 103,72.
-            'montant'      => round($montantTranche * $taux / 100),
-            'type_affaire' => $commande->detailCommande->first()?->produit?->type_affaire,
-            'montantPaye'  => $montantTranche,
-            'statut'       => 1,
-        ]);
-
-        // On INCRÉMENTE le solde, on ne l'écrase pas : les commissions se cumulent.
-        $apporteur->update([
-            'solde' => (float) $apporteur->solde + (float) $commission->montant,
-        ]);
     }
 
     /**
@@ -493,6 +622,28 @@ class CommandeComptantController extends Controller
             ->findOrFail($paiementId);
         $data = $this->buildRecuData($paiement);
         return view('admin.comptant.recu', $data);
+    }
+
+    /**
+     * « Envoyer par courriel » depuis la page du reçu (11/09/2026) : envoi
+     * IMMÉDIAT et forcé (même si un envoi est déjà daté), avec l'erreur réelle
+     * affichée au guichet si le courriel ne part pas. Sert à renvoyer un reçu
+     * au client et à voir pourquoi un envoi automatique n'est pas arrivé.
+     */
+    public function envoyerRecu($paiementId)
+    {
+        $paiement = Paiement::with(['client', 'client.user'])->findOrFail($paiementId);
+        $client   = $paiement->client;
+        $email    = $client?->user?->email ?: ($client?->email ?: null);
+
+        if (!\App\Services\RecuPaiement::envoyerParCourriel($paiement, true, true)) {
+            return back()->with('error', 'Ce client n\'a pas d\'adresse de courriel : le reçu ne peut pas lui être envoyé. Remettez-lui le reçu imprimé.');
+        }
+        if ($erreur = \App\Services\RecuPaiement::$derniereErreur) {
+            return back()->with('error', 'Envoi impossible à ' . $email . ' : ' . $erreur);
+        }
+
+        return back()->with('success', 'Le reçu ' . ($paiement->fresh()->numero_recu ?? '') . ' est envoyé à ' . $email . '.');
     }
 
     /**
@@ -532,15 +683,44 @@ class CommandeComptantController extends Controller
      */
     private function buildRecuData(Paiement $paiement): array
     {
-        $cmd = $paiement->service === 'COMMANDE' && $paiement->service_id
-            ? Commande::find($paiement->service_id)
-            : null;
+        // Les données vivent dans App\Services\RecuPaiement : le même reçu
+        // sert au guichet, au client et au courriel après un paiement en ligne.
+        return \App\Services\RecuPaiement::donnees($paiement);
+    }
+
+    /** @deprecated remplacé par RecuPaiement::donnees — conservé pour mémoire. */
+    private function ancienBuildRecuData(Paiement $paiement): array
+    {
+        // UN REÇU DOIT NOMMER CE QU'ON PAIE.
+        //
+        // Seule une COMMANDE était résolue. Pour une location ou un transport,
+        // le reçu affichait « N° Commande : - » et repliait ses totaux sur le
+        // montant versé — « Total 67 840, payé 67 840, reste 0 » sur une
+        // location qui n'en devait que 55 920. Le document ne permettait ni de
+        // savoir ce qui était réglé, ni de voir qu'il restait quelque chose.
+        //
+        // Les trois modèles exposent montantAPayer(), montantPayeComptant() et
+        // montantRestantDu() : le reçu les interroge de la même façon.
+        $cmd = null;
+        $libelleOperation = 'N° Commande';
+
+        if ($paiement->service_id) {
+            if ($paiement->service === 'COMMANDE') {
+                $cmd = Commande::find($paiement->service_id);
+            } elseif ($paiement->service === Help::$LOCATION) {
+                $cmd = \App\Models\Location::find($paiement->service_id);
+                $libelleOperation = 'N° Location';
+            } elseif ($paiement->service === Help::$LIVRAISON) {
+                $cmd = \App\Models\DemandeLivraison::find($paiement->service_id);
+                $libelleOperation = 'N° Demande de livraison';
+            }
+        }
 
         // Calcul de la tranche
         $allPaiements = Paiement::where(function ($q) use ($cmd, $paiement) {
                 if ($cmd) {
-                    $q->where(function ($qq) use ($cmd) {
-                        $qq->where('service', 'COMMANDE')->where('service_id', $cmd->id);
+                    $q->where(function ($qq) use ($cmd, $paiement) {
+                        $qq->where('service', $paiement->service)->where('service_id', $cmd->id);
                     });
                 } else {
                     $q->where('id', $paiement->id);
@@ -572,6 +752,7 @@ class CommandeComptantController extends Controller
         return [
             'paiement'      => $paiement,
             'commande'      => $cmd,
+            'libelleOperation' => $libelleOperation,
             'config'        => Configuration::first(),
             'trancheNum'    => $trancheNum,
             'trancheTotal'  => $trancheTotal,
@@ -692,5 +873,21 @@ class CommandeComptantController extends Controller
             'repartitionAgence' => $repartitionAgence,
             'config'            => $config,
         ]);
+    }
+
+    // Point 20 (09/09/2026) : preuve du versement, puis « Effectuée ».
+    public function preuve($paiementId, \Illuminate\Http\Request $request)
+    {
+        return $this->joindrePreuveReglement(Paiement::find($paiementId), $request);
+    }
+
+    public function voirPreuve($paiementId)
+    {
+        return $this->voirPreuveReglement(Paiement::find($paiementId));
+    }
+
+    public function effectuer($paiementId)
+    {
+        return $this->effectuerReglement(Paiement::find($paiementId));
     }
 }

@@ -2,11 +2,13 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:http/http.dart' as http;
 import 'package:mon_gravier_com/globale.dart';
 import 'package:mon_gravier_com/models/retour_souhait.dart';
 
+import '../../components/bouton_retour.dart';
+import '../../constants.dart';
+import '../../components/etat_vide.dart';
 import '../../components/product_card.dart';
 import '../../helper/constants.dart';
 import '../../models/ConfigModel.dart';
@@ -92,43 +94,26 @@ class SouhaitScreenState extends State<SouhaitScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Ma liste de souhait"),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       body: SafeArea(
               child: Container(
                 width: double.infinity,
                 height: heightOfScreen(context),
-                decoration: const BoxDecoration(
-                  image: DecorationImage(
-                    image: AssetImage("assets/images/bg.jpg"),
-                    fit: BoxFit.cover,
-                    opacity: 0.1,
-                  ),
-                ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: GridView.builder(
+                  child: souhaits.isEmpty
+                      ? const EtatVide(
+                          icone: Icons.favorite_border,
+                          titre: "Votre liste de souhaits est vide",
+                          message:
+                              "Depuis une fiche produit, touchez le coeur pour "
+                              "y ajouter un article et le retrouver ici.",
+                        )
+                      : GridView.builder(
                     physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.only(bottom: kSpaceXl),
                     itemCount: souhaits.length,
                     gridDelegate:
                         const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -163,8 +148,8 @@ class SouhaitScreenState extends State<SouhaitScreen> {
                           arguments: ProductDetailsArguments(product: prod),
                         ),
                         onLongPress: () async {
-                          if (await confirmationAction(context, "Attention!",
-                              "Voulez-vous supprimer ce produit de votre liste de souhait ?")) {
+                          if (await confirmationAction(context, "Retirer ce produit",
+                              "Voulez-vous retirer ce produit de votre liste de souhaits ?")) {
                             idProduit = prod.id ?? 0;
                             gestionSouhait(2);
                           }

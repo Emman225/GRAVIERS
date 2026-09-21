@@ -1,7 +1,8 @@
 @include('layout.head')
-@section('title', 'Connexion Apporteur')
+@section('title', 'Connexion apporteur')
 
 <main class="auth-page-wrap">
+    @include('layout._retourSitePublic')
     <div class="auth-bg-shape auth-bg-shape-1"></div>
     <div class="auth-bg-shape auth-bg-shape-2"></div>
     <div class="auth-bg-shape auth-bg-shape-3"></div>
@@ -14,7 +15,7 @@
                         <div class="col-lg-6 d-none d-lg-flex auth-side-visual variant-apporteur">
                             <div class="auth-side-content">
                                 <div class="auth-brand">
-                                    <img src="{{ asset(config('constantes.logo')) }}" alt="GRAVIER.COM" class="auth-brand-logo">
+                                    <img src="{{ asset(config('constantes.logo')) }}" alt="Mon Gravier" class="auth-brand-logo">
                                 </div>
                                 <h2 class="auth-side-title">
                                     Espace<br>
@@ -29,7 +30,7 @@
                                         <div><h6>Filleuls</h6><p>Vos clients parrainés</p></div>
                                     </div>
                                     <div class="auth-feature">
-                                        <span class="auth-feature-icon"><i class="material-icons md-percent"></i></span>
+                                        <span class="auth-feature-icon"><i class="material-icons md-pie_chart"></i></span>
                                         <div><h6>Commissions</h6><p>Calculées automatiquement</p></div>
                                     </div>
                                     <div class="auth-feature">
@@ -44,7 +45,7 @@
                         <div class="col-lg-6">
                             <div class="auth-form-wrap">
                                 <div class="auth-mobile-brand d-lg-none mb-4 text-center">
-                                    <img src="{{ asset(config('constantes.logo')) }}" alt="GRAVIER.COM">
+                                    <img src="{{ asset(config('constantes.logo')) }}" alt="Mon Gravier">
                                 </div>
 
                                 <div class="auth-form-header">
@@ -103,6 +104,26 @@
                                         <i class="material-icons md-login"></i>
                                         Se connecter
                                     </button>
+
+                                    {{-- LE CHEMIN VERS L'INSCRIPTION.
+                                         La page d'inscription apporteur existait, mais
+                                         aucune page n'y menait : il fallait connaitre
+                                         l'adresse par coeur. Un apporteur pressenti qui
+                                         arrivait ici ne pouvait que repartir.
+
+                                         Meme motif que les ecrans de reinitialisation :
+                                         separateur puis lien fort, pour ne pas concurrencer
+                                         le bouton de connexion, qui reste l'action
+                                         principale de cette page. --}}
+                                    <div class="auth-form-divider"><span>ou</span></div>
+
+                                    <p class="auth-form-footer text-center mb-0">
+                                        Pas encore apporteur d'affaire ?
+                                        <a href="{{ route('apporteur.register') }}" class="auth-form-link-strong">
+                                            <i class="material-icons md-person_add" style="vertical-align: middle; font-size: 16px;"></i>
+                                            Créer mon compte
+                                        </a>
+                                    </p>
                                 </form>
                             </div>
                         </div>

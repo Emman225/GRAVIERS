@@ -65,7 +65,7 @@
                         <h5 class="alert-heading mb-2">Réduction de {{ $reduction->taux_reduction }}% en attente de validation</h5>
                         <p class="mb-1">
                             Demandée par <b>{{ $reduction->user?->nom_prenoms ?: 'un administrateur' }}</b>
-                            le {{ \Carbon\Carbon::parse($reduction->created_at)->format('d/m/Y à H:i') }}.
+                            le {{ \Carbon\Carbon::parse($reduction->created_at)->format('d/m/Y à H:i:s') }}.
                         </p>
                         <p class="mb-1">
                             Montant de la remise :

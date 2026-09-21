@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 class DetteFournisseurController extends Controller
 {
     use DoubleValidationPaiement;
+    use \App\Traits\PreuveDeReglementPartenaire;
 
     /**
      * Liste des enlèvements (achats fournisseurs) avec calcul du statut dette,
@@ -126,6 +127,16 @@ class DetteFournisseurController extends Controller
                 'notes'            => $p->notes,
                 'en_attente'       => $enAttente,
                 'peut_valider'     => $peutValider,
+                // Point 20 (09/09/2026) : « À payer » après la 2e validation, preuve, « Effectuée ».
+                // Le TROISIÈME administrateur : celui qui a finalisé, sinon celui qui a joint la preuve.
+                'troisieme_par'    => \Help::compteAvecIdentifiant($p->agentEffectuee ?? $p->agentPreuve),
+                'etat_reglement'   => $p->etat_reglement,
+                'libelle_etat'     => $p->libelleReglement(),
+                'a_preuve'         => !empty($p->preuve_paiement),
+                'peut_joindre'     => $p->peutJoindrePreuve() && $p->troisiemeAdministrateur(Auth::user()),
+                'peut_finaliser'   => $p->peutFinaliser() && $p->troisiemeAdministrateur(Auth::user()),
+                // Sécurité : un TROISIÈME administrateur téléverse et finalise ; les validateurs voient pourquoi ils ne peuvent pas.
+                'attend_troisieme' => ($p->peutJoindrePreuve() || $p->peutFinaliser()) && !$p->troisiemeAdministrateur(Auth::user()),
             ];
         });
 
@@ -152,9 +163,16 @@ class DetteFournisseurController extends Controller
                     'fournisseur_id'  => $e->fournisseur_id,
                     'fournisseur_nom' => $e->fournisseur?->nom_prenoms ?? '-',
                     'code_fournisseur'=> $codeFrn,
+                    // Courriel du fournisseur : la liste du formulaire se cherche
+                    // aussi dessus (08/09/2026).
+                    'fournisseur_email' => $e->fournisseur?->email ?: ($e->fournisseur?->user?->email ?? ''),
                     'produit'         => $e->produit?->nom ?? '-',
                     'montant_ttc'     => $e->montantDu(),
                     'reste'           => $e->resteAPayer(),
+                    // Date du bon et échéance : le tableau du formulaire se trie
+                    // dessus, c'est ce qui dit quel bon régler en premier.
+                    'date'            => $e->created_at ? $e->created_at->format('Y-m-d') : null,
+                    'echeance'        => $e->date_echeance ? \Illuminate\Support\Carbon::parse($e->date_echeance)->format('Y-m-d') : null,
                 ];
             })
             ->filter(fn($x) => $x->reste > 0)
@@ -426,7 +444,8 @@ class DetteFournisseurController extends Controller
             return back()->with('error', $result['message']);
         }
 
-        $p->update(['statut' => 1]);
+        // Validé deux fois : le virement reste à faire (point 20, 09/09/2026).
+        $p->update(['statut' => 1, 'etat_reglement' => \App\Models\DemandePaiement::A_PAYER]);
 
         // Vérifier si l'enlèvement est soldé maintenant
         $e = Enlevement::find($p->enlevement_id);
@@ -474,6 +493,12 @@ class DetteFournisseurController extends Controller
             ]);
         $filename = 'recu-fournisseur-' . str_pad($p->id, 4, '0', STR_PAD_LEFT) . '.pdf';
         return $pdf->download($filename);
+    }
+
+    /** Les données du reçu, pour son envoi par courriel (App\Services\RecuDeReglement). */
+    public function donneesDuRecu($paiement): array
+    {
+        return $this->buildRecuData($paiement);
     }
 
     private function buildRecuData(PaiementFournisseur $p): array
@@ -616,5 +641,21 @@ class DetteFournisseurController extends Controller
             'dettesParFourn'       => $dettesParFourn,
             'config'               => $config,
         ]);
+    }
+
+    // Point 20 (09/09/2026) : preuve du versement, puis « Effectuée ».
+    public function preuve($id, \Illuminate\Http\Request $request)
+    {
+        return $this->joindrePreuveReglement(PaiementFournisseur::find($id), $request);
+    }
+
+    public function voirPreuve($id)
+    {
+        return $this->voirPreuveReglement(PaiementFournisseur::find($id));
+    }
+
+    public function effectuer($id)
+    {
+        return $this->effectuerReglement(PaiementFournisseur::find($id));
     }
 }

@@ -37,15 +37,178 @@ String devise = "";
 String ENTREPRISE = "ENTREPRISE";
 int entierTransition = 0;
 int tva = 0;
+/// La TVA s'applique-t-elle au transport ? (Paramètres du site, point 5.)
+/// Le MONTANT vient toujours du serveur (verifier-montant) ; ce drapeau ne
+/// sert qu'à annoncer la ligne avant sa réponse.
+int tvaTransport = 0;
+/// TVA sur le transport telle que le serveur l'a calculée pour le panier.
+double montantTvaTransport = 0;
 double coutReduction = 0;
 double montantPoint = 0;
 double nombrePoint = 0;
+
+/// PLANCHER DE PAIEMENT, envoyé par le serveur.
+///
+/// Les points pouvaient couvrir une commande ENTIÈRE : sans livraison, le total
+/// tombait à zéro, et la commande devenait une impasse — la passerelle appelée
+/// avec 0, l'encaissement au guichet refusant le montant nul, le virement
+/// supposant un justificatif de 0.
+///
+/// Le serveur applique cette règle de son côté (`Help::pointsUtilisables`). Si
+/// l'application ne l'appliquait pas AUSSI, elle afficherait un total que le
+/// serveur ne retiendrait pas — l'écran annoncerait 0 F pendant que la commande
+/// serait enregistrée à 1 000 F. Les deux calculs partent donc de la même règle.
+double montantMinimumAPayer = 0;
+// AIRSI (10/09/2026) : taux servi par l'API pour ce client (0 s'il est au réel)
+// et montant calculé sur le HT net de remise + TVA, comme sur le site.
+double tauxAirsi = 0;
+double montantAirsi = 0;
+// Tableau de bord du client (10/09/2026), comme sur le site : l'avance
+// disponible et ce qu'il reste à régler en agence (dû, payé, en attente de
+// validation, reste). Remplis par « recuperer-montant-point ».
+double soldeAvance = 0;
+double creditsDu = 0;
+double creditsPaye = 0;
+double creditsEnAttente = 0;
+double creditsReste = 0;
+
+/// Lit les montants du tableau de bord dans la réponse de l'accueil.
+void lireMontantsTableauDeBord(Map datas) {
+  soldeAvance = double.tryParse(datas['soldeAvance']?.toString() ?? '0') ?? 0;
+  final credits = datas['creditsEnAgence'];
+  if (credits is Map) {
+    creditsDu = double.tryParse(credits['du']?.toString() ?? '0') ?? 0;
+    creditsPaye = double.tryParse(credits['paye']?.toString() ?? '0') ?? 0;
+    creditsEnAttente = double.tryParse(credits['en_attente']?.toString() ?? '0') ?? 0;
+    creditsReste = double.tryParse(credits['reste']?.toString() ?? '0') ?? 0;
+  }
+}
+
+/// RECHARGE LE TABLEAU DE BORD DU CLIENT (16/09/2026) — points, avance,
+/// crédits en agence, TVA, AIRSI — par « recuperer-montant-point », le même
+/// appel que l'accueil. Sert au glissé vers le bas de « Mon espace ».
+/// Rend null si tout va bien, sinon le motif à afficher.
+Future<String?> rechargerTableauDeBord() async {
+  if (!await verifierConnexion()) {
+    return "Veuillez vérifier votre connexion internet";
+  }
+  try {
+    final reponse = await http
+        .post(Uri.parse('${lienAPI()}recuperer-montant-point'),
+            headers: {"Content-Type": "application/json"},
+            body: jsonEncode({
+              "access": user.token.toString(),
+              "type": user.type.toString(),
+            }))
+        .timeout(const Duration(minutes: 1));
+    final datas = jsonDecode(reponse.body);
+    if (reponse.statusCode != 200 || datas is! Map || datas['code'] != 200) {
+      return "Le serveur n'a pas renvoyé vos montants (code ${reponse.statusCode})";
+    }
+    montantPoint = double.tryParse(datas['montantPoint']?.toString() ?? '0') ?? 0;
+    nombrePoint = double.tryParse(datas['nombrePoint']?.toString() ?? '0') ?? 0;
+    montantMinimumAPayer = double.tryParse(datas['montantMinimum']?.toString() ?? '0') ?? 0;
+    lireMontantsTableauDeBord(datas);
+    tva = int.tryParse(datas['tva']?.toString() ?? '0') ?? 0;
+    tvaTransport = int.tryParse(datas['tvaTransport']?.toString() ?? '0') ?? 0;
+    tauxAirsi = double.tryParse(datas['tauxAirsi']?.toString() ?? '0') ?? 0;
+    devise = datas['devise']?.toString() ?? '';
+    return null;
+  } catch (e) {
+    return messageErreurTechnique(e);
+  }
+}
+
+/// Points réellement retenus sur le panier courant, une fois le plancher
+/// respecté. Le reliquat RESTE au compte du client.
+double pointsRetenus = 0;
 double montantTva = 0;
 bool utiliserPoint = false;
 bool afficheRetour = false;
+
+/// RETOUR DEPUIS UN ÉCRAN D'ONGLET.
+///
+/// Produits, Commandes, Livraisons et Mon espace ne sont pas des écrans
+/// empilés : ce sont les onglets de la barre du bas, tous portés par le MÊME
+/// écran (InitScreen). Il n'y a donc rien à dépiler — `Navigator.pop` y
+/// remonterait à l'écran de connexion, ce qui n'est pas un « retour ».
+///
+/// Leur bouton retour ramène à l'ACCUEIL, ce qui est le seul sens utile ici.
+/// InitScreen renseigne ce pointeur tant qu'il est affiché.
+void Function(int)? allerAOnglet;
+
+/// RECHARGE L'ACCUEIL, SANS VOILE NI BRUIT.
+///
+/// Pose par `HomeScreen` lui-meme, comme `allerAOnglet` l'est par la barre du
+/// bas. Depuis que les onglets restent vivants, une action faite ailleurs ne
+/// recharge plus l'accueil en y revenant : ses chiffres resteraient ceux
+/// d'avant. On l'appelle donc apres ce qui les change — une livraison close,
+/// une demande de paiement.
+///
+/// Nul si l'accueil n'a jamais ete ouvert : il chargera de lui-meme.
+Future<void> Function()? rafraichirAccueil;
+
+
+/// Ramène sur l'onglet Accueil. Sans effet si l'on n'est pas dans les onglets.
+void retourAccueil() => allerAOnglet?.call(0);
 bool meFaireLivre = true;
 int idNotification = 1;
 User user = User();
+
+/// VERSION DE LA PHOTO DE PROFIL AFFICHÉE.
+///
+/// Le serveur enregistre TOUJOURS la photo au même endroit :
+/// `imageUser/{id}.png` (UtilisateurController::editProfil). L'adresse renvoyée
+/// après un changement est donc rigoureusement identique à la précédente —
+/// et Flutter, qui indexe ses images téléchargées PAR ADRESSE, ressort
+/// l'ancienne image de son cache. Le client changeait sa photo et revoyait la
+/// même.
+///
+/// Ce compteur, incrémenté à chaque enregistrement réussi, est ajouté à
+/// l'adresse (`?v=3`) : l'adresse devient différente, le cache ne peut plus
+/// répondre, et l'image est réellement retéléchargée.
+///
+/// Il vit le temps de la session — c'est suffisant : au lancement suivant,
+/// l'application repart d'un cache vide.
+int versionPhotoProfil = 0;
+
+/// LA PHOTO QUE LE CLIENT VIENT DE CHOISIR, EN MÉMOIRE.
+///
+/// Trois corrections successives ont visé l'affichage — reconstruire l'écran,
+/// retirer le `const`, vider le cache d'images, versionner l'adresse — et la
+/// photo ne s'affichait toujours pas. Plutôt que de chercher une quatrième
+/// cause du côté du téléchargement, on cesse d'en dépendre : les octets de
+/// l'image retenue sont conservés ici au moment de l'enregistrement, et c'est
+/// EUX que la vignette affiche.
+///
+/// Ce chemin ne peut ni manquer le cache, ni tomber sur une adresse identique,
+/// ni attendre le réseau : ce sont exactement les octets que le client a
+/// choisis. L'adresse distante reprend la main au lancement suivant, une fois
+/// la photo réellement servie par le serveur.
+Uint8List? photoProfilLocale;
+
+/// SIGNAL DE MODIFICATION DU PROFIL.
+///
+/// La vignette s'y abonne et se redessine SEULE. Elle ne dépend donc plus de
+/// la reconstruction de l'écran qui la contient — la dépendance qui a fait
+/// échouer la première correction.
+final ValueNotifier<int> profilModifie = ValueNotifier<int>(0);
+
+/// Efface la photo retenue en mémoire. Appelé à la déconnexion : sans cela, le
+/// client suivant verrait la photo du précédent.
+void oublierPhotoProfilLocale() {
+  photoProfilLocale = null;
+  versionPhotoProfil = 0;
+  profilModifie.value++;
+}
+
+/// Adresse d'affichage de la photo de profil, numéro de version compris.
+String adressePhotoProfil() {
+  final base = user.photo?.toString().trim() ?? '';
+  if (base.isEmpty || base == 'null') return '';
+  if (versionPhotoProfil <= 0) return base;
+  return base.contains('?') ? '$base&v=$versionPhotoProfil' : '$base?v=$versionPhotoProfil';
+}
 Reduction reduction = Reduction();
 DateTime? currentBackPressTime;
 /// Version de l'application, affichée sur l'écran profil.
@@ -54,8 +217,31 @@ DateTime? currentBackPressTime;
 /// pubspec.yaml. Sans repère visible, plusieurs APK successifs sont
 /// indiscernables une fois installés : on ne sait plus lequel s'exécute, et
 /// tout diagnostic devient une conjecture.
-const String versionApplication = '1.0.20 (21)';
+// La version AFFICHEE doit etre celle du pubspec : elle etait restee sur
+// 1.0.20 (21) alors que le paquet portait 1.0.21+22, et l'ecran Compte
+// annoncait donc une version qui n'etait pas celle installee — de quoi
+// tester une correction sur un APK qu'on croit a jour sans qu'il le soit.
+const String versionApplication = '1.0.0 (1)';
 
+/// LE DÉLAI DE LIVRAISON TOLÉRÉ (lot 81, 15/09/2026) : la même phrase que le
+/// site (Help::mentionDelaiLivraison), sous le choix de la date de livraison.
+const String kMentionDelaiLivraison =
+    "Délai toléré : la livraison peut intervenir jusqu'à 2 jours avant ou 2 jours après la date de livraison souhaitée.";
+
+/// LE NUMÉRO DE BON DE COMMANDE INTERNE DEVANT LA DÉSIGNATION (09/09/2026).
+/// « 5 » pour 5.0, « 5,5 » pour 5.5.
+String formaterTaux(double taux) {
+  return taux == taux.roundToDouble() ? taux.toInt().toString() : taux.toString().replaceAll('.', ',');
+}
+
+/// La référence d'une ligne, la même écriture que le site (Help::referenceLigne,
+/// 13/09/2026) : le numéro de ligne puis le bon de commande interne quand il y
+/// en a un — « 01 - NFJ154 » ; « 01 » sinon.
+String referenceLigne(String? numeroBon, int index) {
+  final rang = index.toString().padLeft(2, '0');
+  final n = (numeroBon ?? '').trim();
+  return n.isNotEmpty ? '$rang - $n' : rang;
+}
 /// Traduit une exception technique en une phrase qui dit ce qui s'est passé.
 ///
 /// Les écrans affichaient tous « Une erreur s'est produite veuillez reesayer
@@ -201,7 +387,7 @@ String lienAPI() {
         'http://10.10.10.184:8002/mon_gravier/'; //Local (dev PC sur LAN)
   } else {
     url =
-        'https://apigravier.fneconnect.net/mon_gravier/'; //Production
+        'https://apigravier.mongravier.com/mon_gravier/'; //Production
   }
   if (kDebugMode) {
     print(url);
@@ -303,6 +489,60 @@ String formaterMontant(double montant) {
   return mnt.symbolOnRight;
 }
 
+/// PLANCHER DE PAIEMENT : combien de points peuvent réellement être posés.
+///
+/// MIROIR EXACT de `Help::pointsUtilisables` côté serveur. Les deux DOIVENT
+/// donner le même nombre : si l'application en retenait davantage, elle
+/// afficherait un total que le serveur ne retiendrait pas — l'écran annoncerait
+/// 0 F pendant que la commande serait enregistrée à 1 000 F.
+///
+/// Le calcul, en partant du total réellement dû :
+///
+///     total = (ht − remise) × (1 + tva) + livraison   ⩾   plancher
+///  ⟺  remise                                          ⩽   ht − htMinimum
+///
+/// La livraison n'est jamais effacée par une remise : dès qu'elle atteint le
+/// plancher à elle seule, les points peuvent couvrir toute la marchandise — le
+/// client paiera son transport, et le total ne sera pas nul.
+double pointsUtilisables({
+  required double ht,
+  required double remisePromo,
+  required double tauxTva,
+  required double livraison,
+  required double valeurPoint,
+  required double demandes,
+  required double solde,
+}) {
+  final double possible =
+      [demandes, solde].map((v) => v < 0 ? 0.0 : v).reduce((a, b) => a < b ? a : b);
+
+  // Un point sans valeur ne réduit rien : inutile d'en consommer, et surtout
+  // pas de diviser par zéro.
+  if (possible <= 0 || valeurPoint <= 0) return 0;
+
+  // Plancher non transmis ou non paramétré : on ne bride rien. Mieux vaut
+  // l'ancien comportement qu'un plancher inventé côté application.
+  if (montantMinimumAPayer <= 0) return possible;
+
+  final double coefficient = 1 + ((tauxTva < 0 ? 0 : tauxTva) / 100);
+  final double livraisonSure = livraison < 0 ? 0 : livraison;
+  final double htMinimum =
+      ((montantMinimumAPayer - livraisonSure) / coefficient).clamp(0, double.infinity);
+
+  // Ce que la remise TOTALE ne doit pas dépasser, puis ce qu'il reste pour les
+  // points une fois le code promo honoré : la remise promo est un engagement
+  // commercial déjà pris, ce sont les points qui cèdent.
+  final double remiseMax = (ht - htMinimum).clamp(0, double.infinity);
+  final double pourLesPoints =
+      (remiseMax - (remisePromo < 0 ? 0 : remisePromo)).clamp(0, double.infinity);
+
+  // Arrondi À L'INFÉRIEUR : un point entamé serait un point pris au client
+  // sans qu'il en voie l'effet entier.
+  final double utilisables = (pourLesPoints / valeurPoint).floorToDouble();
+
+  return utilisables < possible ? (utilisables < 0 ? 0 : utilisables) : possible;
+}
+
 double getTotalAmount(){
   double total = 0;
   try{
@@ -328,7 +568,20 @@ double getTotalAmount(){
       coutReduction = total * (reduction.tauxReduction ?? 0) / 100;
     }
     if (utiliserPoint == true) {
-      coutReduction += montantPoint * nombrePoint;
+      // PLANCHER DE PAIEMENT : voir `pointsUtilisables`. La livraison n'est pas
+      // encore connue à ce stade — elle est calculée par le serveur à l'écran
+      // de résumé — d'où un zéro ici. C'est le cas le plus contraignant, et
+      // c'est bien le total du PANIER qu'on affiche, livraison exclue.
+      pointsRetenus = pointsUtilisables(
+        ht: total,
+        remisePromo: coutReduction,
+        tauxTva: tva.toDouble(),
+        livraison: 0,
+        valeurPoint: montantPoint,
+        demandes: nombrePoint,
+        solde: nombrePoint,
+      );
+      coutReduction += montantPoint * pointsRetenus;
     }
 
     // La remise porte sur la marchandise : elle est plafonnée au HT. Sans ce
@@ -357,6 +610,19 @@ double getTotalAmount(){
     } else {
       montantTva = 0;
     }
+    // AIRSI : 5 % du HT net + TVA, compris dans le net à payer (10/09/2026).
+    if (tauxAirsi > 0) {
+      // L'arrondi de la DGI (lot 94, 16/09/2026), même règle que le site et
+      // l'API : net = arrondi(HT × (1 + TVA) × (1 + AIRSI)) ; l'AIRSI porte
+      // l'écart d'arrondi (11 480 HT → 14 224, et non 14 223).
+      final double htNet = total - montantTva;
+      final double netDgi =
+          (htNet * (1 + tva / 100) * (1 + tauxAirsi / 100)).roundToDouble();
+      montantAirsi = (netDgi - total) < 0 ? 0 : (netDgi - total);
+      total += montantAirsi;
+    } else {
+      montantAirsi = 0;
+    }
     return total;
   }catch(e){
     if (kDebugMode) {
@@ -364,6 +630,7 @@ double getTotalAmount(){
     }
     coutReduction=0;
     montantTva=0;
+    montantAirsi=0;
   }
   // Atteint uniquement si le calcul a échoué ci-dessus : la remise y est
   // remise à zéro, et `total` vaut ce qui avait pu être calculé. Le chemin
@@ -558,7 +825,10 @@ onWillPop() {
   }
 }
 
-formaterDate(String dateString, {String format = 'd MMMM y à HH\'h\'mm'}){
+/// Date des listes et des cartes (10/09/2026) : jour, heure, minute, seconde,
+/// comme les colonnes de dates du site. Un appelant qui affiche une date
+/// prévue (livraison, période de location) passe son propre format.
+formaterDate(String dateString, {String format = 'dd/MM/yyyy HH:mm:ss'}){
   // Convertir la chaîne en objet DateTime
   DateTime dateTime = DateTime.parse(dateString);
   // Formater la date

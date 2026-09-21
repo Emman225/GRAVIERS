@@ -52,7 +52,7 @@
                     <thead style="background-color: #1c57a3; color: white;">
                         <tr>
                             <th class="text-center">N° Commande</th>
-                            <th class="text-center">Date Commande</th>
+                            <th class="text-center">Date commande</th>
                             <th class="text-center">Nom Client</th>
                             <th class="text-center">Téléphone</th>
                             <th class="text-center">Email</th>
@@ -66,7 +66,7 @@
                             <th class="text-end">Frais livraison</th>
                             <th class="text-end">Total à payer</th>
                             <th class="text-center">Date limite paiement</th>
-                            <th class="text-end">Montant Payé</th>
+                            <th class="text-end">Montant payé</th>
                             <th class="text-end">Reste à Payer</th>
                             <th class="text-center">Statut</th>
                             <th class="text-center">Observations</th>
@@ -81,7 +81,7 @@
                             @endphp
                             <tr class="{{ $alerte ? 'table-danger' : '' }}">
                                 <td class="text-center"><strong>{{ $l->numero_commande }}</strong></td>
-                                <td class="text-center">{{ $l->date_commande ? Carbon::parse($l->date_commande)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date_commande ? \Help::dateHeure($l->date_commande) : '-' }}</td>
                                 <td>{{ $l->nom_client }}</td>
                                 <td class="text-center">{{ $l->telephone ?? '-' }}</td>
                                 <td class="text-center">{{ $l->email ?? '-' }}</td>
@@ -100,7 +100,7 @@
                                 <td class="text-end">{{ Help::formatNombre($l->montant_ttc, true) }}</td>
                                 <td class="text-end">{{ Help::formatNombre($l->frais_livraison, true) }}</td>
                                 <td class="text-end"><strong>{{ Help::formatNombre($l->total_a_payer, true) }}</strong></td>
-                                <td class="text-center">{{ $l->date_limite_paiement ? Carbon::parse($l->date_limite_paiement)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date_limite_paiement ? \Help::dateHeure($l->date_limite_paiement) : '-' }}</td>
                                 <td class="text-end text-success">{{ Help::formatNombre($l->montant_paye, true) }}</td>
                                 <td class="text-end text-danger"><strong>{{ Help::formatNombre($l->reste_a_payer, true) }}</strong></td>
                                 <td class="text-center"><span class="badge {{ $badge }}">{{ $statut }}</span></td>

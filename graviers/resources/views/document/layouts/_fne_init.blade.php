@@ -26,7 +26,7 @@
             'adresse' => $fne_adresse ?? '',
             // Le régime d'imposition est porté par la fiche client, comme le NCC.
             'ncc' => ($clientObj->ncc_clt ?? ''),
-            'regime_imposition' => ($clientObj->regime_imposition ?? ''),
+            'regime_imposition' => App\Support\RegimeImposition::libelle($clientObj->regime_imposition ?? ''),
         ];
     }
 

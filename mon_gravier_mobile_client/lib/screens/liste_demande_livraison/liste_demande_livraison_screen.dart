@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:buttons_tabbar/buttons_tabbar.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:mon_gravier_com/constants.dart';
@@ -11,6 +10,7 @@ import 'package:mon_gravier_com/globale.dart';
 import 'package:mon_gravier_com/models/retour_liste_demande_livraison.dart';
 import 'package:mon_gravier_com/screens/demande_livraison/demande_livraison_screen.dart';
 
+import '../../components/bouton_retour.dart';
 import '../../helper/constants.dart';
 import 'components/liste_demande_livraison.dart';
 
@@ -109,27 +109,8 @@ class ListeDemandeLivraisonScreenState extends State<ListeDemandeLivraisonScreen
     return Scaffold(
       appBar: AppBar(
         title: const Text("Liste des demandes de livraison"),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: const Color(0xff03dac6),
@@ -142,28 +123,42 @@ class ListeDemandeLivraisonScreenState extends State<ListeDemandeLivraisonScreen
         child: Container(
           width: double.infinity,
           height: heightOfScreen(context),
-          decoration: const BoxDecoration(
-            image: DecorationImage(
-              image: AssetImage("assets/images/bg.jpg"),
-              fit: BoxFit.cover,
-              opacity: 0.1,
-            ),
-          ),
           child: DefaultTabController(
             length: pages.length,
             child: Column(
               children: <Widget>[
                 ButtonsTabBar(
-                  radius: 10,
+                  radius: kRadiusPill,
+                  // 64 = 40 de pastille + 12 d'air au-dessus et au-dessous.
+                  // A 42 sans marge verticale, les onglets touchaient la
+                  // section du dessus et le champ de recherche du dessous.
+                  height: 64,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: kSpaceLg),
+                  buttonMargin: const EdgeInsets.symmetric(
+                      vertical: kSpaceMd, horizontal: 3),
                   backgroundColor: kPrimaryColor,
-                  unselectedBackgroundColor: kSecondaryColor,
-                  unselectedLabelStyle: const TextStyle(color: whiteColor),
-                  labelStyle:
-                  const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  unselectedBackgroundColor: kSurfaceColor,
+                  borderWidth: 1.4,
+                  borderColor: kPrimaryColor,
+                  // L'onglet inactif etait gris sur gris : rien ne disait qu'il
+                  // etait cliquable. Contour, libelle et pictogramme prennent
+                  // le bleu de la marque — c'est la couleur qui porte
+                  // l'information, le remplissage qui dit lequel est ouvert.
+                  unselectedBorderColor: kPrimaryColor,
+                  labelSpacing: kSpaceSm,
+                  labelStyle: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700),
+                  unselectedLabelStyle: const TextStyle(
+                      color: kPrimaryColor,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600),
                   tabs: const [
-                    Tab(icon: Icon(Icons.pause), text: "En Attente"),
-                    Tab(icon: Icon(Icons.play_arrow_outlined), text: "En Traitement"),
-                    Tab(icon: Icon(Icons.flag_outlined), text: "Terminé"),
+                    Tab(icon: Icon(Icons.pause, size: 17), text: "En Attente"),
+                    Tab(icon: Icon(Icons.play_arrow_outlined, size: 17), text: "En Traitement"),
+                    Tab(icon: Icon(Icons.flag_outlined, size: 17), text: "Terminé"),
                   ],
                 ),
                 Expanded(

@@ -172,7 +172,7 @@
                     <tbody>
                         @forelse ($lignes as $l)
                             <tr class="{{ $l->anomalie ? 'table-warning' : '' }}">
-                                <td class="text-center">{{ $l->date?->format('d/m/Y') ?? '-' }}</td>
+                                <td class="text-center">{{ \Help::dateHeure($l->date) ?? '-' }}</td>
                                 <td class="text-center"><strong>{{ $l->numero }}</strong></td>
                                 <td>{{ $l->client }}</td>
                                 <td class="text-center">{{ $l->service }}</td>

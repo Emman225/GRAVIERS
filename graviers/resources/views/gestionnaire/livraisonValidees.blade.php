@@ -29,8 +29,11 @@
 
                 <!-- card-header end// -->
                 <div class="card-body">
+                    <x-export-buttons table-id="listeLivraisonsValidees"
+                                      filename="livraisons-validees"
+                                      title="Livraisons validées" />
                     <div class="table-responsive">
-                        <table class="table table-hover table-bordered">
+                        <table id="listeLivraisonsValidees" class="table table-hover table-bordered">
                             <thead>
                                 <tr>
                                     <th class="text-center" style="background-color: #1c57a3; color: white; border-top-left-radius:5px">N°</th>

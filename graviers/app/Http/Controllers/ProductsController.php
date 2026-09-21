@@ -60,10 +60,23 @@ class ProductsController extends Controller
         ]);
     }
 
+    /**
+     * La page de création. Le formulaire ne partage plus l'écran de la liste :
+     * on y consultait et on y saisissait au même endroit, et la liste reculait
+     * de tout un formulaire au premier clic sur « Nouvelle catégorie ».
+     */
+    public function nouvelleCategorie(){
+
+        return view('produit.formCategorie',[
+            'lists' => Categorie::liste(),
+            'categorie' => new Categorie()
+        ]);
+    }
+
     public function editCategory(Categorie $categorie){
 
         $lists = Categorie::liste();
-        return view('produit.categories',[
+        return view('produit.formCategorie',[
             'lists' => $lists,
             'categorie' => $categorie
         ]);
@@ -106,6 +119,9 @@ class ProductsController extends Controller
         $categories = Categorie::liste();
 
         return view('produit.add-products',[
+            // Le formulaire affiche le prix de vente calculé à mesure qu'on
+            // saisit le prix d'achat : il lui faut le taux en vigueur.
+            'tauxDalakoun' => \App\Models\PourcentageDalakoun::tauxEnVigueur(),
             'categories' => $categories,
             'produit' => $produit,
             'unites' => UniteProduit::all(),
@@ -138,7 +154,16 @@ class ProductsController extends Controller
         return redirect()->route('product.category')->with('succes','enregistré');
     }
 
-    public function produitCategorie($nomCategorie){
+    /** Les tris proposés, et ce qu'ils veulent dire. */
+    public const TRIS_CATEGORIE = [
+        'tendance'  => 'Tendance',
+        'prix_asc'  => 'Prix croissant',
+        'prix_desc' => 'Prix décroissant',
+        'nouveaute' => 'Nouveautés',
+        'note'      => 'Meilleure note',
+    ];
+
+    public function produitCategorie(Request $request, $nomCategorie){
 
         $categorie = Categorie::where('nom',$nomCategorie)->first();
         $client = (Auth::user())? Client::where('user_id',Auth::user()->id)->first() : new Client;
@@ -155,12 +180,75 @@ class ProductsController extends Controller
         // partout ailleurs sur la boutique.
         \App\Models\Produit::alignerPrixAffiche($produits);
 
+        // LE TRI ET LE FILTRE PORTENT SUR LE PRIX AFFICHÉ.
+        //
+        // « Trier par » ne triait rien : les cinq entrées du menu pointaient sur
+        // « # », un reste du gabarit. Et le filtre par prix était commenté.
+        //
+        // Le prix retenu est celui que le visiteur VOIT : le prix personnalisé
+        // s'il en a un, sinon le prix catalogue qui vient d'être calculé. Trier
+        // sur la colonne stockée classerait selon un montant que personne
+        // n'affiche — c'est exactement ce qui avait cassé le filtre par montant
+        // de l'application mobile.
+        $prixAffiche = function ($produit) use ($prixPerso) {
+            return (float) ($prixPerso[$produit->id] ?? $produit->prix_moyen);
+        };
+
+        $prixMin = $request->filled('prix_min') ? (float) $request->prix_min : null;
+        $prixMax = $request->filled('prix_max') ? (float) $request->prix_max : null;
+
+        // Bornes inversées : on les remet dans l'ordre plutôt que de ne rien
+        // rendre. Saisir 5000 puis 1000 est une maladresse, pas une demande de
+        // liste vide.
+        if ($prixMin !== null && $prixMax !== null && $prixMin > $prixMax) {
+            [$prixMin, $prixMax] = [$prixMax, $prixMin];
+        }
+
+        if ($prixMin !== null) {
+            $produits = $produits->filter(fn ($p) => $prixAffiche($p) >= $prixMin);
+        }
+
+        if ($prixMax !== null) {
+            $produits = $produits->filter(fn ($p) => $prixAffiche($p) <= $prixMax);
+        }
+
+        $tri = array_key_exists($request->tri, self::TRIS_CATEGORIE) ? $request->tri : 'tendance';
+
+        $produits = match ($tri) {
+            'prix_asc'  => $produits->sortBy($prixAffiche),
+            'prix_desc' => $produits->sortByDesc($prixAffiche),
+            'nouveaute' => $produits->sortByDesc('created_at'),
+            'note'      => $produits->sortByDesc('meilleur_note'),
+            default     => $produits,
+        };
+
+        $produits = $produits->values();
+
+        // UNE PAGINATION QUI DIT LA VÉRITÉ.
+        //
+        // La page affichait « 1 2 3 … 6 » en dur, quel que soit le nombre
+        // d'articles : six pages annoncées pour quatre produits, et aucun des
+        // liens ne menait nulle part.
+        $parPage = 20;
+
+        $produits = new \Illuminate\Pagination\LengthAwarePaginator(
+            $produits->forPage($request->input('page', 1), $parPage),
+            $produits->count(),
+            $parPage,
+            $request->input('page', 1),
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
+
         return view('produit.categorieListProduit',[
             'produits' => $produits,
             'categories' => Categorie::where('statut', 1)->get(),
             'nom' => $nomCategorie,
             'client' => $client,
             'prixPerso' => $prixPerso,
+            'tri' => $tri,
+            'tris' => self::TRIS_CATEGORIE,
+            'prixMin' => $prixMin,
+            'prixMax' => $prixMax,
         ]);
 
     }
@@ -172,7 +260,6 @@ class ProductsController extends Controller
             'nom' => 'required',
             'abreviation' => 'required|string|max:10',
             'unite' => 'required',
-            'prix_moyen' => 'required|integer',
             'reduction' => 'required',
             'prix_fournisseur' => 'required',
             'fournisseur' => 'required|exists:fournisseur,id',
@@ -197,7 +284,9 @@ class ProductsController extends Controller
             'nom' => $request->nom,
             'abreviation' => $request->abreviation,
             'unite_produit_id' => $request->unite,
-            'prix_moyen' => $request->prix_moyen,
+            // Prix de vente CALCULÉ, jamais saisi : prix d'achat majoré du
+            // pourcentage DALAKOUN.
+            'prix_moyen' => round(\App\Models\PourcentageDalakoun::appliquerA((float) $request->prix_fournisseur)),
             'prix_reduction' => $request->reduction,
             'description' => $request->description,
             'meilleur_note' => $request->meilleur_note,
@@ -250,6 +339,7 @@ class ProductsController extends Controller
         $produit = Produit::find($id);
         // dd($produit->nom);
         return view('produit.edit-products',[
+            'tauxDalakoun' => \App\Models\PourcentageDalakoun::tauxEnVigueur(),
             'produit' => $produit,
             'unites' => UniteProduit::all(),
             'categories' => Categorie::all()
@@ -282,12 +372,73 @@ class ProductsController extends Controller
 
                 $produit->categories()->sync($request->categories);
 
+            // LES PRIX D'ACHAT SE CORRIGENT ICI.
+            //
+            // Une seule vue de toute l'application écrivait `stock_produit.prix` :
+            // l'espace du fournisseur, qui résout le fournisseur depuis
+            // l'utilisateur CONNECTÉ. Aucun administrateur ne pouvait donc
+            // corriger un prix d'achat faux — celui-là même qui fait désormais
+            // le prix de vente. Deux prix aberrants restaient ainsi intouchables.
+            $request->validate([
+                'prix_achat.*' => 'nullable|numeric|min:0|max:99999999',
+            ], [
+                'prix_achat.*.numeric' => 'Veuillez saisir un nombre',
+                'prix_achat.*.min'     => 'Un prix d\'achat ne peut pas être négatif',
+                'prix_achat.*.max'     => 'Ce prix d\'achat est hors limites',
+            ]);
+
+            foreach ((array) $request->input('prix_achat', []) as $ligneId => $montant) {
+                if ($montant === null || $montant === '') {
+                    continue;
+                }
+
+                // Bornée au produit ouvert : un identifiant forgé n'atteint
+                // pas la ligne de stock d'un autre produit.
+                \App\Models\StockProduit::where('id', (int) $ligneId)
+                    ->where('produit_id', $produit->id)
+                    ->update(['prix' => (float) $montant]);
+            }
+
+            // RETIRER UN FOURNISSEUR D'UN PRODUIT.
+            //
+            // On désactive la ligne au lieu de la supprimer : les bons, les
+            // paiements et l'historique déjà émis restent lisibles. Le statut
+            // inactif est déjà respecté partout — prix de vente, réapprovision-
+            // nement, choix du fournisseur sur un bon.
+            $lignes = \App\Models\StockProduit::where('produit_id', $produit->id)
+                ->whereNull('deleted_at')
+                ->get();
+
+            $retires = (array) $request->input('fournisseur_retire', []);
+
+            if ($lignes->isNotEmpty() && count($retires) >= $lignes->count()) {
+                // Sans aucun fournisseur, le prix de vente ne se recalcule plus :
+                // le catalogue garderait un prix que plus rien ne justifie.
+                return back()
+                    ->withInput()
+                    ->with('produit_erreur', 'Un produit doit garder au moins un fournisseur. Corrigez plutôt le prix d\'achat de celui que vous vouliez retirer.');
+            }
+
+            foreach ($lignes as $ligne) {
+                $ligne->update([
+                    'statut' => isset($retires[$ligne->id])
+                        ? Help::$STATUT_INACTIF
+                        : Help::$STATUT_ACTIF,
+                ]);
+            }
+
             $produit->update([
                 'reference' => $request->reference,
                 'nom' => $request->nom,
                 'abreviation' => $request->abreviation,
                 'unite_produit_id' => $request->unite,
-                'prix_moyen' => $request->prix_moyen,
+                // Le prix de vente se calcule sur le prix d'achat RÉEL — celui des
+                // lignes de stock, propre à chaque fournisseur — et non sur un
+                // champ du formulaire qui, en modification, n'en est que le reflet.
+                'prix_moyen' => round(\App\Models\PourcentageDalakoun::appliquerA(
+                    (float) (\App\Models\Produit::prixAchatDe($produit->id) ?? $produit->prix_fournisseur),
+                    $produit->pourcentage_dalakoun
+                )),
                 'description' => $request->description,
                 'meilleur_note' => $request->meilleur_note,
                 // Le select envoie 1 (Location) / 2 (Vente) : on stocke le libellé
@@ -295,7 +446,9 @@ class ProductsController extends Controller
                 // écrivait '1'/'2' et le produit disparaissait des catalogues.
                 'type_affaire'=> ((int) $request->type_affaire === 1) ? Help::$LOCATION : Help::$VENTE,
                 'prix_reduction' => $request->reduction,
-                'prix_fournisseur' => $request->prix_fournisseur,
+                'prix_fournisseur' => $request->filled('prix_fournisseur')
+                    ? $request->prix_fournisseur
+                    : $produit->prix_fournisseur,
                 'caution' => $request->caution ?? 0
         ]);
 

@@ -13,9 +13,12 @@
 
 
 @extends('layout.main')
-@section('title','Demandes Client à terme')
+@section('title', 'Demandes client à terme')
 
 @section('contenu')
+
+    @include('client._decisionsEnAttente', ['decisions' => $decisions ?? collect()])
+
     <div class="content-header">
         <h2 class="content-title">Demandes de compte Client à terme</h2>
     </div>
@@ -29,6 +32,9 @@
 
     <div class="card mb-4">
         <div class="card-body">
+            <x-export-buttons table-id="liste"
+                              filename="demandes-client-a-terme"
+                              title="Demandes de passage en client à terme" />
             <div class="table-responsive">
                 <table class="table table-striped" id="liste">
                     <thead>
@@ -70,7 +76,7 @@
                                                 </a>
                                                 <a href="{{ route('show.demandeClientTermeDocument', ['demande' => $demande->id, 'key' => $key, 'mode' => 'download']) }}"
                                                    class="badge bg-secondary text-decoration-none" title="Télécharger">
-                                                    <i class="material-icons md-download" style="font-size:12px;vertical-align:middle;"></i>
+                                                    <i class="material-icons md-get_app" style="font-size:12px;vertical-align:middle;"></i>
                                                 </a>
                                             </div>
                                         @endforeach
@@ -102,7 +108,7 @@
                                         <button type="button" class="btn btn-sm btn-danger rounded font-sm"
                                                 data-bs-toggle="modal" data-bs-target="#refuseModal-{{ $demande->id }}">Refuser</button>
                                     @else
-                                        <span class="text-muted small">Décision le<br>{{ $demande->decided_at ? Carbon::parse($demande->decided_at)->format('d-m-Y H:i') : '-' }}</span>
+                                        <span class="text-muted small">Décision le<br>{{ $demande->decided_at ? Carbon::parse($demande->decided_at)->format('d/m/Y H:i:s') : '-' }}</span>
                                     @endif
                                 </td>
                             </tr>
@@ -154,7 +160,7 @@
                                                     </a>
                                                     <a href="{{ route('show.demandeClientTermeDocument', ['demande' => $demande->id, 'key' => $key, 'mode' => 'download']) }}"
                                                        class="btn btn-sm btn-secondary">
-                                                        <i class="material-icons md-download" style="font-size:14px;vertical-align:middle;"></i>
+                                                        <i class="material-icons md-get_app" style="font-size:14px;vertical-align:middle;"></i>
                                                     </a>
                                                 </span>
                                             </div>

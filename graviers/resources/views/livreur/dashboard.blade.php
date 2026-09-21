@@ -32,7 +32,7 @@
             <div class="dash-welcome-actions d-none d-md-flex">
                 <div class="dash-time-pill">
                     <i class="material-icons md-access_time"></i>
-                    <span id="dashLiveClock">{{ now()->format('H:i') }}</span>
+                    <span id="dashLiveClock">{{ now()->format('H:i:s') }}</span>
                 </div>
             </div>
         </div>
@@ -197,7 +197,7 @@
                         </div>
                     </div>
                     <div class="dash-counter">
-                        <div class="dash-counter-icon dash-counter-icon-primary"><i class="material-icons md-calendar_month"></i></div>
+                        <div class="dash-counter-icon dash-counter-icon-primary"><i class="material-icons md-calendar_today"></i></div>
                         <div class="flex-grow-1">
                             <div class="dash-counter-label">Ce mois</div>
                             <div class="dash-counter-value">{{ $livraisonsMois }}</div>

@@ -7,7 +7,7 @@
 @endphp
 
 @extends('layout.main')
-@section('title', 'Récap Dettes - Tableau de bord')
+@section('title', 'Récap dettes - Tableau de bord')
 
 @section('contenu')
     <div class="screen-overlay"></div>
@@ -17,7 +17,7 @@
         <div class="dash-welcome-content">
             <div>
                 <h2 class="dash-welcome-title">
-                    🔴 Récapitulatif Dettes
+                    🔴 Récapitulatif dettes
                 </h2>
                 <p class="dash-welcome-subtitle">
                     {{ $greeting }} {{ $firstName }} — Vue consolidée des sommes à payer ({{ Carbon::now()->locale('fr')->isoFormat('D MMMM YYYY') }})
@@ -163,8 +163,11 @@
             </h5>
         </div>
         <div class="card-body p-0">
+            <x-export-buttons table-id="listeRecapDettes"
+                              filename="recap-global-dettes"
+                              title="Récapitulatif global des dettes" />
             <div class="table-responsive">
-                <table class="table mb-0">
+                <table id="listeRecapDettes" class="table mb-0">
                     <thead>
                         <tr>
                             <th>Catégorie</th>
@@ -172,7 +175,7 @@
                             <th class="text-end">Total Engagé</th>
                             <th class="text-end">Total Payé</th>
                             <th class="text-end">Reste à Payer</th>
-                            <th class="text-end">% Total Dettes</th>
+                            <th class="text-end">% Total dettes</th>
                             <th class="text-center">Statut</th>
                         </tr>
                     </thead>
@@ -223,7 +226,7 @@
                             <td>
                                 <div class="d-flex align-items-center gap-2">
                                     <div class="kpi-card-icon" style="width: 36px; height: 36px; background: linear-gradient(135deg, #10b981, #047857); border-radius: 10px;">
-                                        <i class="material-icons md-handshake" style="font-size: 18px;"></i>
+                                        <i class="material-icons md-people" style="font-size: 18px;"></i>
                                     </div>
                                     <div>
                                         <strong>Apporteurs d'affaires</strong>
@@ -266,7 +269,7 @@
                         <div class="kpi-card-icon mx-auto mb-3" style="background: linear-gradient(135deg, #1c57a3, #134380);">
                             <i class="material-icons md-store"></i>
                         </div>
-                        <h6 class="mb-1" style="color: #111827;">Détail Fournisseurs</h6>
+                        <h6 class="mb-1" style="color: #111827;">Détail fournisseurs</h6>
                         <small class="text-muted">{{ $foNbOps }} opérations</small>
                         <div class="mt-2"><span class="badge bg-light text-primary">{{ Help::formatNombre($foReste, true) }}</span></div>
                     </div>
@@ -280,7 +283,7 @@
                         <div class="kpi-card-icon mx-auto mb-3" style="background: linear-gradient(135deg, #3b82f6, #2563eb);">
                             <i class="material-icons md-local_shipping"></i>
                         </div>
-                        <h6 class="mb-1" style="color: #111827;">Détail Livreurs</h6>
+                        <h6 class="mb-1" style="color: #111827;">Détail livreurs</h6>
                         <small class="text-muted">{{ $lvNbOps }} livraisons</small>
                         <div class="mt-2"><span class="badge bg-light text-primary">{{ Help::formatNombre($lvReste, true) }}</span></div>
                     </div>
@@ -292,9 +295,9 @@
                 <div class="card dash-card h-100 hover-lift">
                     <div class="card-body text-center">
                         <div class="kpi-card-icon mx-auto mb-3" style="background: linear-gradient(135deg, #10b981, #047857);">
-                            <i class="material-icons md-handshake"></i>
+                            <i class="material-icons md-people"></i>
                         </div>
-                        <h6 class="mb-1" style="color: #111827;">Détail Apporteurs</h6>
+                        <h6 class="mb-1" style="color: #111827;">Détail apporteurs</h6>
                         <small class="text-muted">{{ $apNbOps }} commissions</small>
                         <div class="mt-2"><span class="badge bg-light text-primary">{{ Help::formatNombre($apReste, true) }}</span></div>
                     </div>
@@ -325,7 +328,7 @@
                 <div class="modal-header" style="background: linear-gradient(135deg, #991b1b 0%, #4c0519 100%); color: #fff; border-bottom: 0;">
                     <h5 class="modal-title" id="modalGuideRecapDettesLabel">
                         <i class="material-icons md-menu_book align-middle"></i>
-                        Guide d'utilisation — Récap Dettes
+                        Guide d'utilisation — Récap dettes
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fermer"></button>
                 </div>

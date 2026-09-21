@@ -4,9 +4,11 @@ import 'package:printing/printing.dart';
 
 import 'package:pdf/pdf.dart';
 
+import '../components/bouton_retour.dart';
 import '../../globale.dart';
 import '../models/InformationsCommande.dart';
 import 'fne_template.dart';
+import 'totaux_document.dart';
 
 class ImpressionLocationPdf extends StatelessWidget {
   final UneLocation location;
@@ -29,29 +31,9 @@ class ImpressionLocationPdf extends StatelessWidget {
       appBar: AppBar(
         title: const Text(
           "Imprimer ma location",
-          style: TextStyle(color: Colors.black),
         ),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       body: PdfPreview(
         canChangeOrientation: false,
@@ -74,7 +56,8 @@ class ImpressionLocationPdf extends StatelessWidget {
       double montant = _prixLigne(l) * l.qte! * l.nombreJour!;
       totalHt += montant;
 
-      String designation = '${l.nom ?? ""}';
+      // Le numéro de bon interne en colonne Réf (13/09/2026), la désignation nue.
+      String designation = l.nom ?? '';
       if (l.debut != null && l.fin != null) {
         designation +=
             '\nDu ${formaterDate(l.debut.toString(), format: 'dd/MM/yyyy')} '
@@ -83,7 +66,7 @@ class ImpressionLocationPdf extends StatelessWidget {
       }
 
       articles.add(FneArticle(
-        ref: (i + 1).toString().padLeft(2, '0'),
+        ref: referenceLigne(location.numero_bon_commande, i + 1),
         designation: designation,
         puHt: _prixLigne(l),
         qte: l.qte!.toDouble(),
@@ -96,19 +79,28 @@ class ImpressionLocationPdf extends StatelessWidget {
 
     double montantTvaCalc = location.montant_tva ?? 0;
     double coutLivraison = location.cout_livraison_client ?? 0;
+    double tvaTransport = location.tva_transport ?? 0;
     double remise = location.remise ?? 0;
-    double totalTtc = totalHt + montantTvaCalc;
-    double totalAPayer = location.montantTotal ?? totalTtc + coutLivraison - remise;
+
+    // Comme pour le bon de commande : les totaux viennent des lignes, pas de
+    // `montantTotal`, dont le sens change selon le canal.
+    final totaux = TotauxDocument(
+      htArticles: totalHt,
+      livraison: coutLivraison,
+      tva: montantTvaCalc,
+      tvaTransport: tvaTransport,
+      remise: remise,
+    );
 
     // Ligne livraison
-    if (coutLivraison > 0) {
+    if (coutLivraison > 0 && totaux.transportEnLigne) {
       articles.add(FneArticle(
         ref: '',
         designation: 'Coût de livraison (${location.adresse ?? ""})',
         puHt: coutLivraison,
         qte: 1,
         unite: 'Forfait',
-        taxes: '0',
+        taxes: tvaTransport > 0 ? 'TVA ($tva%)' : '0',
         remise: 0,
         montantHt: coutLivraison,
       ));
@@ -117,11 +109,13 @@ class ImpressionLocationPdf extends StatelessWidget {
     // Résumé fiscal
     List<FneResumeFiscal> resumeFiscal = [];
     if (tva > 0) {
+      // Une catégorie : l'assiette compte le transport quand il est taxé, et
+      // les taxes fondent les deux TVA (09/09/2026, comme le site).
       resumeFiscal.add(FneResumeFiscal(
         categorie: 'TVA $tva% sur HT',
-        sousTotal: totalHt,
+        sousTotal: totaux.assietteTva,
         taux: '$tva%',
-        totalTaxes: montantTvaCalc,
+        totalTaxes: totaux.tvaDocument,
       ));
     } else {
       resumeFiscal.add(FneResumeFiscal(
@@ -143,10 +137,12 @@ class ImpressionLocationPdf extends StatelessWidget {
       date: DateFormat('dd/MM/yyyy HH:mm:ss').format(DateTime.now()),
       client: clientFne,
       articles: articles,
-      totalHt: totalHt,
+      totalHt: totaux.htAffiche,
       totalTva: montantTvaCalc,
-      totalTtc: totalTtc,
-      totalAPayer: totalAPayer,
+      totalTtc: totaux.ttcAffiche,
+      tvaTransport: tvaTransport,
+      livraisonHorsTableau: totaux.livraisonHorsTableau,
+      totalAPayer: totaux.aPayer,
       remise: remise,
       resumeFiscal: resumeFiscal,
       modePaiement: location.modePaiement,

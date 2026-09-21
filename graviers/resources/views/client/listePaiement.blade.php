@@ -64,6 +64,7 @@
                                                     <th class="text-end">Montant</th>
                                                     <th>Date commande</th>
                                                     <th>Date paiement</th>
+                                                    <th class="text-center">État</th>
                                                     {{-- Deux en-têtes distincts, et non un seul avec colspan="2" :
                                                          DataTables exige autant de cellules d'en-tête que de colonnes
                                                          dans le corps, sinon l'initialisation échoue et le tableau
@@ -78,12 +79,35 @@
                                                         <td><span class="paiements-code">{{ $l->code_paiement }}</span></td>
                                                         <td>{{ $l->mode_paiement }}</td>
                                                         <td>
-                                                            <a href="{{ route($l->est_livrable == 1 ? 'client.validationLivraisonPage' : 'client.recuperationProduit', $l->commande_id) }}"
-                                                               class="paiements-link">{{ $l->num_commande }}</a>
+                                                            {{-- Trois affaires (10/09/2026) : commande, location, demande de livraison. --}}
+                                                            @if (($l->type_affaire ?? 'COMMANDE') === 'LOCATION')
+                                                                <a href="{{ route('client.detailDeLocation', $l->commande_id) }}"
+                                                                   class="paiements-link">{{ $l->num_commande }}</a>
+                                                                <span class="badge bg-light text-dark">Location</span>
+                                                            @elseif (($l->type_affaire ?? 'COMMANDE') === 'LIVRAISON')
+                                                                <a href="{{ route('client.detaiDemandeDeLivraison', $l->commande_id) }}"
+                                                                   class="paiements-link">{{ $l->num_commande }}</a>
+                                                                <span class="badge bg-light text-dark">Livraison</span>
+                                                            @else
+                                                                <a href="{{ route($l->est_livrable == 1 ? 'client.validationLivraisonPage' : 'client.recuperationProduit', $l->commande_id) }}"
+                                                                   class="paiements-link">{{ $l->num_commande }}</a>
+                                                            @endif
                                                         </td>
                                                         <td class="text-end fw-bold">{{ number_format($l->montant, 0, '', ' ') }} <small>FCFA</small></td>
-                                                        <td><small>{{ Carbon::parse($l->date_commande)->format('d/m/Y H:i') }}</small></td>
-                                                        <td><small>{{ Carbon::parse($l->date_paiement)->format('d/m/Y H:i') }}</small></td>
+                                                        <td><small>{{ Carbon::parse($l->date_commande)->format('d/m/Y H:i:s') }}</small></td>
+                                                        <td><small>{{ Carbon::parse($l->date_paiement)->format('d/m/Y H:i:s') }}</small></td>
+                                                        <td class="text-center">
+                                                            {{-- Point 20 (09/09/2026) : l'opération, une fois finalisée au guichet, est « Effectuée ». --}}
+                                                            @if ((int) ($l->statut_paiement ?? 1) === 2)
+                                                                <span class="badge bg-warning text-dark">En attente de validation</span>
+                                                            @elseif (($l->etat_reglement ?? null) === \App\Models\DemandePaiement::EFFECTUEE)
+                                                                <span class="badge bg-success">Effectuée</span>
+                                                            @elseif (!empty($l->etat_reglement ?? null))
+                                                                <span class="badge bg-info text-dark">Validée — en cours</span>
+                                                            @else
+                                                                <span class="badge bg-success">Payé</span>
+                                                            @endif
+                                                        </td>
                                                         <td>
                                                             <a href="{{ route('paye.facture', ['reference' => $l->ligne_id, 'action' => 'voir']) }}"
                                                                class="paiements-action-btn paiements-action-btn--view">
@@ -170,7 +194,7 @@
                                                             <td>{{ $l->num_commande }}</td>
                                                             <td class="text-end fw-bold">{{ number_format($l->montant_a_payer, '0', '', ' ') }} <small>FCFA</small></td>
                                                             <td class="text-end fw-bold paiements-restant">{{ number_format($l->montant_restant, '0', '', ' ') }} <small>FCFA</small></td>
-                                                            <td><small>{{ \Carbon\Carbon::parse(($client->client_a_terme == 1 ? ($l->date_facture ?? $l->date_commande) : $l->date_commande))->format('d/m/Y') }}</small></td>
+                                                            <td><small>{{ \Help::dateHeure($client->client_a_terme == 1 ? ($l->date_facture ?? $l->date_commande) : $l->date_commande) }}</small></td>
                                                         </tr>
                                                     @endforeach
                                                 </tbody>
@@ -205,7 +229,7 @@
                                                     elle sera traitée dès le paiement enregistré.
                                                 @endif
                                                 <br>
-                                                Une question ? <a href="mailto:info@fneconnect.net">info@fneconnect.net</a>
+                                                Une question ? <a href="mailto:{{ \Help::emailContact() }}">{{ \Help::emailContact() }}</a>
                                             </div>
                                         </div>
                                     @else

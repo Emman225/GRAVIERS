@@ -46,8 +46,10 @@ class ModePaiement extends Model
      * drapeau saisi au back-office. Même règle que sur le site
      * (ModePaiement::listePourClient de graviers).
      *
-     * Le règlement en agence n'apparaît pas ici : l'application le traite par son
-     * propre indicateur (mode_paiement = 2), pas par un mode de cette table.
+     * Le règlement en agence n'apparaît pas ici : sur l'écran de commande,
+     * l'application le traite par son propre indicateur, et cette liste ne sert
+     * qu'à désigner l'OPÉRATEUR d'un paiement en ligne. La demande de livraison,
+     * qui n'a qu'un seul champ, utilise listePourDemandeLivraison().
      */
     public static function listePourClient()
     {
@@ -60,6 +62,45 @@ class ModePaiement extends Model
                 foreach ($instrumentsReservesAgent as $motif) {
                     $query->where('libelle', 'not like', '%' . $motif . '%');
                 }
+            })
+            ->get();
+    }
+
+    /**
+     * MODES PROPOSÉS SUR UNE DEMANDE DE LIVRAISON.
+     *
+     * L'écran de commande a DEUX champs : le « mode » (en ligne, virement,
+     * agence), tenu par l'application, et le « moyen » — l'opérateur — servi par
+     * listePourClient(). La demande de livraison, elle, n'en a qu'UN, et il lit
+     * la liste des opérateurs : le règlement au guichet y était donc
+     * impossible, alors que le site l'offre depuis toujours.
+     *
+     * Cette liste ajoute le règlement en agence aux opérateurs en ligne. Elle
+     * est SÉPARÉE de listePourClient() à dessein : ajouter le guichet à celle-ci
+     * l'aurait fait apparaître parmi les opérateurs de mobile money de l'écran
+     * de commande, où choisir « En ligne » puis « Paiement en agence » aurait
+     * lancé la passerelle sur un mode hors ligne.
+     *
+     * Même règle que le site (ModePaiement::listePourClient de graviers) :
+     * la ligne héritée d'id 1 est écartée, le guichet passe par son libellé —
+     * qui énumère parfois les instruments acceptés et serait sinon éliminé par
+     * l'exclusion des instruments réservés à l'agent.
+     */
+    public static function listePourDemandeLivraison()
+    {
+        $instrumentsReservesAgent = ['virement', 'chèque', 'cheque', 'espèce', 'espece', 'carte'];
+
+        return ModePaiement::orderBy('libelle', 'asc')
+            ->where('statut', Help::$STATUT_ACTIF)
+            ->where('id', '!=', 1)
+            ->where(function ($query) use ($instrumentsReservesAgent) {
+                $query->where('libelle', 'like', '%agence%')
+                    ->orWhere(function ($enLigne) use ($instrumentsReservesAgent) {
+                        $enLigne->where('en_ligne', 1);
+                        foreach ($instrumentsReservesAgent as $motif) {
+                            $enLigne->where('libelle', 'not like', '%' . $motif . '%');
+                        }
+                    });
             })
             ->get();
     }

@@ -33,7 +33,7 @@
                 </div>
                 <div class="dash-time-pill">
                     <i class="material-icons md-access_time"></i>
-                    <span id="dashLiveClock">{{ now()->format('H:i') }}</span>
+                    <span id="dashLiveClock">{{ now()->format('H:i:s') }}</span>
                 </div>
             </div>
         </div>
@@ -187,6 +187,10 @@
                         <div class="flex-grow-1">
                             <div class="dash-counter-label">Code parrain</div>
                             <div class="dash-counter-value" style="font-size:1.2rem;letter-spacing:1px">{{ $apporteur->code }}</div>
+                            {{-- Le code s'affichait sans qu'on puisse rien en faire :
+                                 il fallait le recopier a la main, puis expliquer ou le
+                                 saisir. Le lien partage porte le code. --}}
+                            @include('apporteur._partageCode', ['code' => $apporteur->code])
                         </div>
                     </div>
                 </div>
@@ -223,9 +227,9 @@
                             <tr>
                                 <td><strong class="text-primary">{{ $paiement->num_commande }}</strong></td>
                                 <td>{{ $paiement->client }}</td>
-                                <td>{{ \Carbon\Carbon::parse($paiement->date_commande)->format('d/m/Y') }}</td>
+                                <td>{{ \Help::dateHeure($paiement->date_commande) }}</td>
                                 <td class="text-end fw-bold">{{ number_format((float) $paiement->montant_total, 0, ',', ' ') }} FCFA</td>
-                                <td>{{ \Carbon\Carbon::parse($paiement->date_paiement)->format('d/m/Y') }}</td>
+                                <td>{{ \Help::dateHeure($paiement->date_paiement) }}</td>
                                 <td class="text-end fw-bold text-success">{{ number_format((float) $paiement->montant_recu, 0, ',', ' ') }} FCFA</td>
                             </tr>
                         @empty

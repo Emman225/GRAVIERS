@@ -85,7 +85,93 @@
         return m ? m[1] : null;
     }
 
+    // =====================================================================
+    // PLUS JAMAIS DE FENÊTRE NATIVE (10/09/2026). Le client a vu un alert()
+    // du navigateur sur le guichet des créances et ne veut plus en voir un
+    // seul dans le projet. Deux aides, et un filet :
+    //   - alerte(message, {icon, title})       : message d'information, SweetAlert2 ;
+    //   - confirmer(message, {title, confirmText}) : Promise<bool>, SweetAlert2 ;
+    //   - window.alert = alerte : tout alert() oublié passe par SweetAlert2.
+    // Le natif ne reste qu'en repli, si SweetAlert2 n'est pas chargé.
+    // =====================================================================
+    var alerteNative = window.alert.bind(window);
+
+    window.alerte = function (message, options) {
+        var swal = ensureSwal();
+        options = options || {};
+        if (!swal) { alerteNative(String(message)); return; }
+        swal.fire({
+            icon: options.icon || 'warning',
+            title: options.title || 'Attention',
+            text: String(message),
+            confirmButtonText: options.confirmText || 'OK',
+            confirmButtonColor: '#1c57a3'
+        });
+    };
+    window.alert = window.alerte;
+
+    window.confirmer = function (message, options) {
+        var swal = ensureSwal();
+        options = options || {};
+        if (!swal) { return Promise.resolve(window.confirm(String(message))); }
+        return swal.fire({
+            title: options.title || 'Confirmation',
+            text: String(message),
+            icon: options.icon || 'question',
+            showCancelButton: true,
+            confirmButtonText: options.confirmText || 'Oui, confirmer',
+            cancelButtonText: options.cancelText || 'Annuler',
+            confirmButtonColor: options.danger ? '#ef4444' : '#10b981',
+            cancelButtonColor: '#6b7280'
+        }).then(function (r) { return !!(r && r.isConfirmed); });
+    };
+
     window.confirmDelete = confirmDelete;
+
+    // Les AVERTISSEMENTS DataTables (« Requested unknown parameter », fichier
+    // de langue introuvable…) passaient par alert() : ils vont à la console.
+    // Une table mal initialisée est un défaut de développement, pas un message
+    // pour le caissier.
+    var routerDataTables = function () {
+        if (window.jQuery && jQuery.fn && jQuery.fn.dataTable && jQuery.fn.dataTable.ext) {
+            jQuery.fn.dataTable.ext.errMode = function (settings, helpPage, message) {
+                console.warn('[DataTables] ' + message);
+            };
+            // Colonnes lisibles (10/09/2026) : la largeur suit le contenu.
+            jQuery.extend(true, jQuery.fn.dataTable.defaults, { autoWidth: false });
+            return true;
+        }
+        return false;
+    };
+    if (!routerDataTables()) {
+        document.addEventListener('DOMContentLoaded', routerDataTables);
+    }
+
+
+    // ============================================================
+    // COLONNES LISIBLES (10/09/2026)
+    // Les cellules sont sur une ligne (premium CSS : white-space nowrap) ;
+    // celles qui portent un texte long — notes, observations, adresses —
+    // reçoivent .td-texte-long et reprennent le retour à la ligne dans une
+    // colonne large. Rejoué à chaque page dessinée par DataTables.
+    // ============================================================
+    function marquerCellulesLongues(racine) {
+        var cellules = (racine || document).querySelectorAll('table.table tbody td, table.table tfoot td');
+        for (var i = 0; i < cellules.length; i++) {
+            var td = cellules[i];
+            if (td.classList.contains('td-texte-long')) continue;
+            if (td.querySelector('form, .dropdown, select, textarea, input')) continue;
+            var texte = (td.textContent || '').replace(/\s+/g, ' ').trim();
+            if (texte.length > 70) td.classList.add('td-texte-long');
+        }
+    }
+    window.marquerCellulesLongues = marquerCellulesLongues;
+    document.addEventListener('DOMContentLoaded', function () {
+        marquerCellulesLongues();
+        if (window.jQuery) {
+            jQuery(document).on('draw.dt', function (e) { marquerCellulesLongues(e.target); });
+        }
+    });
 
     window.showToast = function (msg, type) {
         var swal = ensureSwal();
@@ -144,6 +230,32 @@
                 } else {
                     confirmBtn.click();
                 }
+            }
+        });
+    }, true);
+
+    // ============================================================
+    // PATTERN D : Forms <form class="js-delete-form"> (10/09/2026)
+    // Même mécanique que le back-office : @csrf @method('DELETE'), et le
+    // submit passe d'abord par SweetAlert2. Attributs : data-item-name,
+    // data-confirm-text, data-confirm-title, data-confirm-button.
+    // ============================================================
+    document.addEventListener('submit', function (e) {
+        var form = e.target;
+        if (!form || !form.classList || !form.classList.contains('js-delete-form')) return;
+        if (form.dataset.swalConfirmed === '1') return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        confirmDelete({
+            title: form.dataset.confirmTitle || null,
+            itemName: form.dataset.itemName || form.dataset.nom || '',
+            text: form.dataset.confirmText || null,
+            confirmText: form.dataset.confirmButton || null,
+            onConfirm: function () {
+                form.dataset.swalConfirmed = '1';
+                form.submit();
             }
         });
     }, true);

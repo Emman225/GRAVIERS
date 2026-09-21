@@ -34,6 +34,7 @@ use Illuminate\Support\Facades\DB;
 class LocationComptantController extends Controller
 {
     use DoubleValidationPaiement;
+    use \App\Traits\PreuveDeReglementPartenaire;
 
     public function encaissements(Request $request)
     {
@@ -92,8 +93,20 @@ class LocationComptantController extends Controller
                 'mode_paiement'     => $mode ?: '-',
                 'caissier'          => $p->caissier?->nom_prenoms ?? '-',
                 'numero_recu'       => $p->numero_recu ?? $p->code,
+                // Le champ « Notes / Observations » du formulaire (libellé du règlement).
+                'observations'      => $p->libelle,
                 'en_attente'        => $enAttente,
                 'peut_valider'      => $peutValider,
+                // Point 20 (09/09/2026, étendu le 10/09/2026) : « À payer » après la
+                // 2e validation, preuve, « Effectuée ». Le TROISIÈME administrateur :
+                // celui qui a finalisé, sinon celui qui a joint la preuve.
+                'troisieme_par'     => \Help::compteAvecIdentifiant($p->agentEffectuee ?? $p->agentPreuve),
+                'etat_reglement'    => $p->etat_reglement,
+                'libelle_etat'      => $p->libelleReglement(),
+                'a_preuve'          => !empty($p->preuve_paiement),
+                'peut_joindre'      => $p->peutJoindrePreuve() && $p->troisiemeAdministrateur(Auth::user()),
+                'peut_finaliser'    => $p->peutFinaliser() && $p->troisiemeAdministrateur(Auth::user()),
+                'attend_troisieme'  => ($p->peutJoindrePreuve() || $p->peutFinaliser()) && !$p->troisiemeAdministrateur(Auth::user()),
                 'raison_blocage'    => $raison,
                 'saisi_par'         => $p->caissier?->nom_prenoms ?? '-',
             ];
@@ -115,10 +128,13 @@ class LocationComptantController extends Controller
             ->orderByDesc('created_at')
             ->limit(200)
             ->get()
-            ->filter(fn (Location $l) => $l->reglementEnAgence() && $l->montantEncaissable() > 0)
+            ->filter(fn (Location $l) => $l->encaissableAuGuichet() && $l->montantEncaissable() > 0)
             ->map(function (Location $l) {
                 return (object) [
+                    'id'            => $l->id,
                     'numero'        => $l->numero,
+                    'client_id'     => $l->client_id,
+                    'date'          => $l->date_location ?? $l->created_at,
                     'client_nom'    => $l->client?->display_name ?? '-',
                     'client_aterme' => (int) ($l->client?->client_a_terme ?? 0) === 1,
                     'materiel'      => $l->detailLocation
@@ -139,7 +155,19 @@ class LocationComptantController extends Controller
             'monAgence'           => Auth::user()?->agence,
             'modesPaiement'       => ModePaiement::listePourAgent(),
             'locationsNonSoldees' => $locationsNonSoldees,
+            // Filtre du guichet : liste des clients (ordinaires ET à terme, tous
+            // deux encaissés ici) avec recherche par n° de compte, nom, courriel.
+            'clientsPourFiltre'   => self::clientsDuGuichet(),
         ]);
+    }
+
+    /** Clients ordinaires et à terme, pour le filtre de la fenêtre d'encaissement. */
+    public static function clientsDuGuichet()
+    {
+        return AvanceClientController::clientsPourFiltre(false)
+            ->concat(AvanceClientController::clientsPourFiltre(true))
+            ->sortBy('nom', SORT_NATURAL | SORT_FLAG_CASE)
+            ->values();
     }
 
     /**
@@ -213,51 +241,71 @@ class LocationComptantController extends Controller
     public function storeEncaissement(Request $request)
     {
         $validated = $request->validate([
-            'numero_location'   => 'required|string|exists:location,numero',
-            'mode_paiement_id'  => 'required|integer|exists:mode_paiement,id',
-            'montant'           => 'required|numeric|min:1',
-            'date_encaissement' => 'nullable|date',
-            'reference'         => 'nullable|string|max:80',
-            'notes'             => 'nullable|string|max:500',
+            // UNE OU PLUSIEURS locations du même client (10/09/2026), comme au
+            // guichet des ventes : le montant s'impute de la plus ancienne à la
+            // plus récente. `numero_location` (une seule) reste accepté.
+            'numeros_location'   => 'nullable|array',
+            'numeros_location.*' => 'string|exists:location,numero',
+            'numero_location'    => 'nullable|string|exists:location,numero',
+            'mode_paiement_id'   => 'required|integer|exists:mode_paiement,id',
+            'montant'            => 'required|numeric|min:1',
+            'date_encaissement'  => 'nullable|date',
+            'reference'          => 'nullable|string|max:80',
+            'notes'             => 'required|string|max:500',
+            'surplus_en_avance' => 'nullable|boolean',
         ], [
-            'numero_location.required' => 'Veuillez choisir la location à encaisser.',
-            'montant.min'              => 'Le montant encaissé doit être supérieur à zéro.',
+            'montant.min'    => 'Le montant encaissé doit être supérieur à zéro.',
+            'notes.required' => 'Le champ Notes / Observations est obligatoire : il est repris dans la colonne « Notes » du journal.',
         ]);
 
-        // L'agence vient de la personne connectée, jamais du formulaire.
         $agenceId = Auth::user()?->agence_id;
         if (!$agenceId) {
             return back()->withInput()->with('erreur_caisse',
                 "Vous n'êtes rattaché à aucune agence : un administrateur doit vous affecter à un guichet avant que vous puissiez encaisser.");
         }
 
-        $location = Location::where('numero', $validated['numero_location'])->firstOrFail();
-
-        if (!$location->reglementEnAgence()) {
-            return back()->withInput()->with('erreur_caisse',
-                "Cette location est réglée en ligne : elle ne s'encaisse pas au guichet.");
+        $numeros = array_values(array_unique(array_filter(array_merge(
+            (array) ($validated['numeros_location'] ?? []),
+            [$validated['numero_location'] ?? null]
+        ))));
+        if (empty($numeros)) {
+            return back()->withInput()->with('erreur_caisse', 'Cochez au moins une location à encaisser.');
         }
 
-        // Pas de refus pour les clients à terme : voir le commentaire de
-        // encaissements(). Les locations n'ont pas d'écran de créance.
+        $locations = Location::whereIn('numero', $numeros)->get()
+            ->sortBy(fn (Location $l) => ($l->date_location ?? $l->created_at) . '-' . $l->id)
+            ->values();
 
-        // Plafond calculé sur l'ENCAISSABLE, pas sur le reste dû : un
-        // encaissement déjà saisi mais pas encore validé occupe la place, sinon
-        // le guichet pourrait enregistrer deux fois le montant total.
-        $reste = $location->montantEncaissable();
-
-        if ($reste <= 0) {
-            $enAttente = $location->montantEnAttenteValidation();
-
-            return back()->withInput()->with('erreur_caisse', $enAttente > 0
-                ? "Cette location est intégralement couverte par des encaissements en attente de validation ("
-                  . number_format($enAttente, 0, ',', ' ') . " FCFA). Faites-les valider par un second administrateur."
-                : "Cette location est déjà soldée.");
+        if ($locations->pluck('client_id')->unique()->count() > 1) {
+            return back()->withInput()->with('erreur_caisse',
+                "Les locations cochées appartiennent à des clients différents : un encaissement se fait pour un seul client à la fois.");
         }
 
-        if ($validated['montant'] > $reste + 0.01) {
+        foreach ($locations as $location) {
+            if (!$location->encaissableAuGuichet()) {
+                return back()->withInput()->with('erreur_caisse',
+                    "La location {$location->numero} est réglée en ligne : elle ne s'encaisse pas au guichet.");
+            }
+            if ($location->montantEncaissable() <= 0) {
+                $enAttente = $location->montantEnAttenteValidation();
+
+                return back()->withInput()->with('erreur_caisse', $enAttente > 0
+                    ? "La location {$location->numero} est intégralement couverte par des encaissements en attente de validation ("
+                      . number_format($enAttente, 0, ',', ' ') . " FCFA). Faites-les valider par un second administrateur."
+                    : "La location {$location->numero} est déjà soldée.");
+            }
+        }
+
+        $restes  = $locations->mapWithKeys(fn (Location $l) => [$l->id => Help::arrondiFranc($l->montantEncaissable())]);
+        $plafond = $restes->sum();
+
+        // SURPLUS → AVANCE (10/09/2026), comme au guichet des ventes : l'excédent
+        // devient une avance du client, si le caissier l'a dit ; sinon refus.
+        $surplus = Help::arrondiFranc(max(0, (float) $validated['montant'] - $plafond));
+        if ($surplus >= 1 && !$request->boolean('surplus_en_avance')) {
             return back()->withInput()->with('erreur_caisse',
-                "Le montant saisi ({$validated['montant']}) dépasse le reste à payer ({$reste}).");
+                "Le montant saisi ({$validated['montant']}) dépasse le reste à payer ({$plafond}). "
+                . "Pour enregistrer l'excédent de {$surplus} FCFA comme avance du client, cochez « Enregistrer le surplus comme avance ».");
         }
 
         $modePaiement = ModePaiement::find($validated['mode_paiement_id']);
@@ -265,46 +313,70 @@ class LocationComptantController extends Controller
 
         DB::beginTransaction();
         try {
-            // Numéro de reçu partagé avec les ventes et les livraisons : une
-            // seule série RC-YYYY-XXX pour toute la caisse, sinon deux
-            // encaissements du même jour porteraient le même numéro.
-            $year = date('Y');
-            $lastNum = (int) Paiement::where('numero_recu', 'like', "RC-{$year}-%")
-                ->selectRaw('MAX(CAST(SUBSTRING(numero_recu, 9) AS UNSIGNED)) AS n')
-                ->value('n');
-            $numeroRecu = sprintf('RC-%s-%03d', $year, $lastNum + 1);
+            $restant = (float) $validated['montant'];
+            $recus   = [];
+            foreach ($locations as $location) {
+                $part = min((float) $restes[$location->id], $restant);
+                if ($part <= 0) {
+                    continue;
+                }
 
-            $paiement = Paiement::create(array_merge([
-                'client_id'       => $location->client_id,
-                'code'            => 'PAY-' . strtoupper(substr(md5(uniqid()), 0, 8)),
-                'libelle'         => $validated['notes'] ?? ('Encaissement agence - location ' . $location->numero),
-                'montant_total'   => $validated['montant'],
-                'montant_restant' => 0,
-                'statut'          => 2, // en attente de la seconde validation
-                'service'         => Help::$LOCATION,
-                'service_id'      => $location->id,
-                'agence_id'       => $agenceId,
-                'caissier_id'     => $caissier?->id,
-                'numero_recu'     => $numeroRecu,
-                'created_at'      => $validated['date_encaissement'] ?? now(),
-                'updated_at'      => now(),
-            ], $this->initierValidation()));
+                $year = date('Y');
+                $lastNum = (int) Paiement::where('numero_recu', 'like', "RC-{$year}-%")
+                    ->selectRaw('MAX(CAST(SUBSTRING(numero_recu, 9) AS UNSIGNED)) AS n')
+                    ->value('n');
+                $numeroRecu = sprintf('RC-%s-%03d', $year, $lastNum + 1);
 
-            LignePaiement::create([
-                'paiement_id'      => $paiement->id,
-                'mode_paiement_id' => $validated['mode_paiement_id'],
-                'reference'        => $validated['reference'] ?? null,
-                'moyen_paiement'   => $modePaiement?->libelle,
-                'date_paiement'    => $validated['date_encaissement'] ?? now(),
-                'montant'          => $validated['montant'],
-                'statut'           => 2, // aligné sur le paiement parent
-                'user_id'          => $caissier?->id,
-                'code_paiement'    => $paiement->code,
-                'service'          => Help::$LOCATION,
-                'service_id'       => $location->id,
-                'created_at'       => $validated['date_encaissement'] ?? now(),
-                'updated_at'       => now(),
-            ]);
+                $paiement = Paiement::create(array_merge([
+                    'client_id'       => $location->client_id,
+                    'code'            => 'PAY-' . strtoupper(substr(md5(uniqid()), 0, 8)),
+                    'libelle'         => $validated['notes'] ?? ('Encaissement agence - location ' . $location->numero),
+                    'montant_total'   => $part,
+                    'montant_restant' => 0,
+                    'statut'          => 2, // en attente de la seconde validation
+                    'service'         => Help::$LOCATION,
+                    'service_id'      => $location->id,
+                    'agence_id'       => $agenceId,
+                    'caissier_id'     => $caissier?->id,
+                    'numero_recu'     => $numeroRecu,
+                    'created_at'      => $validated['date_encaissement'] ?? now(),
+                    'updated_at'      => now(),
+                ], $this->initierValidation()));
+
+                LignePaiement::create([
+                    'paiement_id'      => $paiement->id,
+                    'mode_paiement_id' => $validated['mode_paiement_id'],
+                    'reference'        => $validated['reference'] ?? null,
+                    'moyen_paiement'   => $modePaiement?->libelle,
+                    'date_paiement'    => $validated['date_encaissement'] ?? now(),
+                    'montant'          => $part,
+                    'statut'           => 2, // aligné sur le paiement parent
+                    'user_id'          => $caissier?->id,
+                    'code_paiement'    => $paiement->code,
+                    'service'          => Help::$LOCATION,
+                    'service_id'       => $location->id,
+                    'created_at'       => $validated['date_encaissement'] ?? now(),
+                    'updated_at'       => now(),
+                ]);
+
+                $restant -= $part;
+                $recus[]  = $numeroRecu;
+            }
+
+            if ($surplus >= 1) {
+                $clientSurplus = \App\Models\Client::find($locations->first()->client_id);
+                if ($clientSurplus) {
+                    $avance = \App\Services\Avances::deposer($clientSurplus, $surplus, array_merge([
+                        'mode_paiement_id' => $validated['mode_paiement_id'],
+                        'reference'        => $validated['reference'] ?? null,
+                        'libelle'          => 'Surplus de l\'encaissement ' . implode(', ', $recus),
+                        'date_depot'       => $validated['date_encaissement'] ?? now(),
+                        'origine'          => 'SURPLUS',
+                        'origine_recu'     => implode(', ', $recus),
+                    ], $this->initierValidation()), $caissier, $agenceId);
+                    $recus[] = $avance->numero_recu . ' (avance)';
+                }
+            }
 
             DB::commit();
         } catch (\Throwable $e) {
@@ -314,7 +386,8 @@ class LocationComptantController extends Controller
 
         return redirect()
             ->route('show.encaissements.locations')
-            ->with('success', "Encaissement {$numeroRecu} créé. En attente de validation par un autre administrateur.");
+            ->with('success', (count($recus) > 1 ? 'Encaissements ' : 'Encaissement ') . implode(', ', $recus)
+                . (count($recus) > 1 ? ' créés' : ' créé') . '. En attente de validation par un autre administrateur.');
     }
 
     /**
@@ -332,29 +405,16 @@ class LocationComptantController extends Controller
         }
 
         LignePaiement::where('paiement_id', $paiement->id)->update(['statut' => 1]);
-        $paiement->update(['statut' => 1]);
+        // Validé deux fois : la preuve du versement reste à joindre, puis un
+        // troisième administrateur finalise (point 20, 09/09/2026).
+        $paiement->update(['statut' => 1, 'etat_reglement' => \App\Models\DemandePaiement::A_PAYER]);
 
-        // La validation d'une location par le gestionnaire s'appuie sur
-        // location.statut (3 = soldée), et non sur les montants : sans cette
-        // remise à jour, une location intégralement réglée au guichet resterait
-        // refusée à la validation avec « le paiement doit être soldé ».
-        // Même convention que l'écran de paiement historique : 2 = partiellement
-        // réglée, 3 = soldée.
+        // Drapeau de la location, commission de l'apporteur et points du
+        // client : une seule règle, partagée avec l'imputation des avances
+        // (App\Services\ReglementValide::appliquerLocation).
         $location = $paiement->service_id ? Location::find($paiement->service_id) : null;
         if ($location) {
-            $soldee = $location->montantRestantDu() <= 0;
-
-            $location->update(['statut' => $soldee ? 3 : 2]);
-
-            $this->crediterApporteur($location, (float) $paiement->montant_total);
-
-            // Points de fidélité à la clôture, comme le faisait l'écran de
-            // paiement historique désormais retiré.
-            if ($soldee && $location->client) {
-                $location->client->update([
-                    'point' => (float) $location->client->point + 200,
-                ]);
-            }
+            \App\Services\ReglementValide::appliquerLocation($location, $paiement);
         }
 
         return back()->with('success', "Encaissement {$paiement->numero_recu} validé. Le reçu est maintenant disponible.");
@@ -374,53 +434,20 @@ class LocationComptantController extends Controller
      */
     private function crediterApporteur(Location $location, float $montantTranche): void
     {
-        $client = $location->client;
+        \App\Services\ReglementValide::crediterApporteurLocation($location, $montantTranche);
+    }
+    public function preuve($paiementId, Request $request)
+    {
+        return $this->joindrePreuveReglement(Paiement::find($paiementId), $request);
+    }
 
-        if (!$client || !$client->code_parrain) {
-            return;
-        }
+    public function voirPreuve($paiementId)
+    {
+        return $this->voirPreuveReglement(Paiement::find($paiementId));
+    }
 
-        // L'apporteur est lu AVANT d'accéder à son solde : un code_parrain
-        // orphelin provoquerait sinon une page d'erreur alors que le paiement
-        // vient d'être validé.
-        $apporteur = \App\Models\Apporteur::where('code', $client->code_parrain)->first();
-
-        if (!$apporteur) {
-            return;
-        }
-
-        $montantTotalLoc = (float) $location->montant_total;
-
-        if ($montantTotalLoc < 5000000) {
-            $taux = 2.5;
-        } elseif ($montantTotalLoc <= 20000000) {
-            $taux = 5;
-        } else {
-            $taux = 7;
-        }
-
-        // Arrondi au franc entier : le FCFA n'a pas de decimales. Sans lui,
-        // le solde de l'apporteur (arrondi) et la commission a payer (avec ses
-        // centimes) ne tombaient jamais d'accord : 104 contre 103,72.
-        $montantCommission = round($montantTranche * $taux / 100);
-
-        // LA COMMISSION LAISSE UNE TRACE, comme celle d'une vente.
-        //
-        // On se contentait de créditer le solde. Ce solde n'était donc
-        // justifiable par aucune pièce : impossible de savoir d'où il venait,
-        // de le contrôler, ou de le reconstituer s'il dérivait — et l'écran
-        // « Commissions » ignorait purement et simplement les locations.
-        $commission = \App\Models\CommissionApporteur::create([
-            'location_id'  => $location->id,
-            'apporteur_id' => $apporteur->id,
-            'montant'      => $montantCommission,
-            'type_affaire' => 'LOCATION',
-            'statut'       => 1,
-        ]);
-
-        // On INCRÉMENTE le solde, on ne l'écrase pas : les commissions se cumulent.
-        $apporteur->update([
-            'solde' => (float) $apporteur->solde + (float) $commission->montant,
-        ]);
+    public function effectuer($paiementId)
+    {
+        return $this->effectuerReglement(Paiement::find($paiementId));
     }
 }

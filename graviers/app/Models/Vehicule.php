@@ -48,8 +48,18 @@ class Vehicule extends Model
             return false;
         }
 
+        // UNE COURSE REFUSÉE N'EST PAS UNE COURSE EN COURS.
+        //
+        // Le refus laisse la course en base, active et non livrée — elle ne le
+        // sera jamais. Comptée ici, elle retenait le camion pour toujours : une
+        // seule course refusée dans son histoire, et il ne pouvait plus jamais
+        // redevenir disponible, même après avoir terminé toutes les autres.
+        //
+        // C'est le cas d'une demande refusée puis réaffectée au même livreur :
+        // il fait la course, la clôture, et son camion reste bloqué.
         $courseEnCours = Livraison::where('vehicule_id', $vehiculeId)
             ->where('statut', Help::$STATUT_ACTIF)
+            ->where('accepte', '!=', Livraison::REFUSEE)
             ->where('etat_livraison', '!=', Help::$LIVRAISON_LIVREE)
             ->exists();
 

@@ -209,7 +209,7 @@
                         </div>
                     @empty
                         <div class="text-center my-4 py-3">
-                            <i class="material-icons md-celebration text-success" style="font-size: 48px;"></i>
+                            <i class="material-icons md-emoji_events text-success" style="font-size: 48px;"></i>
                             <p class="text-muted mt-2 mb-0">Aucun débiteur — bravo ! 🎉</p>
                         </div>
                     @endforelse
@@ -272,7 +272,7 @@
             <div class="card dash-card">
                 <div class="card-header dash-card-header">
                     <h5 class="dash-card-title">
-                        <i class="material-icons md-bolt text-primary"></i>
+                        <i class="material-icons md-flash_on text-primary"></i>
                         Actions rapides
                     </h5>
                 </div>

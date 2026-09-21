@@ -4,10 +4,12 @@ import 'package:printing/printing.dart';
 
 import 'package:pdf/pdf.dart';
 
+import '../components/bouton_retour.dart';
 import '../../globale.dart';
 import '../models/detail_devis.dart';
 import '../models/devis.dart';
 import 'fne_template.dart';
+import 'totaux_document.dart';
 
 class ImpressionDevisPdf extends StatelessWidget {
   final DataDevis devis;
@@ -32,29 +34,9 @@ class ImpressionDevisPdf extends StatelessWidget {
       appBar: AppBar(
         title: const Text(
           "Imprimer mon devis",
-          style: TextStyle(color: Colors.black),
         ),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       body: PdfPreview(
         canChangeOrientation: false,
@@ -75,13 +57,14 @@ class ImpressionDevisPdf extends StatelessWidget {
     for (int i = 0; i < lignes.length; i++) {
       final l = lignes[i];
       double montant;
+      // Le numéro de bon interne en colonne Réf (13/09/2026), la désignation nue.
       String designation = l.nom ?? '';
       String unite = l.unite ?? 'U';
 
       double prixUnitaire = _prixLigne(l);
       if (devis.service == LOCATION) {
         montant = prixUnitaire * l.qte! * l.nbre_jour_location!;
-        designation += ' (${l.nbre_jour_location} Jrs)';
+        designation += ' (${l.nbre_jour_location} jour(s))';
       } else {
         montant = prixUnitaire * l.qte!;
       }
@@ -89,7 +72,7 @@ class ImpressionDevisPdf extends StatelessWidget {
       totalHt += montant;
 
       articles.add(FneArticle(
-        ref: (i + 1).toString().padLeft(2, '0'),
+        ref: referenceLigne(devis.numero_bon_commande, i + 1),
         designation: designation,
         puHt: prixUnitaire,
         qte: l.qte!.toDouble(),
@@ -101,20 +84,30 @@ class ImpressionDevisPdf extends StatelessWidget {
     }
 
     double montantTvaCalc = devis.tva ?? 0;
+    // ATTENTION : `devis.montant` n'est pas la source des totaux. Comme
+    // `montant_total` d'une commande, cette colonne ne veut pas dire la même
+    // chose selon le canal. Les totaux se calculent depuis les lignes.
     double coutLivraison = devis.cout_livraison ?? 0;
+    double tvaTransport = devis.tva_transport ?? 0;
     double coutReductionDevis = devis.cout_reduction ?? 0;
-    double totalTtc = totalHt + montantTvaCalc;
-    double totalAPayer = (devis.montant ?? 0) + montantTvaCalc + coutLivraison - coutReductionDevis;
+
+    final totaux = TotauxDocument(
+      htArticles: totalHt,
+      livraison: coutLivraison,
+      tva: montantTvaCalc,
+      tvaTransport: tvaTransport,
+      remise: coutReductionDevis,
+    );
 
     // Ajouter ligne livraison si applicable
-    if (coutLivraison > 0) {
+    if (coutLivraison > 0 && totaux.transportEnLigne) {
       articles.add(FneArticle(
         ref: '',
         designation: 'Coût de livraison (${devis.adresse_livraison ?? ""})',
         puHt: coutLivraison,
         qte: 1,
         unite: 'Forfait',
-        taxes: '0',
+        taxes: tvaTransport > 0 ? 'TVA ($tva%)' : '0',
         remise: 0,
         montantHt: coutLivraison,
       ));
@@ -123,11 +116,13 @@ class ImpressionDevisPdf extends StatelessWidget {
     // Résumé fiscal
     List<FneResumeFiscal> resumeFiscal = [];
     if (tva > 0) {
+      // Une catégorie : l'assiette compte le transport quand il est taxé, et
+      // les taxes fondent les deux TVA (09/09/2026, comme le site).
       resumeFiscal.add(FneResumeFiscal(
         categorie: 'TVA $tva% sur HT',
-        sousTotal: totalHt,
+        sousTotal: totaux.assietteTva,
         taux: '$tva%',
-        totalTaxes: montantTvaCalc,
+        totalTaxes: totaux.tvaDocument,
       ));
     } else {
       resumeFiscal.add(FneResumeFiscal(
@@ -149,10 +144,12 @@ class ImpressionDevisPdf extends StatelessWidget {
       date: DateFormat('dd/MM/yyyy HH:mm:ss').format(DateTime.now()),
       client: clientFne,
       articles: articles,
-      totalHt: totalHt,
+      totalHt: totaux.htAffiche,
       totalTva: montantTvaCalc,
-      totalTtc: totalTtc,
-      totalAPayer: totalAPayer,
+      totalTtc: totaux.ttcAffiche,
+      tvaTransport: tvaTransport,
+      livraisonHorsTableau: totaux.livraisonHorsTableau,
+      totalAPayer: totaux.aPayer,
       remise: coutReductionDevis,
       resumeFiscal: resumeFiscal,
       adresseLivraison: devis.adresse_livraison,

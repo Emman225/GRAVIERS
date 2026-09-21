@@ -71,7 +71,8 @@
                             <div class="row shipping_calculator" id="formulaire">
                                 {{-- <div class="form-group col-lg-6"> --}}
                                 <div class="custom_select mb-5" style="z-index: 9999">
-                                    <select id="region" style="border: solid 1px grey" class="form-control select-active form-bordered" name="region" id="region">
+                                    {{-- Lecture seule : la région se déduit de la ville (cf. adresse.blade.php). --}}
+                                    <select id="region" style="border: solid 1px grey; background:#e9ecef; pointer-events:none;" class="form-control select-active form-bordered champ-fige" name="region" tabindex="-1" aria-readonly="true">
                                         <option value="-1">Selectionnez une region...</option>
                                         @foreach ($regions as $region)
                                             <option  value="{{ $region->id }}">{{ $region->nom }}</option>
@@ -424,7 +425,7 @@
 
                     },
                     error: function () {
-                        alert('Une erreur est survenue.');
+                        alerte('Une erreur est survenue.');
                     },
                     complete: function(){
                         console.log("Ajax region terminé");
@@ -465,7 +466,7 @@
 
                     },
                     error: function () {
-                        alert('Une erreur est survenue.');
+                        alerte('Une erreur est survenue.');
                     },
                     complete : function(){
                         console.log("Ajax terminé");
@@ -508,7 +509,7 @@
 
 
         // INITIALISATION DE LA BARRE DE RECHERCHE
-        var geocoder = L.Control.geocoder({
+        var geocoder = creerRechercheLieu({
             title: 'Barre de recherche',
             placeholder: 'Entrez votre adresse',
             collapsed: false,
@@ -542,7 +543,10 @@
         });
 
         // RETABLIR L'AFFICHAGE PAR DEFAUT
-        geocoder.on('startgeocode', function() {
+        // « startsuggest » s'ajoute a « startgeocode » : depuis que les suggestions
+        // apparaissent des la frappe, c'est lui qui est emis. Sans cette ligne, la
+        // liste refermee apres un premier choix ne serait plus jamais rouverte.
+        geocoder.on('startgeocode startsuggest', function() {
             var resultsContainer = geocoder.getContainer().querySelector('.leaflet-control-geocoder-alternatives');
             if (resultsContainer) {
                 resultsContainer.style.display = 'block'; // Rétablir l'affichage par défaut
@@ -564,7 +568,8 @@
                     console.log('response:', response)
 
                     $('#cout_livraison').text('0');
-                    $('#cout_livraison').text('('+response.km+' km) '+ formatNumber(response.cout_livraison)+' fcfa')
+                    $('#cout_livraison').text('('+response.km+' km) '+ formatNumber(response.cout_livraison)+' fcfa'
+                        + ((response.tva_transport || 0) > 0 ? ' + TVA transport ' + formatNumber(response.tva_transport) + ' fcfa' : ''))
 
 
                     let tva = parseInt($('#tva').text().replace(/\s/g, ''))
@@ -574,7 +579,7 @@
                     let montantHT = parseInt($('#montantHT').text().replace(/\s/g, ''))
                     console.log('montantHT:', montantHT)
 
-                    let total = tva + response.cout_livraison+montantHT
+                    let total = tva + response.cout_livraison + (response.tva_transport || 0) + montantHT
                     console.log('voila le totall', total)
                     $('#montantTTC').text('');
                     $('#montantTTC').text(formatNumber(total));

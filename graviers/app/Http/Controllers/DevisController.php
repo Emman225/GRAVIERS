@@ -24,6 +24,32 @@ class DevisController extends Controller
 {
     //
 
+    /**
+     * LE CLIENT SUPPRIME UN DEVIS EN ATTENTE (10/09/2026).
+     *
+     * Depuis « Mon compte → Mes devis » et « Mes devis en attente ». Le devis
+     * doit être le sien et encore ouvert (Devis::motifDeNonSuppression) ; il
+     * est archivé, jamais effacé — l'application mobile fait la même chose
+     * par l'API (supprimer-devis).
+     */
+    public function supprimerDevis(Devis $devis){
+        $client = Client::where('user_id', Auth::user()->id)->first();
+        if (!$client || (int) $devis->client_id !== (int) $client->id) {
+            abort(404);
+        }
+
+        $motif = $devis->motifDeNonSuppression();
+        if ($motif !== null) {
+            return back()->with('error', $motif);
+        }
+
+        $devis->supprimerParLeClient();
+
+        // Retour sur la page d'où vient la demande (« Mon compte » ou « Mes
+        // devis ») : chacune affiche le message en toast.
+        return back()->with('success', "Le devis n° {$devis->numero} a été supprimé.");
+    }
+
     public function editDevis(Devis $devis){
 
         if(!session('devisAModifier')){
@@ -40,14 +66,10 @@ class DevisController extends Controller
             // Prix fournisseur le plus bas pour tous les produits du devis, en UNE requête
             // (évite un appel prixPour()/requête stock par ligne dans la boucle).
             $produitIds = $devis->detailDevis->pluck('produit_id')->filter()->unique()->all();
-            $prixFournisseur = \App\Models\StockProduit::whereIn('produit_id', $produitIds)
-                ->where('statut', \Help::$STATUT_ACTIF)
-                ->where('prix', '>', 0)
-                ->whereNull('deleted_at')
-                ->groupBy('produit_id')
-                ->selectRaw('produit_id, MIN(prix) as mn')
-                ->pluck('mn', 'produit_id')
-                ->toArray();
+            // Prix de vente officiel : prix d'achat le plus élevé majoré du
+            // pourcentage DALAKOUN. Le devis reprenait le fournisseur le moins
+            // cher et sans marge, donc un prix que la commande ne confirmait pas.
+            $prixFournisseur = \App\Models\Produit::prixVenteParProduit($produitIds);
 
             foreach($devis->detailDevis as $detail){
                 // Prix actualisé, même logique que Produit::prixPour() mais sans requête par ligne :
@@ -152,6 +174,9 @@ class DevisController extends Controller
                             'montant' => Cart::total(),
                             'montant_ht' => Cart::total(),
                             'tva' => Client::tva($client) * Cart::total(),
+                            // AIRSI figé sur le devis (10/09/2026) : HT + TVA.
+                            'airsi' => \Help::airsiPour($client, Cart::total() + \Help::arrondiFranc(Cart::total() * Client::tva($client)),
+                                (float) Cart::total(), (float) Client::tva($client)),
                         ]);
 
                     $this->annulerModificationDevis($devis);
@@ -186,6 +211,11 @@ class DevisController extends Controller
                             'montant' => Cart::total(),
                             'montant_ht' => Cart::total(),
                             'tva' => Client::tva($client) * Cart::total(),
+                            // AIRSI figé sur le devis (10/09/2026) : HT + TVA.
+                            'airsi' => \Help::airsiPour($client, Cart::total() + \Help::arrondiFranc(Cart::total() * Client::tva($client)),
+                                (float) Cart::total(), (float) Client::tva($client),
+                                (float) (session('0')['cout_livraison'] ?? 0),
+                                \Help::tvaTransportPour($client, (float) (session('0')['cout_livraison'] ?? 0)) > 0 ? (float) Client::tvaTransport($client) : 0.0),
                             'adresse_livraison_id' => $adresseId,
                             'cout_livraison' => session('0')['cout_livraison'],
                         ]);
@@ -291,7 +321,9 @@ class DevisController extends Controller
             'villes' => Ville::all(),
             'client' => $client,
             'categories' => Categorie::all(),
-            'modes'=> ModePaiement::listePourClient(),
+            // Au-delà du plafond, le menu ne propose plus que le règlement en
+            // agence : même règle que le panier, tenue au même endroit.
+            'modes'=> ModePaiement::listePourClient($devis->montantAPayer()),
             'total' => $devis->montant,
             'devis' => $devis,
             'typeLivraison' => TypeLivraison::orderBy('libelle')->get(),

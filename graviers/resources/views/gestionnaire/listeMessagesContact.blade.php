@@ -32,6 +32,9 @@
         <div class="col-md-12">
             <div class="card mb-4">
                 <div class="card-body">
+                    <x-export-buttons table-id="listeMessagesContact"
+                                      filename="messages-de-contact"
+                                      title="Messages de contact" />
                     <div class="table-responsive">
                         <table class="table table-hover table-bordered" id="listeMessagesContact">
                             <thead>
@@ -50,7 +53,7 @@
                                     <tr @if(!$message->lu && !$message->trashed()) style="font-weight:600; background-color:#f2f7ff;" @endif>
                                         <td class="text-center">{{ $i + 1 }}</td>
                                         <td class="text-center text-nowrap">
-                                            {{ $message->created_at ? $message->created_at->format('d/m/Y H:i') : '—' }}
+                                            {{ $message->created_at ? $message->created_at->format('d/m/Y H:i:s') : '—' }}
                                         </td>
                                         <td>{{ $message->nom_prenoms }}</td>
                                         <td class="text-nowrap">
@@ -118,7 +121,7 @@
                         <p class="text-muted mb-3">
                             <a href="mailto:{{ $message->email }}">{{ $message->email }}</a>
                             &nbsp;·&nbsp; {{ $message->telephone }}
-                            &nbsp;·&nbsp; {{ $message->created_at ? $message->created_at->format('d/m/Y à H:i') : '' }}
+                            &nbsp;·&nbsp; {{ $message->created_at ? $message->created_at->format('d/m/Y à H:i:s') : '' }}
                         </p>
                         <div style="border-left:4px solid #1c57a3; background:#f8f9fa; padding:14px 16px; white-space:pre-wrap;">{{ $message->message }}</div>
                     </div>

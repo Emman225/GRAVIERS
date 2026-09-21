@@ -70,6 +70,9 @@
 
     <div class="card mb-4">
         <div class="card-body">
+            <x-export-buttons table-id="liste"
+                              filename="grille-tarifaire-livraisons"
+                              title="Grille tarifaire des livraisons" />
             <div class="table-responsive">
                 <table class="table table-striped" id="liste">
                     <thead style="background-color: #1c57a3; color: white;">
@@ -111,13 +114,13 @@
                                 <td class="text-center">{{ $t->unite_min }} — {{ $t->unite_max }}</td>
                                 <td class="text-center">{{ $t->distance_min_km }} — {{ $t->distance_max_km }}</td>
                                 <td class="text-end"><strong>{{ Help::formatNombre($t->prix_km, true) }}</strong></td>
-                                <td class="text-center">
+                                <td class="text-nowrap text-center">
                                     @if (isset($enConflit[$t->id]))
                                         <span class="badge bg-danger" title="Recouvre les tranches #{{ implode(', #', $enConflit[$t->id]) }}">
                                             Recouvre #{{ implode(', #', $enConflit[$t->id]) }}
                                         </span>
                                     @endif
-                                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#modalTarif"
+                                    <button type="button" class="btn btn-sm btn-primary" title="Modifier la tranche" data-bs-toggle="modal" data-bs-target="#modalTarif"
                                             data-tarif="{{ $donneesTarif }}" onclick="preparerEdition(JSON.parse(this.dataset.tarif))">
                                         <i class="material-icons md-edit"></i>
                                     </button>
@@ -127,7 +130,7 @@
                                           data-confirm-button="Oui, supprimer">
                                         @csrf
                                         @method('DELETE')
-                                        <button type="submit" class="btn btn-sm btn-danger">
+                                        <button type="submit" class="btn btn-sm btn-danger" title="Supprimer la tranche">
                                             <i class="material-icons md-delete"></i>
                                         </button>
                                     </form>
@@ -143,6 +146,72 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+    </div>
+
+    {{-- ============================================================
+         ATTRIBUER TOUTE LA GRILLE À UN LIVREUR
+
+         Un livreur nouvellement créé n'a AUCUNE tranche : ce qu'on lui doit se
+         calcule alors sur son ancien mode de tarification, sans marge garantie.
+         Les tranches se saisissaient une à une — autant dire jamais.
+
+         C'est la grille CI-DESSUS qui sert de source : chaque tranche du
+         livreur en est un pourcentage, et la marge est donc garantie partout.
+         ============================================================ --}}
+    <div class="card dash-card mb-4">
+        <div class="card-header dash-card-header">
+            <h5 class="dash-card-title mb-0">
+                <i class="material-icons md-local_shipping text-primary"></i>
+                Attribuer cette grille à un livreur
+            </h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted">
+                Les {{ $tarifs->count() }} tranches ci-dessus sont recopiées dans la grille du
+                livreur, au pourcentage choisi. La liste des livreurs et leur identifiant se
+                trouvent dans <a href="{{ route('show.list') }}">Livreurs</a>.
+            </p>
+
+            <form method="POST" action="{{ route('show.grilleLivreur.preRemplir') }}" class="row g-3 align-items-end">
+                @csrf
+
+                <div class="col-md-3">
+                    <label class="form-label">Identifiant du livreur <span class="text-danger">*</span></label>
+                    <input type="number" min="1" step="1" name="livreur_id" class="form-control"
+                           value="{{ old('livreur_id') }}" placeholder="ex. 5" required />
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Part du livreur (%) <span class="text-danger">*</span></label>
+                    <input type="number" min="1" max="99" step="0.01" name="part" class="form-control"
+                           value="{{ old('part', 60) }}" required />
+                    <small class="text-muted">Le reste est la marge de DALAKOUN.</small>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Plancher par course (FCFA)</label>
+                    <input type="number" min="0" step="1" name="plancher" class="form-control"
+                           value="{{ old('plancher', 2500) }}" />
+                    <small class="text-muted">Laisser vide pour appliquer le pourcentage seul.</small>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="form-check mb-2">
+                        {{-- Le remplissage EFFACE d'abord la grille existante. Sur un
+                             livreur dont les tranches ont été ajustées à la main, ce
+                             serait une perte silencieuse : on l'exige explicitement. --}}
+                        <input class="form-check-input" type="checkbox" value="1"
+                               name="remplacer" id="remplacerGrille">
+                        <label class="form-check-label" for="remplacerGrille">
+                            Remplacer la grille existante
+                        </label>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="material-icons md-check align-middle"></i> Valider
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 

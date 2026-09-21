@@ -1,16 +1,15 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:buttons_tabbar/buttons_tabbar.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:http/http.dart' as http;
 import 'package:mon_gravier_com_livreur/constants.dart';
 import 'package:mon_gravier_com_livreur/globale.dart';
 import 'package:mon_gravier_com_livreur/models/retour_livraison.dart';
 import 'package:mon_gravier_com_livreur/screens/livraison/components/livraison_liste_screen.dart';
 
+import '../../../components/bouton_retour.dart';
 import '../../helper/constants.dart';
 
 class LivraisonScreen extends StatefulWidget {
@@ -20,7 +19,17 @@ class LivraisonScreen extends StatefulWidget {
   State<LivraisonScreen> createState() => LivraisonScreenState();
 }
 
-class LivraisonScreenState extends State<LivraisonScreen> {
+class LivraisonScreenState extends State<LivraisonScreen>
+    with SingleTickerProviderStateMixin {
+  /// LES ONGLETS SONT PILOTABLES DE L'EXTERIEUR.
+  ///
+  /// `DefaultTabController` ne le permettait pas : depuis l'accueil, taper
+  /// « EFFECTUEES » amenait bien sur cet ecran, mais toujours sur le premier
+  /// onglet. Et comme l'ecran reste vivant d'un passage a l'autre, un
+  /// `initialIndex` n'aurait servi qu'une seule fois.
+  late final TabController _onglets =
+      TabController(length: 3, vsync: this);
+
   List<UneLivraison> livraisonEnAttente = [];
   List<UneLivraison> livraisonEnTraitement = [];
   List<UneLivraison> livraisonEffectue = [];
@@ -56,7 +65,7 @@ class LivraisonScreenState extends State<LivraisonScreen> {
         if (retourHttp.statusCode == 200) {
           liv = RetourLivraison.fromJson(datas);
           if (liv.code == 200) {
-            setState(() {
+            if (mounted) setState(() {
               var livraisons = liv.data ?? [];
               if (kDebugMode) {
                 print("taille------------------${livraisons.length}");
@@ -70,22 +79,18 @@ class LivraisonScreenState extends State<LivraisonScreen> {
               livraisonEffectue = livraisons
                   .where((c) => c.etatLivraison == LIVRAISON_LIVREE)
                   .toList();
-              pages = [
-                LivraisonListeScreen(livraisons: livraisonEnAttente, onRetour: () => chargerLivraison(sansLoader: true)),
-                LivraisonListeScreen(livraisons: livraisonEnTraitement, onRetour: () => chargerLivraison(sansLoader: true)),
-                LivraisonListeScreen(livraisons: livraisonEffectue, onRetour: () => chargerLivraison(sansLoader: true)),
-              ];
+              pages = _pages();
             });
           } else {
-            afficherErreur(liv.message ?? '');
+            if (mounted) afficherErreur(liv.message ?? '');
           }
         } else {
           // Sans cette branche, une reponse serveur en erreur ne produisait
           // AUCUNE reaction a l'ecran.
-          afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez reessayer.");
+          if (mounted) afficherErreur("Erreur serveur (code ${retourHttp.statusCode}). Veuillez reessayer.");
         }
       } catch (e) {
-        afficherErreur(
+        if (mounted) afficherErreur(
             "Une erreur s'est produite veuillez reesayer plus tard");
         if (kDebugMode) {
           print(e.toString());
@@ -95,18 +100,47 @@ class LivraisonScreenState extends State<LivraisonScreen> {
         fermerChargement();
       }
     } else {
-      afficherInfo("Veuillez vérifier votre connexion internet");
+      if (mounted) afficherInfo("Veuillez vérifier votre connexion internet");
     }
   }
 
+  /// Les trois onglets, batis sur les listes du moment.
+  List<Widget> _pages() => [
+        for (final liste in [
+          livraisonEnAttente,
+          livraisonEnTraitement,
+          livraisonEffectue,
+        ])
+          LivraisonListeScreen(
+            livraisons: liste,
+            onRetour: () => chargerLivraison(sansLoader: true),
+            onRafraichir: () => chargerLivraison(sansLoader: true),
+          ),
+      ];
+
   @override
   void initState() {
-    pages = [
-      LivraisonListeScreen(livraisons: livraisonEnAttente, onRetour: () => chargerLivraison(sansLoader: true)),
-      LivraisonListeScreen(livraisons: livraisonEnTraitement, onRetour: () => chargerLivraison(sansLoader: true)),
-      LivraisonListeScreen(livraisons: livraisonEffectue, onRetour: () => chargerLivraison(sansLoader: true)),
-    ];
+    pages = _pages();
     super.initState();
+    // L'accueil designe l'onglet a ouvrir ; c'est ici, et seulement ici,
+    // qu'il se change.
+    allerAOngletLivraison = (i) {
+      if (mounted && i >= 0 && i < _onglets.length) {
+        _onglets.index = i;
+        ongletLivraisonDemande = null;
+      }
+    };
+
+    // L'ECRAN VIENT D'ETRE CONSTRUIT ET UN ONGLET ETAIT DEMANDE.
+    //
+    // C'est le cas apres une livraison close si l'onglet « Livraison »
+    // n'avait pas encore ete ouvert : la demande avait ete posee avant
+    // que cet ecran n'existe.
+    final demande = ongletLivraisonDemande;
+    if (demande != null && demande >= 0 && demande < _onglets.length) {
+      _onglets.index = demande;
+      ongletLivraisonDemande = null;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if(user.token != null && user.token != ""){
         chargerLivraison();
@@ -120,6 +154,8 @@ class LivraisonScreenState extends State<LivraisonScreen> {
   @override
   void dispose(){
     // timer?.cancel();
+    if (allerAOngletLivraison != null) allerAOngletLivraison = null;
+    _onglets.dispose();
     super.dispose();
   }
 
@@ -129,6 +165,12 @@ class LivraisonScreenState extends State<LivraisonScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        // Onglet de la barre du bas : rien à dépiler, le retour
+        // ramène à l'accueil.
+        leading: BoutonRetour(
+          onTap: retourAccueil,
+          tooltip: "Retour à l'accueil",
+        ),
         title: const Text("Liste des livraisons et traitements"),
         centerTitle: true,
         automaticallyImplyLeading: false,
@@ -147,18 +189,10 @@ class LivraisonScreenState extends State<LivraisonScreen> {
         child: Container(
           width: double.infinity,
           height: heightOfScreen(context),
-          decoration: const BoxDecoration(
-            image: DecorationImage(
-              image: AssetImage("assets/images/bg.jpg"),
-              fit: BoxFit.cover,
-              opacity: 0.1,
-            ),
-          ),
-          child: DefaultTabController(
-            length: pages.length,
-            child: Column(
+          child: Column(
               children: <Widget>[
                 ButtonsTabBar(
+                  controller: _onglets,
                   radius: 10,
                   backgroundColor: kPrimaryColor,
                   unselectedBackgroundColor: kSecondaryColor,
@@ -178,11 +212,11 @@ class LivraisonScreenState extends State<LivraisonScreen> {
                 ),
                 Expanded(
                   child: TabBarView(
+                    controller: _onglets,
                     children: pages,
                   ),
                 ),
               ],
-            ),
           ),
         ),
       ),

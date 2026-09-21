@@ -14,6 +14,12 @@ use Illuminate\Support\Facades\Log;
 /**
  * Facturation d'une commande à hauteur de ce qui a été RÉGLÉ.
  *
+ * RÈGLE RETIRÉE LE 10/09/2026 : la facture naît à l'ENLÈVEMENT, une par
+ * enlèvement, et les règlements s'y rattachent (rattacherLesReglements). Le
+ * service reste pour lire les factures sur règlement déjà émises
+ * (donneesDocument), pour le rattachement, et pour la commande de rattrapage
+ * — qui ne doit plus être lancée.
+ *
  * ---------------------------------------------------------------------------
  * LA RÈGLE
  * ---------------------------------------------------------------------------
@@ -88,6 +94,7 @@ class FacturationCommande
 
                 $remiseRestante    = max(0, (float) ($commande->remise ?? 0) - self::sommeFactures($commande, 'remise_appliquee'));
                 $livraisonRestante = max(0, (float) ($commande->cout_livraison_client ?? 0) - self::sommeFactures($commande, 'cout_livraison_applique'));
+                $tvaTransportRestante = max(0, (float) ($commande->tva_transport ?? 0) - self::sommeFactures($commande, 'tva_transport_applique'));
 
                 $facture = Facture::create([
                     'numero'                  => Help::genererNumeroUnique('facture'),
@@ -96,9 +103,12 @@ class FacturationCommande
                     'client_id'               => $commande->client_id,
                     'service'                 => Help::$COMMANDE,
                     'service_id'              => $commande->id,
-                    'montant'                 => $aFacturer,
+                    // Le franc n'a pas de centimes : une facture qui en porte
+                    // bloque son encaissement (champ à pas de 1).
+                    'montant'                 => \Help::arrondiFranc($aFacturer),
                     'remise_appliquee'        => round($remiseRestante * $part),
                     'cout_livraison_applique' => round($livraisonRestante * $part),
+                    'tva_transport_applique'  => round($tvaTransportRestante * $part),
                     'statut'                  => 2,
                     // Créée localement : la certification DGI reste manuelle.
                     'fne_status'              => 'pending',
@@ -164,27 +174,77 @@ class FacturationCommande
     private static function envoyerMaintenant(Commande $commande, Facture $facture, $client, string $email): void
     {
         try {
-            $donneesFne = FneService::getDonneesFne($facture, $client);
-
             Help::envoyerDocumentPdf(
                 ($client?->display_name ?? '') ?: 'Client',
                 $email,
                 'Facture',
                 $facture->numero,
                 'document.factureCommande',
-                array_merge([
-                    'commande'    => $commande,
-                    'facture'     => $facture,
-                    'config'      => Configuration::first(),
-                    'image'       => config('constantes.logo'),
-                    'enlevements' => Enlevement::where('facture_id', $facture->id)->get(),
-                    'livraison'   => (float) ($facture->cout_livraison_applique ?? 0),
-                ], $donneesFne),
+                self::donneesDocument($facture, $commande),
                 'Facture_' . $facture->numero . '.pdf'
             );
         } catch (\Throwable $e) {
             Log::error('Envoi de la facture ' . $facture->numero . ' impossible : ' . $e->getMessage());
         }
+    }
+
+    /**
+     * LES DONNÉES DU DOCUMENT « FACTURE DE VENTE » — UN SEUL ENDROIT.
+     *
+     * Signalé le 07/09/2026 : la facture reçue par courriel affichait 0 sur
+     * tous les montants. Le gabarit imprime les ENLÈVEMENTS rattachés à la
+     * facture ; or une facture établie sur RÈGLEMENT (le client a payé, rien
+     * n'est encore enlevé) n'en a aucun : le tableau sortait vide, et tous
+     * les totaux avec lui. Le courriel et l'écran passaient en outre par deux
+     * jeux de données différents — le courriel envoyait par exemple le COÛT
+     * de livraison là où le gabarit attend un DRAPEAU « première facture ».
+     *
+     * Ici : les lignes viennent des enlèvements quand il y en a, sinon des
+     * lignes de la commande, au prorata de ce que couvre la facture. L'écran
+     * et le courriel appellent cette même fonction.
+     */
+    public static function donneesDocument(Facture $facture, ?Commande $commande = null): array
+    {
+        $commande = $commande ?: ($facture->service_id ? Commande::find($facture->service_id) : null);
+        $client   = $commande?->client ?: $facture->client;
+
+        $enlevements = Enlevement::where('facture_id', $facture->id)->get();
+
+        // Facture sur règlement : aucun enlèvement, on imprime la commande.
+        $lignesReglement = [];
+        if ($enlevements->isEmpty() && $commande) {
+            $du   = (float) $commande->montantAPayer();
+            $part = ($du > 0) ? min(1.0, (float) $facture->montant / $du) : 1.0;
+
+            foreach ($commande->detailCommande as $detail) {
+                $qte = (float) $detail->qte * $part;
+                if ($qte <= 0) {
+                    continue;
+                }
+                $lignesReglement[] = [
+                    'produit' => $detail->produit?->nom ?? '',
+                    'unite'   => $detail->produit?->uniteProduit?->libelle ?? 'U',
+                    'prix'    => (float) ($detail->prix ?? 0),
+                    'qte'     => round($qte, 2),
+                ];
+            }
+        }
+
+        // Le gabarit attend un DRAPEAU : 1 = première facture de la commande
+        // (elle porte la remise et la livraison), 0 = facture suivante.
+        $premiere = $commande
+            ? $commande->factures()->where('id', '<', $facture->id)->count() === 0
+            : true;
+
+        return array_merge([
+            'commande'        => $commande,
+            'facture'         => $facture,
+            'config'          => Configuration::first(),
+            'image'           => config('constantes.logo'),
+            'enlevements'     => $enlevements,
+            'lignesReglement' => $lignesReglement,
+            'livraison'       => $premiere ? 1 : 0,
+        ], FneService::getDonneesFne($facture, $client));
     }
 
     /** Total réellement dû : HT des lignes + TVA + livraison − remise. */
@@ -229,7 +289,7 @@ class FacturationCommande
      * déjà là, et le client verrait simultanément une facture due et un montant
      * réglé d'avance — exactement ce que cette facturation vient supprimer.
      */
-    private static function rattacherLesReglements(Commande $commande, Facture $facture): void
+    public static function rattacherLesReglements(Commande $commande, Facture $facture): void
     {
         $restant = (float) $facture->montant;
 

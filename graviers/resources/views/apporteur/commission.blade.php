@@ -49,7 +49,10 @@
         </form>
         <!-- card-header end// -->
         <div class="card-body">
-            <table class="table table-hover table-bordered">
+            <x-export-buttons table-id="listeCommissions"
+                              filename="commissions-apporteurs"
+                              title="Commissions des apporteurs" />
+            <table id="listeCommissions" class="table table-hover table-bordered">
                 <thead>
                     <tr>
                         <th class="text-center" style="background-color: #1c57a3; color: white">Code</th>
@@ -68,7 +71,7 @@
                             <td class="text-center"> {{ $c->nom_prenoms }} </td>
                             <td class="text-center"> {{ Help::formatNombre($c->montant, true) }}</td>
                             <td class="text-center"> {{ $c->type_affaire }} </td>
-                            <td class="text-center"> {{ $c->created_at->format('d-m-Y H:i') }} </td>
+                            <td class="text-center"> {{ $c->created_at->format('d/m/Y H:i:s') }} </td>
                         </tr>
                     @endforeach
 

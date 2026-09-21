@@ -59,19 +59,15 @@ class LignePaiement extends Model
             }
         });
 
-        static::created(function (LignePaiement $ligne) {
-            if ((int) $ligne->statut !== Help::$STATUT_ACTIF) {
-                return;
-            }
-            if ($ligne->service !== Help::$COMMANDE || !$ligne->service_id) {
-                return;
-            }
-
-            $commande = Commande::find($ligne->service_id);
-            if ($commande) {
-                \App\Services\FacturationCommande::facturerCeQuiEstRegle($commande);
-            }
-        });
+        // PLUS DE FACTURE AU RÈGLEMENT (10/09/2026). Depuis le 11/08/2026, chaque
+        // règlement validé d'une commande émettait une facture « sur règlement »
+        // (FacturationCommande::facturerCeQuiEstRegle) : un client qui payait
+        // d'avance n'avait alors aucun document. Depuis les avances (point 19)
+        // et le circuit de preuve (point 20), chaque versement a son reçu
+        // (RA-, AV-, RC-) ; et le client a tranché sur la commande 150579 : un
+        // enlèvement, UNE facture DGI. La facture naît à l'enlèvement, pour
+        // toute la quantité servie, et les règlements s'y rattachent
+        // (OrdersController::creerFacturePourEnlevements).
     }
 
     public static function lire($id)

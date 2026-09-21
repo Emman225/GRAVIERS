@@ -5,7 +5,6 @@ import 'package:camera_camera/camera_camera.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 
@@ -250,7 +249,7 @@ class _SignUpFormState extends State<SignUpForm> {
           DropdownButtonFormField<int>(
             value: pays.isNotEmpty ? pays_id : null,
             decoration: const InputDecoration(
-              labelText: "Pays",
+              labelText: "Pays *",
               hintText: "Choisir votre pays",
               floatingLabelBehavior: FloatingLabelBehavior.always,
             ),
@@ -273,7 +272,7 @@ class _SignUpFormState extends State<SignUpForm> {
             key: ValueKey('ville_$pays_id'),
             value: villes.any((v) => v.id == ville_id) ? ville_id : null,
             decoration: const InputDecoration(
-              labelText: "Ville",
+              labelText: "Ville *",
               hintText: "Choisir votre ville",
               floatingLabelBehavior: FloatingLabelBehavior.always,
             ),
@@ -309,7 +308,7 @@ class _SignUpFormState extends State<SignUpForm> {
               return null;
             },
             decoration: const InputDecoration(
-              labelText: "Nom & Prénoms ou Raison social",
+              labelText: "Nom & Prénoms ou Raison social *",
               hintText: "Entrez votre nom & prénoms ou raison social",
               // If  you are using latest version of flutter then lable text and hint text shown like this
               // if you r using flutter less then 1.20.* then maybe this is not working properly
@@ -336,7 +335,7 @@ class _SignUpFormState extends State<SignUpForm> {
               return null;
             },
             decoration: const InputDecoration(
-              labelText: "Téléphone",
+              labelText: "Téléphone *",
               hintText: "Entrez votre téléphone",
               // If  you are using latest version of flutter then lable text and hint text shown like this
               // if you r using flutter less then 1.20.* then maybe this is not working properly
@@ -363,7 +362,7 @@ class _SignUpFormState extends State<SignUpForm> {
               return null;
             },
             decoration: const InputDecoration(
-              labelText: "CNI/Pièce",
+              labelText: "CNI/Pièce *",
               hintText: "Entrez votre numéro de CNI/Pièce",
               floatingLabelBehavior: FloatingLabelBehavior.always,
               suffixIcon: Icon(Icons.perm_identity_outlined),
@@ -376,7 +375,7 @@ class _SignUpFormState extends State<SignUpForm> {
                 ? mode_paiement_id
                 : null,
             decoration: const InputDecoration(
-              labelText: "Mode de paiement préféré",
+              labelText: "Mode de paiement préféré *",
               hintText: "Choisir votre mode de paiement",
               floatingLabelBehavior: FloatingLabelBehavior.always,
               suffixIcon: Icon(Icons.payment),
@@ -430,7 +429,7 @@ class _SignUpFormState extends State<SignUpForm> {
               return null;
             },
             decoration: const InputDecoration(
-              labelText: "Email",
+              labelText: "Email *",
               hintText: "Entrez votre adresse mail",
               // If  you are using latest version of flutter then lable text and hint text shown like this
               // if you r using flutter less then 1.20.* then maybe this is not working properly
@@ -462,7 +461,7 @@ class _SignUpFormState extends State<SignUpForm> {
               return null;
             },
             decoration: InputDecoration(
-              labelText: "Mot de passe",
+              labelText: "Mot de passe *",
               hintText: "Entrez votre mot de passe",
               // If  you are using latest version of flutter then lable text and hint text shown like this
               // if you r using flutter less then 1.20.* then maybe this is not working properly
@@ -504,7 +503,7 @@ class _SignUpFormState extends State<SignUpForm> {
               return null;
             },
             decoration: InputDecoration(
-              labelText: "Confirmation mot de passe",
+              labelText: "Confirmation mot de passe *",
               hintText: "Confirmez votre mot de passe",
               // If  you are using latest version of flutter then lable text and hint text shown like this
               // if you r using flutter less then 1.20.* then maybe this is not working properly
@@ -533,7 +532,11 @@ class _SignUpFormState extends State<SignUpForm> {
                 afficherErreur(
                     "Veuillez choisir votre pays et votre ville");
               } else {
-                if (_formKey.currentState!.validate()) {
+                if (_recto == null || _verso == null) {
+                // Les deux photos de la pièce sont obligatoires (l'API les exige) :
+                // le dire avant l'envoi, avec les astérisques (16/09/2026).
+                afficherErreur("Veuillez prendre la photo recto et verso de votre pièce d'identité.");
+              } else if (_formKey.currentState!.validate()) {
                   _formKey.currentState!.save();
                   await signUpCtrl();
                 }
@@ -578,7 +581,7 @@ class _SignUpFormState extends State<SignUpForm> {
                         ),
                         onTap: () => openCamera(1)),
                 const Text(
-                  "Pièce recto",
+                  "Pièce recto *",
                   textAlign: TextAlign.center,
                 ),
                 //*/ ------- /*//
@@ -606,7 +609,7 @@ class _SignUpFormState extends State<SignUpForm> {
                         ),
                         onTap: () => openCamera(2)),
                 const Text(
-                  "Pièce verso",
+                  "Pièce verso *",
                   textAlign: TextAlign.center,
                 ),
                 //*/ ------- /*//

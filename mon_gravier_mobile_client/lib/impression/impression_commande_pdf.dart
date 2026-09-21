@@ -4,10 +4,12 @@ import 'package:printing/printing.dart';
 
 import 'package:pdf/pdf.dart';
 
+import '../components/bouton_retour.dart';
 import '../../globale.dart';
 import '../models/Commande.dart';
 import '../models/InformationsCommande.dart';
 import 'fne_template.dart';
+import 'totaux_document.dart';
 
 class ImpressionCommandePdf extends StatelessWidget {
   final UneCommande commande;
@@ -29,29 +31,9 @@ class ImpressionCommandePdf extends StatelessWidget {
       appBar: AppBar(
         title: const Text(
           "Imprimer ma commande",
-          style: TextStyle(color: Colors.black),
         ),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       body: PdfPreview(
         canChangeOrientation: false,
@@ -75,7 +57,8 @@ class ImpressionCommandePdf extends StatelessWidget {
       totalHt += montant;
 
       articles.add(FneArticle(
-        ref: (i + 1).toString().padLeft(2, '0'),
+        // Le numéro de bon interne en colonne Réf (10/09/2026), la désignation nue.
+        ref: referenceLigne(commande.numero_bl, i + 1),
         designation: l.nom ?? '',
         puHt: _prixLigne(l),
         qte: l.qte!.toDouble(),
@@ -88,19 +71,30 @@ class ImpressionCommandePdf extends StatelessWidget {
 
     double montantTvaCalc = commande.montant_tva ?? 0;
     double coutLivraison = commande.cout_livraison_client ?? 0;
+    double tvaTransport = commande.tva_transport ?? 0;
     double remise = commande.remise ?? 0;
-    double totalTtc = totalHt + montantTvaCalc;
-    double totalAPayer = commande.montantTotal?.toDouble() ?? totalTtc + coutLivraison - remise;
+
+    // Les totaux se calculent depuis les LIGNES, jamais depuis `montantTotal` :
+    // cette colonne porte le HT côté site et le net côté mobile, si bien que le
+    // même bon annonçait deux montants différents selon l'endroit où la
+    // commande avait été passée. Voir TotauxDocument.
+    final totaux = TotauxDocument(
+      htArticles: totalHt,
+      livraison: coutLivraison,
+      tva: montantTvaCalc,
+      tvaTransport: tvaTransport,
+      remise: remise,
+    );
 
     // Ligne livraison
-    if (coutLivraison > 0) {
+    if (coutLivraison > 0 && totaux.transportEnLigne) {
       articles.add(FneArticle(
         ref: '',
         designation: 'Coût de livraison (${commande.adresse ?? ""})',
         puHt: coutLivraison,
         qte: 1,
         unite: 'Forfait',
-        taxes: '0',
+        taxes: tvaTransport > 0 ? 'TVA ($tva%)' : '0',
         remise: 0,
         montantHt: coutLivraison,
       ));
@@ -109,11 +103,13 @@ class ImpressionCommandePdf extends StatelessWidget {
     // Résumé fiscal
     List<FneResumeFiscal> resumeFiscal = [];
     if (tva > 0) {
+      // Une catégorie : l'assiette compte le transport quand il est taxé, et
+      // les taxes fondent les deux TVA (09/09/2026, comme le site).
       resumeFiscal.add(FneResumeFiscal(
         categorie: 'TVA $tva% sur HT',
-        sousTotal: totalHt,
+        sousTotal: totaux.assietteTva,
         taux: '$tva%',
-        totalTaxes: montantTvaCalc,
+        totalTaxes: totaux.tvaDocument,
       ));
     } else {
       resumeFiscal.add(FneResumeFiscal(
@@ -130,15 +126,21 @@ class ImpressionCommandePdf extends StatelessWidget {
     );
 
     final pdf = await FneTemplate.genererDocument(
-      typeDocument: 'Bon de commande',
+      // Proforma tant que rien n'est payé en ligne, facture dès qu'un règlement
+      // en ligne est validé (lot 81, 15/09/2026) — le document du site.
+      typeDocument: (commande.payeEnLigne ?? 0) == 1 ? 'Facture de vente' : 'Proforma',
       numero: commande.numero ?? '',
       date: DateFormat('dd/MM/yyyy HH:mm:ss').format(DateTime.now()),
       client: clientFne,
       articles: articles,
-      totalHt: totalHt,
+      totalHt: totaux.htAffiche,
       totalTva: montantTvaCalc,
-      totalTtc: totalTtc,
-      totalAPayer: totalAPayer,
+      totalTtc: totaux.ttcAffiche,
+      tvaTransport: tvaTransport,
+      livraisonHorsTableau: totaux.livraisonHorsTableau,
+      // AIRSI figé sur la commande, dans « autres taxes » (10/09/2026).
+      autresTaxes: commande.airsi ?? 0,
+      totalAPayer: totaux.aPayer + (commande.airsi ?? 0),
       remise: remise,
       resumeFiscal: resumeFiscal,
       modePaiement: commande.modePaiement,

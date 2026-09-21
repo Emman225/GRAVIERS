@@ -3,12 +3,12 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:liquid_pull_to_refresh/liquid_pull_to_refresh.dart';
 import 'package:mon_gravier_com/constants.dart';
 import 'package:mon_gravier_com/helper/constants.dart';
 import 'package:http/http.dart' as http;
 
+import '../../components/etat_vide.dart';
 import '../../globale.dart';
 import '../../models/ConfigModel.dart';
 import 'components/categories.dart';
@@ -30,22 +30,29 @@ class _HomeScreenState extends State<HomeScreen> {
   final GlobalKey<LiquidPullToRefreshState> _refreshIndicatorKey =
       GlobalKey<LiquidPullToRefreshState>();
 
-  Future<void> _handleRefresh() async {
-    final Completer<void> completer = Completer<void>();
-    Timer(const Duration(seconds: 5), () {
-      completer.complete();
-    });
-    getConfigData();
-  }
+  /// GLISSER DU HAUT VERS LE BAS.
+  ///
+  /// Deux défauts ici, que le geste rendait visibles :
+  ///
+  ///  · le VOILE de chargement se posait par-dessus, masquant justement ce
+  ///    qu'on venait de tirer pour voir ;
+  ///  · le rechargement n'était pas ATTENDU — un `Completer` était créé, armé
+  ///    d'un minuteur de cinq secondes, puis jamais renvoyé ni complété : la
+  ///    roue disparaissait aussitôt, avant que les données n'arrivent.
+  Future<void> _handleRefresh() => getConfigData(sansLoader: true);
 
   List<Bannieres> bannieresHaut = [];
   List<Bannieres> bannieresMilieu = [];
   List<Categories> categories = [];
   List<Produits> produits = [];
 
-  getConfigData() async {
+  Future<void> getConfigData({bool sansLoader = false}) async {
     if (await verifierConnexion()) {
-      afficherChargement();
+      // Au glisser, l'indicateur du geste suffit : le voile par-dessus
+      // masquerait justement ce qu'on vient de tirer pour voir.
+      if (sansLoader == false) {
+        afficherChargement();
+      }
       try {
         String configUrl = '${lienAPI()}get-config';
         if (user.token != null && user.token!.isNotEmpty) {
@@ -86,7 +93,9 @@ class _HomeScreenState extends State<HomeScreen> {
           print(e.toString());
         }
       }
-      fermerChargement();
+      if (sansLoader == false) {
+        fermerChargement();
+      }
     } else {
       afficherInfo("Veuillez vérifier votre connexion internet");
     }
@@ -125,10 +134,20 @@ class _HomeScreenState extends State<HomeScreen> {
           if (datas['code'] == 200) {
             montantPoint = double.tryParse(datas['montantPoint']?.toString() ?? '0') ?? 0;
             nombrePoint = double.tryParse(datas['nombrePoint']?.toString() ?? '0') ?? 0;
+            // Plancher de paiement : voir `pointsUtilisables`. Une valeur
+            // absente laisse 0, c'est-à-dire aucune limite — l'ancien
+            // comportement, plutôt qu'un plancher inventé côté application.
+            montantMinimumAPayer =
+                double.tryParse(datas['montantMinimum']?.toString() ?? '0') ?? 0;
+            // Avance disponible et crédits à régler en agence (10/09/2026).
+            lireMontantsTableauDeBord(datas);
             // Sans garde, un type inattendu levait une exception avalée par le catch :
             // tva restait à 0 et TOUS les totaux du panier étaient calculés hors taxe,
             // sans que personne ne le voie.
             tva = int.tryParse(datas['tva']?.toString() ?? '0') ?? 0;
+            tvaTransport = int.tryParse(datas['tvaTransport']?.toString() ?? '0') ?? 0;
+            // AIRSI (10/09/2026) : 0 pour un client au réel.
+            tauxAirsi = double.tryParse(datas['tauxAirsi']?.toString() ?? '0') ?? 0;
             devise = datas['devise']?.toString() ?? '';
             // montantTva est déjà positionné par getTotalAmount() à partir du HT ;
             // le recalculer ici sur un montant TVA INCLUSE le surévaluait, et cette
@@ -178,6 +197,20 @@ class _HomeScreenState extends State<HomeScreen> {
       devisRepris = null;
     }
     super.initState();
+
+    // L'ACCUEIL SE LAISSE RECHARGER DE L'EXTERIEUR.
+    //
+    // Depuis que les onglets restent vivants, y revenir ne recharge
+    // plus : ses chiffres resteraient ceux d'avant l'action faite
+    // ailleurs. Silencieux : l'accueil n'est meme pas a l'ecran.
+    rafraichirAccueil = () async {
+      if (!mounted) return;
+      // Le catalogue ET les points de fidélité : une commande passée change
+      // les deux, et n'en recharger qu'un laisserait l'autre faux.
+      await getConfigData(sansLoader: true);
+      if (mounted) await chargerPoint();
+    };
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if(categories.isEmpty && produits.isEmpty && bannieresHaut.isEmpty) {
         getConfigData();
@@ -189,8 +222,26 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
+  void dispose() {
+    // On ne laisse pas un point d'entree pointer sur un ecran detruit.
+    rafraichirAccueil = null;
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // Le catalogue n'est pas encore arrivé : ni bannière, ni catégorie, ni
+    // produit. L'accueil affichait alors un en-tête seul au-dessus d'une page
+    // blanche, sans rien dire — impossible de distinguer un chargement en
+    // cours d'un serveur qui ne répond pas.
+    final bool rienACharger =
+        bannieresHaut.isEmpty && categories.isEmpty && produits.isEmpty;
+
     return Scaffold(
+      // UNE SEULE surface défilante. Le bandeau bleu en fait partie : il se
+      // replie avec le geste, et seule sa ligne du haut demeure. Il était
+      // auparavant posé HORS du défilement, ce qui faisait passer le contenu
+      // dessous avec une rupture nette dès le premier geste.
       body: LiquidPullToRefresh(
         showChildOpacityTransition: false,
         onRefresh: _handleRefresh,
@@ -198,43 +249,41 @@ class _HomeScreenState extends State<HomeScreen> {
         key: _refreshIndicatorKey,
         color: kPrimaryColor,
         backgroundColor: whiteColor,
-        child: SafeArea(
-          child: Container(
-            width: double.infinity,
-            height: heightOfScreen(context),
-            decoration: const BoxDecoration(
-              image: DecorationImage(
-                image: AssetImage("assets/images/bg.jpg"),
-                fit: BoxFit.cover,
-                opacity: 0.1,
-              ),
-            ),
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Column(
-                crossAxisAlignment: crossCenter,
-                mainAxisAlignment: mainCenter,
-                children: [
-                  const HomeHeader(),
-                  TopSlider(items: bannieresHaut),
-                  CategoriesArticle(
-                      categories: categories.sublist(0,
-                              categories.length < 5 ? categories.length : 5) ??
-                          []),
-                  if (categories.length >= 6) ...[
-                    CategoriesArticle(
-                        categories: categories.sublist(
-                            5, categories.length < 10 ? categories.length : 10)),
-                  ],
-                  SpecialOffers(items: bannieresMilieu),
-                  const SizedBox(height: 20),
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics()),
+          slivers: [
+            const EnTeteAccueil(),
+            SliverList(
+              delegate: SliverChildListDelegate([
+                // TOUTES les catégories, sur une seule rangée qui défile.
+                CategoriesArticle(categories: categories),
+                TopSlider(items: bannieresHaut),
+                SpecialOffers(items: bannieresMilieu),
+                const SizedBox(height: kSpaceXl),
+                if (rienACharger)
+                  // Hauteur bornée : EtatVide porte son propre défilement, et
+                  // un défilement dans un défilement recevrait une hauteur
+                  // infinie.
+                  SizedBox(
+                    height: 300,
+                    child: EtatVide(
+                      icone: Icons.wifi_tethering_off_outlined,
+                      titre: "Catalogue indisponible",
+                      message: "Nous n'avons pas pu charger les produits. "
+                          "Vérifiez votre connexion, puis réessayez.",
+                      libelleAction: "Réessayer",
+                      action: getConfigData,
+                    ),
+                  )
+                else
                   PopularProducts(produits: produits),
-                  const SizedBox(height: 20),
-                ],
-              ),
+                // Marge basse : la barre d'onglets et le bouton du panier
+                // recouvraient la dernière carte de la liste.
+                const SizedBox(height: 96),
+              ]),
             ),
-          ),
+          ],
         ),
       ),
     );

@@ -3,14 +3,15 @@ import 'dart:convert';
 import 'package:contained_tab_bar_view/contained_tab_bar_view.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:mon_gravier_com/components/product_card.dart';
 import 'package:mon_gravier_com/globale.dart';
 import 'package:http/http.dart' as http;
-import 'package:amazon_like_filter/amazon_like_filter.dart';
+import 'package:mon_gravier_com/components/filtre_produits.dart';
 
-import '../../constants.dart';
+import '../../components/bouton_retour.dart';
+import '../../components/etat_vide.dart';
+import '../../components/onglets.dart';
 import '../../helper/constants.dart';
 import '../../models/ConfigModel.dart';
 import '../cart/cart_screen.dart';
@@ -30,9 +31,18 @@ class ProductsCategorieScreen extends StatefulWidget {
 class _ProductsCategorieScreenState extends State<ProductsCategorieScreen> {
   List<Produits> produits = [];
   List<Produits> produitSearch = [];
-  List<AppliedFilterModel> applied = [];
 
-  List<String> cat = [];
+  // CE QUI EST COCHÉ, pour que le panneau rouvre dessus. Sans mémoire, le
+  // client ne voyait pas quel filtre était actif et ne pouvait pas le retirer.
+  Map<String, List<String>> selectionFiltres = {};
+
+  // LE CATALOGUE COMPLET, figé au premier chargement sans filtre.
+  //
+  // Les options proposées étaient construites depuis la liste AFFICHÉE : une
+  // fois un filtre posé, la liste rétrécit, et le choix offert avec elle. On
+  // pouvait restreindre encore, jamais revenir en arrière.
+  List<Produits> catalogueComplet = [];
+
   List<String> prod = [];
   List<String> mont = [];
 
@@ -66,6 +76,11 @@ class _ProductsCategorieScreenState extends State<ProductsCategorieScreen> {
           setState(() {
             produits = Produits.fromListJson(datas);
             produitSearch = produits;
+            // Sans filtre, ce que le serveur rend EST le catalogue : c'est le
+            // seul moment où l'on peut en garder la liste complète.
+            if (prod.isEmpty && mont.isEmpty) {
+              catalogueComplet = produits;
+            }
           });
           if (kDebugMode) {
             print("-------------${produits.length}");
@@ -108,12 +123,14 @@ class _ProductsCategorieScreenState extends State<ProductsCategorieScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: const BoutonRetour(),
         title: Text("Catégorie: $libCat"),
         actions: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
             child: IconBtnWithCounter(
               svgSrc: "assets/icons/Cart Icon.svg",
+            surFondSombre: true,
               press: () => Navigator.pushNamed(context, CartScreen.routeName),
             ),
           ),
@@ -124,93 +141,46 @@ class _ProductsCategorieScreenState extends State<ProductsCategorieScreen> {
           showModalBottomSheet(
             context: context,
             builder: (_) {
-              return FilterWidget(
-                  filterProps: FilterProps(
-                themeProps: ThemeProps(
-                  searchBarViewProps: SearchBarViewProps(
-                    searchHint: "Recherchez...",
+              return FiltreProduits(
+                selection: selectionFiltres,
+                groupes: [
+                  GroupeFiltre(
+                    cle: 'Produit',
+                    titre: 'Produit',
+                    options: getProduits(),
                   ),
-                ),
-                title: "Recherchez un produit",
-                onFilterChange: (value) {
-                  prod = [];
-                  mont = [];
-                  applied = value;
-                  for (var f in applied) {
-                    if (f.filterKey == 'Produit') {
-                      for (var ap in f.applied) {
-                        prod.add(ap.filterKey);
-                      }
-                    }
-                    if (f.filterKey == 'Montant') {
-                      for (var ap in f.applied) {
-                        mont.add(ap.filterKey);
-                      }
-                    }
-                    if (kDebugMode) {
-                      print(f.filterKey);
-                    }
-                  }
-
-                  chargerProduit();
-
-                  // setState(() {
-                  //   applied = value;
-                  // });
-                  if (kDebugMode) {
-                    print('Applied filer - ${value.map((e) => e.toMap())}');
-                  }
-                },
-                filters: [
-                  FilterListModel(
-                    filterOptions: getProduits(),
-                    previousApplied: const [],
-                    title: 'Produit',
-                    filterKey: 'Produit',
-                  ),
-                  FilterListModel(
-                    filterOptions: getMontant(),
-                    previousApplied: [],
-                    title: 'Montant',
-                    filterKey: 'Montant',
+                  GroupeFiltre(
+                    cle: 'Montant',
+                    titre: 'Montant',
+                    options: getMontant(),
                   ),
                 ],
-              ));
+                onValider: (choix) {
+                  // Le panneau rend la sélection complète : on la garde pour
+                  // qu'il rouvre dessus, puis on recharge.
+                  selectionFiltres = choix;
+                  prod = choix['Produit'] ?? [];
+                  mont = choix['Montant'] ?? [];
+                  chargerProduit();
+                },
+              );
             },
           );
         },
-        tooltip: 'Increment',
+        tooltip: 'Filtrer les produits',
         child: const Icon(Icons.filter_list),
       ),
       body: SafeArea(
         child: Container(
           width: double.infinity,
           height: heightOfScreen(context),
-          decoration: const BoxDecoration(
-            image: DecorationImage(
-              image: AssetImage("assets/images/bg.jpg"),
-              fit: BoxFit.cover,
-              opacity: 0.1,
-            ),
-          ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: ContainedTabBarView(
-                tabBarProperties: TabBarProperties(
-                  background: Container(
-                    margin: const EdgeInsets.only(bottom: 5),
-                    decoration: const BoxDecoration(
-                      color: kSecondaryColor,
-                      borderRadius: BorderRadius.all(Radius.circular(8.0)),
-                    ),
-                  ),
-                  indicatorColor: kPrimaryColor,
-                  labelColor: Colors.white,
-                  unselectedLabelColor: Colors.black,
-                ),
+                tabBarProperties: ongletsSegmentes(),
                 tabs: const [
-                  Text('Vente', style: white16BoldTextStyle),
-                  Text('Location', style: white16BoldTextStyle),
+                  Text('Vente'),
+                  Text('Location'),
                 ],
                 views: [
                   _listeWidgetVente(),
@@ -230,8 +200,18 @@ class _ProductsCategorieScreenState extends State<ProductsCategorieScreen> {
 
   _listeWidgetLocation(){
     List<Produits> prods = produits.where((p) => p.type_affaire == LOCATION).toList();
+    if (prods.isEmpty) {
+      return EtatVide(
+        icone: Icons.inventory_2_outlined,
+        titre: "Aucun article ici",
+        message:
+            "Aucun produit ne correspond pour le moment. Modifiez vos filtres "
+            "ou revenez un peu plus tard.",
+      );
+    }
     return GridView.builder(
       physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.only(bottom: 96),
       itemCount: prods.length,
       gridDelegate:
       const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -254,8 +234,18 @@ class _ProductsCategorieScreenState extends State<ProductsCategorieScreen> {
 
   _listeWidgetVente(){
     List<Produits> prods = produits.where((p) => p.type_affaire == VENTE).toList();
+    if (prods.isEmpty) {
+      return EtatVide(
+        icone: Icons.inventory_2_outlined,
+        titre: "Aucun article ici",
+        message:
+            "Aucun produit ne correspond pour le moment. Modifiez vos filtres "
+            "ou revenez un peu plus tard.",
+      );
+    }
     return GridView.builder(
       physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.only(bottom: 96),
       itemCount: prods.length,
       gridDelegate:
       const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -276,25 +266,25 @@ class _ProductsCategorieScreenState extends State<ProductsCategorieScreen> {
     );
   }
 
-  List<FilterItemModel> getProduits() {
-    return produits
-        .map((c) => FilterItemModel(
-            filterTitle: c.nom.toString(), filterKey: c.id.toString()))
+  List<OptionFiltre> getProduits() {
+    return (catalogueComplet.isEmpty ? produits : catalogueComplet)
+        .map((c) => OptionFiltre(
+            libelle: c.nom.toString(), cle: c.id.toString()))
         .toList();
   }
 
-  List<FilterItemModel> getMontant() {
+  List<OptionFiltre> getMontant() {
     List<Produits> newProds = [];
-    for (var p in produits) {
+    for (var p in (catalogueComplet.isEmpty ? produits : catalogueComplet)) {
       int index = newProds.indexWhere((elt) => elt.prixMoyen == p.prixMoyen);
       if (index == -1) {
         newProds.add(p);
       }
     }
     return newProds
-        .map((c) => FilterItemModel(
-              filterTitle: "${formaterMontant(c.prixMoyen!.toDouble())}/T",
-              filterKey: c.prixMoyen.toString(),
+        .map((c) => OptionFiltre(
+              libelle: "${formaterMontant(c.prixMoyen!.toDouble())}/T",
+              cle: c.prixMoyen.toString(),
             ))
         .toList();
   }

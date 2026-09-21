@@ -111,6 +111,7 @@
                                                                         <span class="recup-produit-badge recup-produit-badge--wait">À accepter</span>
                                                                     @else
                                                                         <span class="recup-produit-code">{{ $livraison->enlevement?->code_enleve ?? '-' }}</span>
+                                                                        @include('client._codesLivraison', ['livraison' => $livraison, 'numeroCommande' => $commande->numero, 'queEnlevement' => true])
                                                                     @endif
                                                                 </span>
                                                             </td>
@@ -142,6 +143,16 @@
                                                             </td>
 
                                                             <td class="action text-center" data-title="Statut">
+                                                                {{-- UNE COURSE REFUSEE N'ATTEND PLUS RIEN.
+                                                                     Seule `accepte` change au refus : l'etat restait
+                                                                     « EN ATTENTE » et le client croyait sa livraison
+                                                                     prise en charge alors que plus personne ne s'en
+                                                                     occupait. --}}
+                                                                @if ($livraison->estRefusee())
+                                                                    <span class="recup-produit-badge recup-produit-badge--attente">
+                                                                        À RÉAFFECTER
+                                                                    </span>
+                                                                @else
                                                                 @switch($livraison->etat_livraison)
                                                                     @case('EN ATTENTE')
                                                                         <span class="recup-produit-badge recup-produit-badge--attente">{{ $livraison->etat_livraison }}</span>
@@ -157,6 +168,7 @@
                                                                         @break
                                                                     @default
                                                                 @endswitch
+                                                                @endif
                                                             </td>
                                                         @endif
                                                     @else

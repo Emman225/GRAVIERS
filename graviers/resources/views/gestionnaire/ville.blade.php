@@ -52,8 +52,11 @@
                                 </form>
                             </div>
                             <div class="col-md-9">
+                                <x-export-buttons table-id="listeVillesGestion"
+                                                  filename="liste-des-villes"
+                                                  title="Liste des villes" />
                                 <div class="table-responsive">
-                                    <table class="table table-striped">
+                                    <table id="listeVillesGestion" class="table table-striped">
                                         <thead>
                                             <tr>
                                                 <th class="text-center">
@@ -82,9 +85,9 @@
 
                                                 <td> {{$ville->pays?->nom}} </td>
 
-                                                <td class="text-end">
+                                                <td class="text-nowrap text-end">
                                                     <div class="dropdown">
-                                                        <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm"> <i class="material-icons md-more_horiz"></i> </a>
+                                                        <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm" title="Actions"> <i class="material-icons md-more_horiz"></i> </a>
                                                         <div class="dropdown-menu">
                                                             {{-- <a class="dropdown-item" href="#">Voir les details</a> --}}
                                                             <a class="dropdown-item" href="">Modifier les informations</a>

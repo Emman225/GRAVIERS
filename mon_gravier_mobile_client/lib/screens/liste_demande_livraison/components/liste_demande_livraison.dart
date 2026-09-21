@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:mon_gravier_com/constants.dart';
 import 'package:http/http.dart' as http;
@@ -10,13 +9,15 @@ import 'package:http/http.dart' as http;
 import 'package:mon_gravier_com/helper/constants.dart';
 import 'package:mon_gravier_com/models/Cart.dart';
 import 'package:mon_gravier_com/models/ConfigModel.dart';
+import 'package:mon_gravier_com/models/InformationsCommande.dart';
 import 'package:mon_gravier_com/models/retour_details_livraison.dart';
 import 'package:mon_gravier_com/models/retour_liste_demande_livraison.dart';
 import 'package:mon_gravier_com/screens/details_demande_livraison_affiche/details_demande_livraison_affiche_screen.dart';
 import 'package:searchable_listview/searchable_listview.dart';
 
+import '../../../components/etat_vide.dart';
+import '../../../components/carte_operation.dart';
 import '../../../globale.dart';
-import '../../../models/Commande.dart';
 
 class ListeDemandeLivraison extends StatelessWidget {
   ListeDemandeLivraison({super.key, required this.liste});
@@ -29,13 +30,6 @@ class ListeDemandeLivraison extends StatelessWidget {
       body: Container(
         width: double.infinity,
         height: heightOfScreen(context),
-        decoration: const BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage("assets/images/bg.jpg"),
-            fit: BoxFit.cover,
-            opacity: 0.1,
-          ),
-        ),
         child: Padding(
           padding: const EdgeInsets.all(15.0),
           child: SearchableList<DataListeDemandeLivraison>(
@@ -49,8 +43,24 @@ class ListeDemandeLivraison extends StatelessWidget {
               return mtna.compareTo(mtnb);
             },
             physics: const BouncingScrollPhysics(),
-            builder: (liste, index, c) => GestureDetector(
-              onTap: () async {
+            builder: (liste, index, c) => Padding(
+              padding: const EdgeInsets.only(bottom: kSpaceMd),
+              child: CarteOperation(
+                icone: Icons.local_shipping_outlined,
+                numero: "Demande n° ${c.numero}",
+                montant: formaterMontant(c.montantTotal?.toDouble() ?? 0),
+                mention: c.modePaiement == null
+                    ? null
+                    : "Paiement : ${c.modePaiement}",
+                date: formaterDate(c.dateLivraison.toString(),
+                    format: 'd MMMM y'),
+                // Ouvre le détail de la demande. Cette action était portée
+                // par un GestureDetector ENVELOPPANT la carte, laquelle avait
+                // reçu un `onTap: () {}` vide en attendant. Un InkWell muni
+                // d'une action, même sans effet, absorbe le geste : le
+                // détecteur extérieur n'était plus jamais appelé, et toucher
+                // une ligne ne faisait plus rien.
+                onTap: () async {
                 if (await verifierConnexion()) {
                   try {
                     afficherChargement();
@@ -80,9 +90,13 @@ class ListeDemandeLivraison extends StatelessWidget {
                       RetourDetailsLivraison retDetLiv = RetourDetailsLivraison.fromJson(datas);
                       if (retDetLiv.code == 200) {
                         List<Cart> list = [];
+                        // Les codes de livraison des courses acceptées (10/09/2026),
+                        // toutes lignes confondues, pour l'en-tête du détail.
+                        final List<CodesLigne> codes = [];
 
                         List<DataRetourDetailsLivraison> details = retDetLiv.data ?? [];
                         for (var det in details) {
+                          codes.addAll(det.codes);
                           list.add(
                             Cart(
                               type: 2,
@@ -95,7 +109,11 @@ class ListeDemandeLivraison extends StatelessWidget {
                             )
                           );
                         }
-                        Get.toNamed(DetailsDemandeLivraisonAfficheScreen.routeName, arguments: list);
+                        Get.toNamed(DetailsDemandeLivraisonAfficheScreen.routeName, arguments: {
+                          'lignes': list,
+                          'codes': codes,
+                          'numero': c.numero,
+                        });
                       } else {
                         afficherErreur(retDetLiv.message ?? '');
                       }
@@ -119,73 +137,14 @@ class ListeDemandeLivraison extends StatelessWidget {
                       "Veuillez vérifier votre connexion internet");
                 }
               },
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Container(
-                  height: 120,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    children: [
-                      const SizedBox(
-                        width: 10,
-                      ),
-                      Container(
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(30),
-                            image: const DecorationImage(
-                                image: AssetImage("assets/images/truck.gif"),
-                                fit: BoxFit.cover,
-                                opacity: 0.6),
-                          ),
-                          child: Container()),
-                      const SizedBox(
-                        width: 10,
-                      ),
-                      Flexible(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              '# ${c.numero}',
-                              style: const TextStyle(
-                                color: Colors.red,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              formaterMontant(c.montantTotal?.toDouble() ?? 0),
-                              style: const TextStyle(
-                                color: Colors.blue,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              'Paiement: ${c.modePaiement}',
-                              style: const TextStyle(
-                                color: Colors.black,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              '${formaterDate(c.dateLivraison.toString(), format: 'd MMMM y')}',
-                              style: const TextStyle(
-                                color: Colors.black,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(Icons.navigate_next_sharp, color: blackColor, size: 20),
-                    ],
-                  ),
-                ),
               ),
+            ),
+            emptyWidget: const EtatVide(
+              compact: true,
+              icone: Icons.local_shipping_outlined,
+              titre: "Aucune demande de livraison",
+              message:
+                  "Les demandes de cet état apparaîtront dans cette liste.",
             ),
             initialList: liste,
             filter: (p0) {
@@ -196,16 +155,10 @@ class ListeDemandeLivraison extends StatelessWidget {
                       c.modePaiement.toString().contains(p0)))
                   .toList();
             },
-            inputDecoration: InputDecoration(
-              labelText: "Recherchez...",
-              fillColor: Colors.white,
-              focusedBorder: OutlineInputBorder(
-                borderSide: const BorderSide(
-                  color: kPrimaryColor,
-                  width: 1.0,
-                ),
-                borderRadius: BorderRadius.circular(10.0),
-              ),
+            inputDecoration: const InputDecoration(
+              hintText: "Rechercher une demande...",
+              floatingLabelBehavior: FloatingLabelBehavior.never,
+              prefixIcon: Icon(Icons.search, size: 20),
             ),
           ),
         ),

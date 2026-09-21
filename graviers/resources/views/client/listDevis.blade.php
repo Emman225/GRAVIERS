@@ -119,6 +119,21 @@
                                     </button>
                                 </div>
                                 </form>
+                                {{-- Suppression du devis (10/09/2026) : un formulaire À PART, hors
+                                     de celui des quantités (un formulaire ne s'imbrique pas) ;
+                                     confirmation SweetAlert2 par js-delete-form. --}}
+                                @if ($devis->supprimable())
+                                    <form method="post" action="{{ route('devis.supprimerDevis', $devis) }}"
+                                          class="js-delete-form list-devis-suppression"
+                                          data-item-name="le devis n° {{ $devis->numero }}"
+                                          data-confirm-text="Le devis sera retiré de votre liste. Cette action est irréversible.">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="list-devis-btn list-devis-btn--danger js-supprimer-devis">
+                                            <i class="fi-rs-trash"></i> Supprimer le devis
+                                        </button>
+                                    </form>
+                                @endif
                             </div>
                         </div>
                     </div>
@@ -347,6 +362,13 @@
         color: #ffffff !important;
     }
     .list-devis-btn i { font-size: 14px; }
+    .list-devis-suppression { margin-top: 10px; text-align: right; }
+    .list-devis-btn--danger {
+        background: #fff;
+        color: #ef4444;
+        border: 1px solid #ef4444;
+    }
+    .list-devis-btn--danger:hover { background: #ef4444; color: #fff; }
 
     .list-devis-empty {
         max-width: 520px;
@@ -397,6 +419,17 @@
 </style>
 @endsection
 @section('jspart')
+    {{-- Messages de session en toast SweetAlert2 (10/09/2026) : suppression
+         d'un devis, refus motivé. Jamais d'alerte native. --}}
+    @if (session('success') || session('error'))
+        <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                if (typeof window.showToast === 'function') {
+                    window.showToast(@json(session('success') ?: session('error')), @json(session('success') ? 'success' : 'error'));
+                }
+            });
+        </script>
+    @endif
     <script type="text/javascript">
         $(function() {
             $('#produits').select();

@@ -38,6 +38,12 @@
                             <form action="" method="post" enctype="multipart/form-data">
                                 @csrf
                                 <div class="card-body">
+                                        {{-- Cle propre : Flasher capte error/success et les rejoue en
+                                             toast, ou le refus doit rester lisible a l ecran. --}}
+                                        @if (session('produit_erreur'))
+                                            <div class="alert alert-danger">{{ session('produit_erreur') }}</div>
+                                        @endif
+
                                         @if(session('success'))
                                             <div class="alert alert-success text-center">
                                                 {{-- <script>
@@ -97,18 +103,6 @@
                                                 @enderror
                                             </span>
                                         </div>
-                                        <div class="mb-4">
-                                            <label for="product_name" class="form-label">Prix</label>
-                                            <input  type="number"  name="prix_moyen" value="{{$produit->prix_moyen
-                                            }}" class="form-control" id="product_name" />
-                                            <span class="text-danger">
-                                                @error('prix')
-                                                    {{$message}}
-                                                @enderror
-                                            </span>
-                                        </div>
-
-
 
                                         <div class="mb-4">
                                             <label for="product_name" class="form-label">Prix de réduction</label>
@@ -119,15 +113,136 @@
                                                 @enderror
                                             </span>
                                         </div>
+                                        @php
+                                            // UN PRIX D'ACHAT APPARTIENT À UN COUPLE produit × fournisseur.
+                                            //
+                                            // À la création, un seul fournisseur est choisi : un champ
+                                            // unique suffit. Sur un produit déjà rattaché à plusieurs
+                                            // fournisseurs, chacun a son tarif — et c'est le plus élevé
+                                            // qui fait le prix de vente. On les montre donc tous, et on
+                                            // les rend corrigeables : jusqu'ici seul le fournisseur
+                                            // lui-même, connecté à son espace, pouvait modifier son prix.
+                                            $lignesAchat = $produit->exists
+                                                ? \App\Models\StockProduit::with('fournisseur')
+                                                    ->where('produit_id', $produit->id)
+                                                    ->whereNull('deleted_at')
+                                                    ->orderByDesc('prix')
+                                                    ->get()
+                                                : collect();
+                                        @endphp
+
+                                        @if ($produit->exists)
+                                            <div class="mb-4">
+                                                <label class="form-label">Prix d'achat par fournisseur</label>
+
+                                                @if ($lignesAchat->isEmpty())
+                                                    <p class="text-muted mb-0">
+                                                        Aucun fournisseur ne tarife encore ce produit : son prix de
+                                                        vente ne peut pas être calculé.
+                                                    </p>
+                                                @else
+                                                    <div class="table-responsive">
+                                                        <table class="table table-sm align-middle mb-1">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>Fournisseur</th>
+                                                                    <th style="width: 12rem;">Prix d'achat</th>
+                                                                    <th style="width: 7rem;" class="text-center">Retiré</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                @foreach ($lignesAchat as $ligne)
+                                                                    @php $retire = (int) $ligne->statut !== (int) \Help::$STATUT_ACTIF; @endphp
+                                                                    <tr @class(['text-muted' => $retire])>
+                                                                        <td>{{ $ligne->fournisseur->nom_prenoms ?? '—' }}</td>
+                                                                        <td>
+                                                                            <input type="number" min="0" step="1"
+                                                                                   class="form-control {{ $retire ? '' : 'prix-achat' }}"
+                                                                                   name="prix_achat[{{ $ligne->id }}]"
+                                                                                   value="{{ old('prix_achat.' . $ligne->id, $ligne->prix) }}" />
+                                                                        </td>
+                                                                        <td class="text-center">
+                                                                            {{-- Décoché, le fournisseur revient : une erreur de clic
+                                                                                 doit pouvoir se défaire depuis le même écran. --}}
+                                                                            <input type="checkbox" class="form-check-input"
+                                                                                   name="fournisseur_retire[{{ $ligne->id }}]" value="1"
+                                                                                   @checked(old('fournisseur_retire.' . $ligne->id, $retire)) />
+                                                                        </td>
+                                                                    </tr>
+                                                                @endforeach
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                    <small class="text-muted">
+                                                        Le prix de vente suit le fournisseur <strong>le plus cher</strong>.
+                                                        Un fournisseur retiré ne compte plus dans le prix, disparaît du
+                                                        réapprovisionnement et ne peut plus recevoir de bon d'enlèvement.
+                                                    </small>
+                                                @endif
+
+                                                <span class="text-danger">
+                                                    @error('prix_achat.*')
+                                                        {{$message}}
+                                                    @enderror
+                                                </span>
+                                            </div>
+                                        @else
+                                            <div class="mb-4">
+                                                <label for="prixFournisseur" class="form-label">Prix de fournisseur</label>
+                                                <input type="number" min="0" step="1" name="prix_fournisseur"
+                                                       value="{{ old('prix_fournisseur', $produit->prix_fournisseur) }}"
+                                                       class="form-control" id="prixFournisseur" />
+                                                <small class="text-muted">Ce que vous payez au fournisseur choisi ci-dessus.</small>
+                                                <span class="text-danger">
+                                                    @error('prix_fournisseur')
+                                                        {{$message}}
+                                                    @enderror
+                                                </span>
+                                            </div>
+                                        @endif
+
+                                        {{-- LE PRIX DE VENTE NE SE SAISIT PLUS.
+                                             Il se calcule : prix d'achat majoré du pourcentage
+                                             DALAKOUN. On le saisissait à côté du prix d'achat, sans
+                                             rapport avec lui — d'où une bétonnière annoncée 20 000 et
+                                             facturée 100. --}}
                                         <div class="mb-4">
-                                            <label for="product_name" class="form-label">Prix de fournisseur</label>
-                                            <input type="number"  name="prix_fournisseur" value="{{ old('prix_fournisseur', $produit->prix_fournisseur) }}" class="form-control" id="product_name" />
-                                            <small class="text-muted">Prix d'achat auprès du fournisseur (sert de prix au catalogue).</small>
-                                            <span class="text-danger">
-                                                @error('prix_fournisseur')
-                                                    {{$message}}
-                                                @enderror
-                                            </span>
+                                            @php
+                                                // LE TAUX DE CE PRODUIT, pas celui du catalogue.
+                                                //
+                                                // Un produit sous dérogation ne suit pas le taux
+                                                // général : afficher ce dernier ferait annoncer par
+                                                // la fiche un prix que la boutique ne pratique pas.
+                                                $derogation   = $produit->exists && $produit->pourcentage_dalakoun !== null;
+                                                $tauxApplique = $produit->exists
+                                                    ? $produit->tauxDalakoun()
+                                                    : (float) ($tauxDalakoun ?? 0);
+                                                $enPourcent   = fn ($v) => rtrim(rtrim(number_format((float) $v, 2, ',', ' '), '0'), ',');
+                                            @endphp
+
+                                            <label for="prixDalakoun" class="form-label">Prix DALAKOUN (calculé)</label>
+                                            <input type="text" class="form-control" id="prixDalakoun" readonly
+                                                   value="" data-taux="{{ $tauxApplique }}"
+                                                   aria-describedby="aidePrixDalakoun" />
+                                            <small class="text-muted" id="aidePrixDalakoun">
+                                                @if ($derogation)
+                                                    Prix d'achat majoré de <strong>{{ $enPourcent($tauxApplique) }} %</strong>.
+                                                    <span class="badge bg-info text-dark">Dérogation</span>
+                                                    Ce produit ne suit pas le taux général
+                                                    @if (!empty($tauxDalakoun))({{ $enPourcent($tauxDalakoun) }} %)@endif.
+                                                    La dérogation se pose et se retire dans
+                                                    <a href="{{ route('product.pourcentage') }}">Produits → Pourcentage DALAKOUN</a>,
+                                                    après validation par un second administrateur.
+                                                @elseif (!empty($tauxApplique))
+                                                    Prix d'achat majoré de {{ $enPourcent($tauxApplique) }} %.
+                                                    Ce champ n'est pas modifiable : il suit le pourcentage en vigueur.
+                                                @else
+                                                    Aucun pourcentage DALAKOUN n'est en vigueur : le produit serait vendu
+                                                    à son prix d'achat. Rendez-vous dans
+                                                    <a href="{{ route('product.pourcentage') }}">Produits → Pourcentage DALAKOUN</a>,
+                                                    où se pose aussi une dérogation propre à un produit.
+                                                @endif
+                                            </small>
                                         </div>
                                         <div class="mb-4">
                                             <label for="product_name" class="form-label">Caution (location)</label>
@@ -240,5 +355,58 @@
 
 
                 </div>
+
+                                        {{-- Ce partiel est inclus dans une section : ce qui
+                                             suit son @endsection sort AVANT le formulaire.
+                                             Le script vit donc ici, et attend le DOM. --}}
+                                        <script>
+                                        document.addEventListener('DOMContentLoaded', function () {
+        // Le prix DALAKOUN se recalcule à mesure qu'on saisit le prix d'achat :
+        // on voit tout de suite ce que le client paiera.
+        (function () {
+            var vente = document.getElementById('prixDalakoun');
+
+            if (!vente) {
+                return;
+            }
+
+            // À la création un seul champ, à la modification un par fournisseur :
+            // le prix de vente suit le plus cher, dans les deux cas.
+            var champs = document.querySelectorAll('#prixFournisseur, .prix-achat');
+
+            if (!champs.length) {
+                return;
+            }
+
+            var taux = parseFloat(vente.dataset.taux || '0');
+
+            function calculer() {
+                var plusCher = 0;
+
+                Array.prototype.forEach.call(champs, function (champ) {
+                    var montant = parseFloat(champ.value);
+
+                    if (!isNaN(montant) && montant > plusCher) {
+                        plusCher = montant;
+                    }
+                });
+
+                if (plusCher <= 0) {
+                    vente.value = '';
+                    return;
+                }
+
+                var prix = Math.round(plusCher * (1 + taux / 100));
+                vente.value = prix.toLocaleString('fr-FR') + ' fcfa';
+            }
+
+            Array.prototype.forEach.call(champs, function (champ) {
+                champ.addEventListener('input', calculer);
+            });
+
+            calculer();
+        })();
+                                        });
+                                        </script>
 
         @endsection

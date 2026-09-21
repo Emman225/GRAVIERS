@@ -5,9 +5,13 @@
 {{-- @dump($fournisseur) --}}
 
 
-            <section class="content-main" style="z-index: -2">
+            {{-- Plus de « z-index: -2 » : cette couche négative plaçait tout
+                 l'en-tête SOUS les vignettes positionnées au-dessus, et le
+                 clic sur « Retour » ouvrait l'image de la pièce d'identité
+                 au lieu de revenir en arrière. --}}
+            <section class="content-main">
                 <div class="content-header">
-                    <a href="javascript:history.back()"><i class="material-icons md-arrow_back"></i> Retour </a>
+                    <a href="javascript:history.back()" class="btn btn-light"><i class="material-icons md-arrow_back"></i> Retour</a>
                 </div>
                 <div class="card mb-4">
                     <div class="card-header bg-brand" style="height: 150px"></div>

@@ -126,7 +126,7 @@
                                                 <td>{{ $vehicule->modele }}</td>
                                                 <td><span class="gestion-vehicule-badge">{{ $vehicule->type->libelle }}</span></td>
                                                 <td class="text-end fw-bold">{{ $vehicule->capacite }}</td>
-                                                <td><small>{{ $vehicule->created_at->format('d/m/Y H:i') }}</small></td>
+                                                <td><small>{{ $vehicule->created_at->format('d/m/Y H:i:s') }}</small></td>
                                                 <td class="text-center">
                                                     <a class="gestion-vehicule-action gestion-vehicule-action--edit" href="{{ route('client.modifierVehicule', $vehicule) }}" title="Modifier">
                                                         <i class="fi-rs-edit"></i>

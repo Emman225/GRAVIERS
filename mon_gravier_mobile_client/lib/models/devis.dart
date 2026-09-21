@@ -40,6 +40,10 @@ class DataDevis {
   String? dateDevis;
   double? tva;
   double? cout_livraison;
+  double? tva_transport;
+  double? airsi;
+  /// Numéro de bon de commande interne, figé sur le devis (09/09/2026).
+  String? numero_bon_commande;
   double? cout_reduction;
   double? montant_ht;
   int? mode_paiement;
@@ -87,6 +91,8 @@ class DataDevis {
     dateDevis = json['date_devis'];
     tva = json['tva'] == null ? 0 : double.parse(json['tva'].toString());
     cout_livraison = json['cout_livraison'] == null ? 0 : double.parse(json['cout_livraison'].toString());
+    tva_transport = double.tryParse(json['tva_transport']?.toString() ?? '0') ?? 0;
+    numero_bon_commande = json['numero_bon_commande']?.toString();
     cout_reduction = json['cout_reduction'] == null ? 0 : double.parse(json['cout_reduction'].toString());
     montant_ht = json['montant_ht'] == null ? 0 : double.parse(json['montant_ht'].toString());
     mode_paiement = json['mode_paiement'];

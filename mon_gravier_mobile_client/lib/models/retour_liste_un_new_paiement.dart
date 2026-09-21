@@ -42,6 +42,10 @@ class UnNewPaiement {
   String? service;
   int? factureId;
   String? datePaiement;
+  // L'affaire réglée (« Commande N », « Location N », « Livraison N ») et
+  // l'état du circuit de preuve (point 20), servis par l'API (10/09/2026).
+  String? affaire;
+  String? libelleEtat;
 
   UnNewPaiement(
       {this.id,
@@ -74,6 +78,8 @@ class UnNewPaiement {
     service = json['service'];
     factureId = json['facture_id'];
     datePaiement = json['date_paiement'];
+    affaire = json['affaire']?.toString();
+    libelleEtat = json['libelle_etat']?.toString();
     if (kDebugMode) {
       print("----------->");
       print(json);

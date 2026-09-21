@@ -12,7 +12,7 @@
     <meta property="og:url" content="" />
     <meta property="og:image" content="" />
     <!-- Favicon -->
-    <link rel="shortcut icon" type="image/x-icon" href="assets/imgs/theme/favicon.svg" />
+    @include('layout._favicon')
     <!-- Template CSS -->
     <link rel="stylesheet" href="assets/css/main.css?v=6.0" />
 </head>

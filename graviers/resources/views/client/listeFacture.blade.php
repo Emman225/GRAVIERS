@@ -56,7 +56,7 @@
                                             @endphp
                                             @foreach ($commande->factures as $key => $facture)
                                                 @php
-                                                    $supplement = $facture->commande?->cout_livraison_client + ($facture->commande?->TvaCommande?->montant ?? 0) - $commande->remise;
+                                                    $supplement = $facture->commande?->cout_livraison_client + ($facture->commande?->tva_transport ?? 0) + ($facture->commande?->TvaCommande?->montant ?? 0) - $commande->remise;
                                                 @endphp
                                                 @if($key > 0)
                                                     @php
@@ -66,11 +66,11 @@
                                                 @endif
                                                 <tr>
                                                     <td><span class="list-facture-num">{{ $facture->numero }}</span></td>
-                                                    <td>{{ Carbon::parse($facture->created_at)->format('d/m/Y') }}</td>
+                                                    <td>{{ \Help::dateHeure($facture->created_at) }}</td>
                                                     <td class="text-end fw-bold">{{ number_format($facture->montant, '0', '', ' ') }} <small>FCFA</small></td>
                                                     <td class="text-center">
                                                         <a href="{{ route('show.actionFacture', ['commande' => $commande, 'facture' => $facture, 'action' => 'voir', 'livraison' => $livraison]) }}"
-                                                           class="list-facture-btn list-facture-btn--view">
+                                                           target="_blank" class="list-facture-btn list-facture-btn--view">
                                                             <i class="fi-rs-eye"></i> Voir
                                                         </a>
                                                     </td>

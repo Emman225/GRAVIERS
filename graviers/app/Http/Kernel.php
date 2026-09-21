@@ -36,6 +36,9 @@ class Kernel extends HttpKernel
             \Illuminate\View\Middleware\ShareErrorsFromSession::class,
             \App\Http\Middleware\VerifyCsrfToken::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            // Mode « site en construction » (lot 114) : avant la mémoire de la page précédente,
+            // pour qu'une page refusée ne soit jamais retenue comme « page précédente ».
+            \App\Http\Middleware\SiteEnConstruction::class,
             // Retient la page précédente réellement visitée, pour que le bouton
             // « Retour » y ramène sans deviner dans l'historique du navigateur.
             \App\Http\Middleware\MemoriserPagePrecedente::class,

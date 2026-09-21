@@ -113,7 +113,8 @@ class CalculMontant
         // Elle est calculée PLUS BAS, une fois la remise connue : son assiette
         // est le HT DIMINUÉ DE LA REMISE, et non le HT brut.
         // ------------------------------------------------------------------
-        $tauxTva = ($client->applique_tva == true && $config) ? (float) $config->tva : 0.0;
+        // TVA marchandise du client (appliquée par défaut, retirable par client).
+        $tauxTva = Help::tauxTvaClient($client);
 
         // ------------------------------------------------------------------
         // 4. Remise : code promo revérifié + points plafonnés au solde réel.
@@ -135,10 +136,35 @@ class CalculMontant
 
         $pointsUtilises = 0.0;
         if ((float) ($donnees['pointUtilise'] ?? 0) > 0) {
-            $pointsUtilises = min((float) $donnees['pointUtilise'], (float) ($client->point ?? 0));
-            if ($pointsUtilises < (float) $donnees['pointUtilise']) {
-                $ecarts[] = "points demandés {$donnees['pointUtilise']}, solde réel {$client->point}";
+            $demandes = (float) $donnees['pointUtilise'];
+            $solde    = (float) ($client->point ?? 0);
+
+            // PLANCHER DE PAIEMENT.
+            //
+            // Les points pouvaient couvrir la commande ENTIÈRE : sans
+            // livraison, le total tombait à zéro, la passerelle était appelée
+            // avec 0 et la commande restait « EN ATTENTE DE PAIEMENT », donc
+            // invisible du gestionnaire — les points, eux, étant déjà débités.
+            // Ils ne réduisent plus le total au-delà du minimum paramétré.
+            $pointsUtilises = Help::pointsUtilisables(
+                $ht,
+                $remise,               // remise du code promo, déjà calculée
+                $tauxTva,
+                $montantLivraison,
+                (float) ($config->montant_point ?? 0),
+                $demandes,
+                $solde
+            );
+
+            if ($pointsUtilises < $solde && $pointsUtilises < $demandes) {
+                // Le reliquat RESTE au compte du client : il servira à la
+                // commande suivante, rien n'est perdu.
+                $ecarts[] = "points ramenés de {$demandes} à {$pointsUtilises} "
+                          . "pour laisser le minimum à payer";
+            } elseif ($pointsUtilises < $demandes) {
+                $ecarts[] = "points demandés {$demandes}, solde réel {$solde}";
             }
+
             $remise += $pointsUtilises * (float) ($config->montant_point ?? 0);
         }
 
@@ -168,12 +194,25 @@ class CalculMontant
         $htNet = max(0, $ht - $remise);
         $tva   = round($htNet * $tauxTva / 100);
 
-        $total = max(0, round($htNet + $tva + $montantLivraison));
+        // TVA sur le transport (point 5) : même décision et même taux que
+        // sur le site, figés sur l'affaire à l'enregistrement.
+        // TVA du transport propre au client (10/09/2026), indépendante de la TVA marchandise.
+        $tvaTransport = Help::tvaTransportPour($client, (float) $montantLivraison);
+
+        // AIRSI (10/09/2026) : 5 % du HT net de remise + TVA, pour le client sans
+        // régime réel ; le net à payer devient HT + TVA + AIRSI.
+        // Le transport entre dans l'assiette de l'AIRSI, comme la DGI (lot 97).
+        $airsi = Help::airsiPour($client, $htNet + $tva, (float) $htNet, (float) $tauxTva / 100,
+            (float) $montantLivraison, $tvaTransport > 0 ? Help::tauxTvaTransportClient($client) / 100 : 0.0);
+
+        $total = max(0, round($htNet + $tva + $montantLivraison + $tvaTransport + $airsi));
 
         return [
             'lignes'           => $lignes,
             'ht'               => $ht,
             'tva'              => $tva,
+            'tva_transport'    => $tvaTransport,
+            'airsi'            => $airsi,
             'livraison'        => $montantLivraison,
             'remise'           => $remise,
             'total'            => $total,

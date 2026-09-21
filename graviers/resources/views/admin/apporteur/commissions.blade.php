@@ -50,19 +50,19 @@
                     <thead style="background-color: #1c57a3; color: white;">
                         <tr>
                             <th class="text-center">N° Commission</th>
-                            <th class="text-center">Date Commande</th>
-                            <th class="text-center">Code Apporteur</th>
-                            <th class="text-center">Nom Apporteur</th>
+                            <th class="text-center">Date commande</th>
+                            <th class="text-center">Code apporteur</th>
+                            <th class="text-center">Nom apporteur</th>
                             <th class="text-center">N° Commande</th>
                             <th class="text-center">Type</th>
                             <th class="text-center">Client final</th>
-                            <th class="text-end">Montant Cmd TTC</th>
-                            <th class="text-end">Montant Encaissé</th>
-                            <th class="text-end">Taux Commission</th>
-                            <th class="text-end">Commission Calculée</th>
+                            <th class="text-end">Montant cmd TTC</th>
+                            <th class="text-end">Montant encaissé</th>
+                            <th class="text-end">Taux commission</th>
+                            <th class="text-end">Commission calculée</th>
                             <th class="text-end">Commission Payée</th>
                             <th class="text-end">Reste à Payer</th>
-                            <th class="text-center">Date Échéance</th>
+                            <th class="text-center">Date échéance</th>
                             <th class="text-center">Date paiement effectif</th>
                             <th class="text-center">Mode paiement</th>
                             <th class="text-center">Statut</th>
@@ -77,7 +77,7 @@
                             @endphp
                             <tr class="{{ $statut === 'Annulée' ? 'table-secondary text-muted' : '' }}">
                                 <td class="text-center"><strong>{{ $l->numero_com }}</strong></td>
-                                <td class="text-center">{{ $l->date_commande ? Carbon::parse($l->date_commande)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date_commande ? \Help::dateHeure($l->date_commande) : '-' }}</td>
                                 <td class="text-center">{{ $l->code_apporteur }}</td>
                                 <td>{{ $l->nom_apporteur }}</td>
                                 <td class="text-center">{{ $l->numero_commande }}</td>
@@ -93,8 +93,8 @@
                                 <td class="text-end"><strong>{{ Help::formatNombre($l->commission_calc, true) }}</strong></td>
                                 <td class="text-end text-success">{{ Help::formatNombre($l->commission_payee, true) }}</td>
                                 <td class="text-end text-danger"><strong>{{ Help::formatNombre($l->reste_a_payer, true) }}</strong></td>
-                                <td class="text-center">{{ $l->date_echeance ? Carbon::parse($l->date_echeance)->format('d/m/Y') : '-' }}</td>
-                                <td class="text-center">{{ $l->date_paiement ? Carbon::parse($l->date_paiement)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date_echeance ? \Help::dateHeure($l->date_echeance) : '-' }}</td>
+                                <td class="text-center">{{ $l->date_paiement ? \Help::dateHeure($l->date_paiement) : '-' }}</td>
                                 <td class="text-center">{{ $l->mode_paiement }}</td>
                                 <td class="text-center"><span class="badge {{ $badge }}">{{ $statut }}</span></td>
                                 <td>{{ $l->observations ?? '-' }}</td>

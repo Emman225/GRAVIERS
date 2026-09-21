@@ -14,7 +14,7 @@
                         <div class="col-lg-6 d-none d-lg-flex auth-side-visual variant-reset">
                             <div class="auth-side-content">
                                 <div class="auth-brand">
-                                    <img src="{{ asset(config('constantes.logo')) }}" alt="GRAVIER.COM" class="auth-brand-logo">
+                                    <img src="{{ asset(config('constantes.logo')) }}" alt="Mon Gravier" class="auth-brand-logo">
                                 </div>
                                 <h2 class="auth-side-title">
                                     Vérification<br>
@@ -33,7 +33,7 @@
                                         <div><h6>Code temporaire</h6><p>Valable quelques minutes</p></div>
                                     </div>
                                     <div class="auth-feature">
-                                        <span class="auth-feature-icon"><i class="material-icons md-shield"></i></span>
+                                        <span class="auth-feature-icon"><i class="material-icons md-security"></i></span>
                                         <div><h6>Sécurité maximale</h6><p>Chiffrement bout en bout</p></div>
                                     </div>
                                 </div>
@@ -44,7 +44,7 @@
                         <div class="col-lg-6">
                             <div class="auth-form-wrap">
                                 <div class="auth-mobile-brand d-lg-none mb-4 text-center">
-                                    <img src="{{ asset(config('constantes.logo')) }}" alt="GRAVIER.COM">
+                                    <img src="{{ asset(config('constantes.logo')) }}" alt="Mon Gravier">
                                 </div>
 
                                 <div class="auth-form-header">

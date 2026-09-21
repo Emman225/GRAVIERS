@@ -16,6 +16,7 @@ use App\Models\Paiement;
 use App\Models\Vehicule;
 use App\Models\Livraison;
 use App\Models\Reduction;
+use App\Models\DemandeLivraison;
 use App\Models\Enlevement;
 use App\Models\Location;
 use Illuminate\Support\Str;
@@ -94,12 +95,37 @@ class OrdersController extends Controller
         ]);
     }
 
-    public function commandesTraitees()
+    public function commandesTraitees(Request $request)
     {
         $commandes = Commande::liste(null, [Help::$COMMANDE_TERMINE]);
 
+        // FILTRE ENTRE DEUX DATES.
+        //
+        // Aucune borne par défaut : l'écran a toujours montré tout l'historique,
+        // et en restreindre l'affichage sans qu'on l'ait demandé ferait croire à
+        // des commandes disparues. Le filtre s'applique donc seulement si on le
+        // remplit — et une seule des deux bornes suffit.
+        $du = $request->input('du') ?: null;
+        $au = $request->input('au') ?: null;
+
+        if ($du || $au) {
+            $commandes = collect($commandes)->filter(function ($commande) use ($du, $au) {
+                $date = $commande->date_commande ?? $commande->created_at;
+
+                if (!$date) {
+                    return false;
+                }
+
+                $jour = \Carbon\Carbon::parse($date)->format('Y-m-d');
+
+                return (!$du || $jour >= $du) && (!$au || $jour <= $au);
+            })->values();
+        }
+
         return view('orders.commandeTraite', [
-            'commandes' => $commandes
+            'commandes' => $commandes,
+            'du'        => $du,
+            'au'        => $au,
         ]);
     }
 
@@ -178,9 +204,20 @@ class OrdersController extends Controller
         $details  = DetailCommande::liste(null, $commande->id, $commande->client_id);
 
         foreach ($details as $d) {
-            $d->livs = $commande->est_livrable
+            $livs = $commande->est_livrable
                 ? Livraison::liste(null, $commande->client_id, $d->id)
                 : Livraison::listeSansLivraison(null, $commande->client_id, $d->id);
+
+            // DU PLUS ANCIEN AU PLUS RÉCENT.
+            //
+            // `Livraison::liste()` trie du plus récent au plus ancien — l'ordre
+            // qui convient à une liste de travail, où l'on traite d'abord ce qui
+            // vient d'arriver. Ici on lit l'HISTOIRE d'une commande : les
+            // enlèvements se suivent dans l'ordre où ils ont eu lieu.
+            //
+            // Le tri se fait ici et non dans le modèle : `liste()` sert aussi
+            // les écrans de suivi des livreurs, où l'ordre inverse est le bon.
+            $d->livs = collect($livs)->sortBy('id')->values();
         }
 
         // On rattache à chaque ligne son bon d'enlèvement, chargé en UNE requête.
@@ -205,6 +242,19 @@ class OrdersController extends Controller
             ->where('statut', Help::$STATUT_ACTIF)
             ->sum('montant');
 
+        // CE QUI EST ENCAISSÉ MAIS PAS ENCORE VALIDÉ.
+        //
+        // Un règlement de client à terme est enregistré au statut 2 : il attend
+        // la seconde validation, et ne compte donc pas encore dans le payé.
+        // L'écran affichait alors « Aucun paiement effectué » — ce qui est faux
+        // pour le client, qui a versé, et pour le caissier, qui a encaissé.
+        //
+        // On distingue les deux : rien reçu, ou reçu mais pas encore contrôlé.
+        $montantEnAttente = (float) LignePaiement::where('service_id', $commande->id)
+            ->where('service', Help::$COMMANDE)
+            ->where('statut', 2)
+            ->sum('montant');
+
         // Total net depuis les LIGNES (cf. Commande::montantAPayer) : montant_total
         // porte le HT côté web et le net final côté mobile.
         $montantAPayer = $commande->montantAPayer();
@@ -214,6 +264,7 @@ class OrdersController extends Controller
             'details'       => $details,
             'restant'       => $montantAPayer - $montantPaye,
             'montantAPayer' => $montantAPayer,
+            'montantEnAttente' => $montantEnAttente,
             'config'        => Configuration::first(),
             // Combien de bons le bouton « tout facturer » emporterait. Compté ici
             // pour que le libellé annonce à l'avance ce qui va être facturé.
@@ -351,6 +402,74 @@ class OrdersController extends Controller
 
         return DB::transaction(function () use ($commande, $enlevementIds, $tauxTva) {
 
+            // LE MONTANT D'ABORD, LA FACTURE ENSUITE.
+            //
+            // Constaté le 10/09/2026 sur la commande 692741 (1 427 800 F) : le
+            // client avait une avance de 912 385 F, imputée à la commande ; cette
+            // imputation avait émis une facture sur règlement de 912 385 F. À
+            // l'enlèvement, cette méthode facturait TOUTE la quantité servie :
+            // 1 427 800 F de plus — la commande était facturée 2 340 185 F, et le
+            // guichet des créances réclamait 1 427 800 F là où 515 415 F
+            // restaient dus. Ce qui a déjà été facturé sur règlement ne se
+            // refacture pas : la facture d'enlèvement couvre le RESTE À FACTURER
+            // de la commande (dû − déjà facturé), jamais plus.
+            $enlevements = collect($enlevementIds)
+                ->map(fn ($env) => Enlevement::find($env))
+                ->filter(fn ($e) => $e && optional($e->livraison)->detailCommande)
+                ->values();
+
+            $montantHt = 0;
+            foreach ($enlevements as $enleve) {
+                $detail = $enleve->livraison->detailCommande;
+                $qte = (float) ($enleve->qte_servi ?? $enleve->qte ?? $detail->qte ?? 0);
+                $montantHt += $qte * (float) ($detail->prix ?? 0);
+            }
+
+            $facturesExistantes = Facture::where('service', Help::$COMMANDE)
+                ->where('service_id', $commande->id)
+                ->orderBy('created_at')->orderBy('id')
+                ->get();
+
+            $premiere = $facturesExistantes->isEmpty();
+            $remiseImputee = $premiere ? (float) ($commande->remise ?? 0) : 0.0;
+            $tvaTransportImputee = $premiere ? (float) ($commande->tva_transport ?? 0) : 0.0;
+            $supplement = $premiere
+                ? (float) ($commande->cout_livraison_client ?? 0) + $tvaTransportImputee - $remiseImputee
+                : 0.0;
+
+            $htCommande = (float) $commande->montantHT();
+            $partRemise = $htCommande > 0
+                ? min(1.0, (float) ($commande->remise ?? 0) / $htCommande)
+                : 0.0;
+            $montantTva = $montantHt * (1 - $partRemise) * $tauxTva;
+            // L'AIRSI de la commande est porté par la PREMIÈRE facture, comme la
+            // remise et le transport (10/09/2026).
+            $airsiImpute = $premiere ? (float) ($commande->airsi ?? 0) : 0.0;
+            $montant    = \Help::arrondiFranc($montantHt + $montantTva + $supplement + $airsiImpute);
+
+            // Plafond : le reste à facturer sur la commande (dû − déjà facturé,
+            // factures sur règlement comprises). Une commande n'est jamais
+            // facturée au-delà de ce qu'elle doit.
+            if ($facturesExistantes->isNotEmpty()) {
+                $resteAFacturer = \Help::arrondiFranc(max(0,
+                    \App\Services\FacturationCommande::montantDu($commande)
+                    - \App\Services\FacturationCommande::montantDejaFacture($commande)));
+
+                if ($resteAFacturer < 1) {
+                    // Tout est déjà facturé (le client avait réglé d'avance la
+                    // totalité) : le bon rejoint la dernière facture de la
+                    // commande, aucune facture nouvelle — surtout pas à 0.
+                    $porteuse = $facturesExistantes->last();
+                    foreach ($enlevements as $enleve) {
+                        $enleve->update(['facture_id' => $porteuse->id]);
+                    }
+
+                    return $porteuse;
+                }
+
+                $montant = min($montant, $resteAFacturer);
+            }
+
             $facture = Facture::create([
                 'numero' => Help::genererNumeroUnique('facture'),
                 'numero_fne' => FneService::genererNumeroFne(),
@@ -360,69 +479,20 @@ class OrdersController extends Controller
                 'service_id' => $commande->id,
                 'client_id' => $commande->client_id,
                 'fne_status' => 'pending',
+                'montant' => $montant,
+                'tva_transport_applique' => $tvaTransportImputee,
+                'airsi_applique' => $airsiImpute,
             ]);
 
-            $montantHt = 0;
-
-            foreach ($enlevementIds as $env) {
-
-                $enleve = Enlevement::find($env);
-                if (!$enleve) {
-                    continue;
-                }
-
-                // Ligne de commande liée (via la livraison). Si une donnée est incomplète
-                // (enlèvement orphelin), on l'ignore au lieu de provoquer une erreur 500.
-                $detail = optional($enleve->livraison)->detailCommande;
-                if (!$detail) {
-                    continue;
-                }
-
-                $enleve->update([
-                    'facture_id' => $facture->id
-                ]);
-
-                // Quantité facturée : quantité servie si renseignée, sinon quantité de
-                // l'enlèvement, sinon quantité commandée. Prix = prix de la ligne de commande.
-                $qte = (float) ($enleve->qte_servi ?? $enleve->qte ?? $detail->qte ?? 0);
-                $montantHt += $qte * (float) ($detail->prix ?? 0);
+            foreach ($enlevements as $enleve) {
+                $enleve->update(['facture_id' => $facture->id]);
             }
 
-            // Livraison et remise ne s'imputent que sur la 1re facture liée à la
-            // commande. <=1 car on vient de créer la facture courante.
-            $premiere = $commande->factures()->count() <= 1;
-            $remiseImputee = $premiere ? (float) ($commande->remise ?? 0) : 0.0;
-            $supplement = $premiere
-                ? (float) ($commande->cout_livraison_client ?? 0) - $remiseImputee
-                : 0.0;
-
-            // La TVA s'assied sur le HT REMISE DÉDUITE, comme à la commande.
-            //
-            // Elle était calculée sur le HT BRUT : la remise était donc retaxée,
-            // et la facture dépassait le dû de 18 % de la remise — la commande
-            // 105 facturée 5 004 pour 4 874, la 107 facturée 182 pour 161. Le
-            // client voyait alors un « versé en trop » qui n'existait pas.
-            //
-            // La remise se déduit ici AU PRORATA du HT facturé, alors qu'elle
-            // s'impute en valeur sur la seule première facture. Retrancher la
-            // remise entière de la première tranche ne suffit pas : sur la
-            // commande 107, la remise (114) dépassait le HT du premier bon
-            // (100), le surplus était perdu et la TVA totale retombait à 18 au
-            // lieu de 15. Au prorata, la somme des TVA facturées retrouve
-            // exactement celle enregistrée à la commande.
-            $htCommande = (float) $commande->montantHT();
-            $partRemise = $htCommande > 0
-                ? min(1.0, (float) ($commande->remise ?? 0) / $htCommande)
-                : 0.0;
-            $montantTva = $montantHt * (1 - $partRemise) * $tauxTva;
-
-            // Pas de plafonnement au reste dû ici : une commande sans TVA
-            // enregistrée — le transport en est exonéré — a un « dû » inférieur
-            // à la facture, qui applique 18 % au HT servi. Plafonner
-            // tronquerait ces factures-là.
-            $facture->update([
-                'montant' => $montantHt + $montantTva + $supplement,
-            ]);
+            // Les règlements déjà validés sur la commande (avance imputée,
+            // encaissement en agence) rejoignent cette facture : elle naît
+            // « payée » à hauteur de ce qui l'est, une seule facture DGI par
+            // enlèvement (10/09/2026).
+            \App\Services\FacturationCommande::rattacherLesReglements($commande, $facture);
 
             return $facture;
         });
@@ -473,12 +543,74 @@ class OrdersController extends Controller
         $result = FneService::signInvoice($facture, $enlevementIds);
 
         if ($result['success']) {
+            // La facture certifiée part au client (lot 93), après la réponse.
+            \App\Services\CourrielFactureFne::envoyer($facture);
+
             return redirect()->route('orders.facturesValidees')
-                ->with('success', 'Facture validée par la DGI - Réf : ' . ($result['response']['reference'] ?? ''));
+                ->with('success', 'Facture validée par la DGI - Réf : ' . ($result['response']['reference'] ?? '') . ' — envoyée au client par courriel.'
+                    . FneService::mentionStickers($result['response'] ?? []));
         }
 
         return redirect()->route('orders.facturesNonValidees')
             ->with('warning', $result['message']);
+    }
+
+    /** FACTURE D'AVOIR (lot 92, 16/09/2026) : le formulaire, sur une facture certifiée. */
+    public function nouvelAvoir(Facture $facture)
+    {
+        if ($facture->estUnAvoir() || !$facture->isCertifiedFne()) {
+            return redirect()->route('orders.facturesValidees')
+                ->with('warning', "Un avoir ne s'établit que sur une facture certifiée par la DGI.");
+        }
+        if (!Facture::avoirsDisponibles()) {
+            return redirect()->route('orders.facturesValidees')
+                ->with('warning', "La base n'est pas à jour pour les factures d'avoir : lancez « php artisan migrate --force » dans public_html/graviers (migration 2026_09_16_100000), puis réessayez.");
+        }
+
+        return view('orders.factureAvoir', [
+            'facture'  => $facture,
+            'articles' => $facture->articlesCertifies(),
+            'avoirs'   => $facture->avoirs,
+        ]);
+    }
+
+    /** L'avoir est certifié par la DGI, puis enregistré ; sans certification, rien n'est créé. */
+    public function emettreAvoir(Facture $facture, Request $request)
+    {
+        $request->validate([
+            'motif'     => 'required|string|max:255',
+            'quantites' => 'required|array',
+        ], [
+            'motif.required'     => "Le motif de l'avoir est obligatoire.",
+            'quantites.required' => 'Indiquez au moins une quantité à créditer.',
+        ]);
+
+        if (!Facture::avoirsDisponibles()) {
+            return back()->withInput()->with('warning', "La base n'est pas à jour pour les factures d'avoir : lancez « php artisan migrate --force » dans public_html/graviers, puis réessayez.");
+        }
+        $resultat = \App\Services\FactureAvoir::emettre($facture, (array) $request->input('quantites', []),
+            (string) $request->input('motif'), Auth::id());
+
+        if ($resultat['success']) {
+            return redirect()->route('orders.facturesValidees')->with('success', $resultat['message']);
+        }
+
+        return back()->withInput()->with('warning', $resultat['message']);
+    }
+
+    /** Le document « Facture d'avoir ». */
+    public function factureAvoir(Facture $facture, $action = 'voir')
+    {
+        if (!$facture->estUnAvoir()) {
+            abort(404);
+        }
+        if ($r = \App\Services\DocumentDgi::reponse($facture, (string) $action)) {
+            return $r;
+        }
+        $pdf = \App\Services\FactureAvoir::pdf($facture);
+        $nom = 'facture-avoir-' . $facture->numero . '.pdf';
+
+        return $action === 'telecharger' ? $pdf->download($nom) : $pdf->stream($nom);
     }
 
     /**
@@ -512,8 +644,10 @@ class OrdersController extends Controller
         $commande = $facture->commande;
 
         if ($result['success']) {
+            \App\Services\CourrielFactureFne::envoyer($facture);
+
             return redirect()->route('orders.BECommande', ['numero' => $commande->numero])
-                ->with('success', 'Facture certifiée par la DGI - Réf : ' . ($result['response']['reference'] ?? ''));
+                ->with('success', 'Facture certifiée par la DGI - Réf : ' . ($result['response']['reference'] ?? '') . ' — envoyée au client par courriel.');
         }
 
         return redirect()->route('orders.BECommande', ['numero' => $commande->numero])
@@ -537,17 +671,35 @@ class OrdersController extends Controller
             return back()->with('warning', 'Une facture a déjà été générée pour cette location.');
         }
 
-        $tva       = (float) ($location->tvaLocation->montant ?? 0);   // TVA nette
+        // LE MONTANT DE LA FACTURE EST CELUI QUE LE DOCUMENT IMPRIME.
+        //
+        // Il partait de `location.montant_total`, auquel on RAJOUTAIT la TVA et
+        // la livraison. Or cette colonne les contient déjà : la facture
+        // U260000000002 annonçait 67 840 à payer sous des lignes qui en
+        // totalisaient 29 960 — TVA et livraison comptées deux fois.
+        //
+        // Le HT se relit donc depuis les LIGNES, seule source qui ne prête pas à
+        // interprétation, et la TVA se recalcule sur ce HT après remise. La
+        // formule est mot pour mot celle du gabarit (document/factureLocation) :
+        // le PDF, le montant stocké et le TTC du code-barres ne peuvent plus se
+        // contredire.
         $livraison = (float) ($location->cout_livraison_client ?? 0);
         $remise    = (float) ($location->remise ?? 0);
-        // Montant net cohérent avec le montant payé : HT - remise + TVA nette + livraison.
-        $montant   = max(0, (float) $location->montant_total - $remise) + $tva + $livraison;
+        $ht        = (float) $location->detailLocation->sum('prix');
+        $tauxTva   = (float) (Configuration::first()->tva ?? 0);
+        $tva       = \Help::arrondiFranc(max(0, $ht - $remise) * ($tauxTva / 100));
+        // AIRSI figé sur la location (10/09/2026) : porté par sa facture.
+        $airsi     = (float) ($location->airsi ?? 0);
+        $montant   = max(0, $ht - $remise) + $tva + $livraison + $airsi;
 
         Facture::create([
             'numero'     => Help::genererNumeroUnique('facture'),
             'numero_fne' => FneService::genererNumeroFne(),
             'user_id'    => Auth::id(),
-            'montant'    => $montant,
+            // Le franc n'a pas de centimes : une facture qui en porte bloque
+            // son encaissement (le champ Montant est à pas de 1).
+            'montant'    => \Help::arrondiFranc($montant),
+            'airsi_applique' => $airsi,
             'statut'     => 2,
             'service'    => Help::$LOCATION,
             'service_id' => $location->id,
@@ -559,11 +711,125 @@ class OrdersController extends Controller
     }
 
     /**
+     * FACTURE D'UNE DEMANDE DE LIVRAISON.
+     *
+     * Aucune facture n'était jamais émise pour un transport : le code n'en créait
+     * que pour les commandes et les locations. Or le solde d'un client compare
+     * ses règlements à ses FACTURES — un transport payé restait donc
+     * indéfiniment affiché comme « réglé d'avance », de l'argent que le client
+     * croyait avoir à son crédit alors qu'il avait acheté un service rendu.
+     *
+     * CERTIFIÉE PAR LA DGI, comme la vente et la location. La certification ne
+     * savait construire que ces deux-là ; le transport a maintenant son propre
+     * message, qui déclare LA COURSE et non la marchandise — le client n'achète
+     * pas les produits transportés, il achète leur acheminement.
+     *
+     * La facture est créée en attente : elle rejoint « Factures non validées »
+     * jusqu'à ce qu'un gestionnaire déclenche la certification.
+     */
+    public function genererFactureLivraison(DemandeLivraison $demande)
+    {
+        // Une seule facture par demande : on évite les doublons.
+        $existante = Facture::where('service', Help::$LIVRAISON)
+            ->where('service_id', $demande->id)
+            ->first();
+
+        if ($existante) {
+            return back()->with('warning', 'Une facture a déjà été générée pour cette demande de livraison.');
+        }
+
+        // Le montant NET : ce que le client doit réellement, remise déduite et
+        // TVA ajoutée. Le filtre type_affaire est indispensable — une demande,
+        // une commande et une location peuvent porter le même identifiant.
+        $tva = (float) \App\Models\TvaCommande::where('commande_id', $demande->id)
+            ->where('type_affaire', Help::$LIVRAISON)
+            ->whereNull('deleted_at')
+            ->sum('montant');
+
+        // AIRSI figé sur la demande (10/09/2026) : porté par sa facture.
+        $airsi   = (float) ($demande->airsi ?? 0);
+        $montant = max(0, (float) ($demande->montantTotal ?? 0) - (float) ($demande->remise ?? 0)) + $tva + $airsi;
+
+        if ($montant <= 0) {
+            return back()->with('error', 'Cette demande de livraison ne porte aucun montant : rien à facturer.');
+        }
+
+        Facture::create([
+            'numero'     => Help::genererNumeroUnique('facture'),
+            'numero_fne' => FneService::genererNumeroFne(),
+            'user_id'    => Auth::id(),
+            // Le franc n'a pas de centimes : une facture qui en porte bloque
+            // son encaissement (le champ Montant est à pas de 1).
+            'montant'    => \Help::arrondiFranc($montant),
+            'airsi_applique' => $airsi,
+            'statut'     => 2,
+            'service'    => Help::$LIVRAISON,
+            'service_id' => $demande->id,
+            'client_id'  => $demande->client_id,
+            'fne_status' => 'pending',
+        ]);
+
+        return back()->with('success',
+            'Facture de transport générée (' . Help::formatNombre($montant, true) . '). '
+            . 'Elle apparaît dans « Factures non validées » jusqu\'à validation auprès de la DGI.');
+    }
+
+    /**
+     * PDF de la facture d'un transport.
+     *
+     * Meme modele que la facture de location — en-tete, totaux, mise en page —
+     * mais la prestation facturee est la COURSE, pas la marchandise : le client
+     * n achete pas les produits transportes, ils sont a lui.
+     */
+    public function factureLivraison(Facture $facture, $action = 'voir')
+    {
+        if ($r = \App\Services\DocumentDgi::reponse($facture, (string) $action)) {
+            return $r;
+        }
+        if ($facture->estUnAvoir()) {
+            return $this->factureAvoir($facture, $action);
+        }
+        $demande = DemandeLivraison::with(['detailLivraison', 'priseEnCharge', 'destination', 'client'])
+            ->find($facture->service_id);
+
+        if (!$demande) {
+            return back()->with('error', 'La demande de livraison de cette facture est introuvable.');
+        }
+
+        // Les donnees d en-tete du modele FNE : identite de l entreprise, bloc
+        // client, numero et date. Sans elles, le document sortait avec un
+        // « Facture de transport Nº » sans numero, et sans les mentions
+        // legales de l entreprise — la piece n identifiait ni son emetteur ni
+        // elle-meme.
+        //
+        // getDonneesFne retombe sur facture->numero a defaut de reference DGI :
+        // c est exactement ce qu il faut pour une piece interne, qui n en a pas.
+        $pdf = PDF::loadView('document.factureLivraison', array_merge(
+            [
+                'demande' => $demande,
+                'facture' => $facture,
+                'config'  => Configuration::first(),
+            ],
+            FneService::getDonneesFne($facture, $facture->client)
+        ));
+
+        $nom = 'Facture_Transport_' . $facture->numero . '.pdf';
+
+        return $action === 'telecharger' ? $pdf->download($nom) : $pdf->stream($nom);
+    }
+
+    /**
      * PDF de la facture d'une location (bouton « voir/télécharger » des listes FNE).
      * Réutilise la vue orders.recapLocation (document FNE « Facture de location »)
      * en y injectant les données FNE de la facture (numéro/QR officiels si certifiée).
      */
     public function factureLocation(Facture $facture, $action = 'voir'){
+        if ($r = \App\Services\DocumentDgi::reponse($facture, (string) $action)) {
+            return $r;
+        }
+        if ($facture->estUnAvoir()) {
+            return $this->factureAvoir($facture, $action);
+        }
 
         $location = Location::with('detailLocation.produit.uniteProduit', 'tvaLocation', 'adresseLivraison', 'client')
             ->find($facture->service_id);
@@ -763,7 +1029,7 @@ class OrdersController extends Controller
         $montantReduit = $commande->montantHT() * ($reduction->taux_reduction / 100);
 
         $commande->update([
-            'remise' => $commande->remise + $montantReduit,
+            'remise' => \Help::arrondiFranc($commande->remise + $montantReduit),
         ]);
 
         $reduction->est_utilise = true;
@@ -792,6 +1058,50 @@ class OrdersController extends Controller
             $qteEnlevee = $request->qte;
         }
 
+        // UN BON SANS PRIX D'ACHAT VAUDRAIT UN DÛ DE ZÉRO.
+        //
+        // Le prix vient maintenant de la ligne de stock du fournisseur retenu.
+        // Si elle est à zéro — fournisseur rattaché par erreur, tarif jamais
+        // saisi — le bon partirait avec un dû nul, et le fournisseur ne serait
+        // jamais payé pour cette livraison. Mieux vaut le dire avant.
+        if (!$request->filled('prix_fournisseur') && (float) ($stock->prix ?? 0) <= 0) {
+            return redirect()->route('orders.traitement.post', $commande)
+                ->with('error', 'Ce fournisseur n\'a pas de prix d\'achat pour ce produit : le bon vaudrait un dû de 0. Renseignez son prix sur la fiche du produit.');
+        }
+        // ET ON NE PART PAS SERVIR À PERTE SANS LE SAVOIR.
+        //
+        // Le prix facturé au client est figé à la commande ; celui du
+        // fournisseur retenu vit sur sa ligne de stock. Les deux sont
+        // INDÉPENDANTS, et rien ne les comparait : un fournisseur à 7 500 F
+        // sur un article facturé 150 F passait sans un mot, et la perte
+        // n'apparaissait qu'au récapitulatif des ventes, la marchandise déjà
+        // partie.
+        //
+        // On le dit AVANT d'émettre le bon, avec les deux chiffres et ce qu'il
+        // y a à corriger. Le gestionnaire garde la main : prix négocié saisi à
+        // la main, autre fournisseur, ou prix catalogue revu.
+        $ligneServie = $commande->detailCommande
+            ->where('produit_id', $request->produit)
+            ->first();
+
+        $prixAchat = (float) ($request->filled('prix_fournisseur')
+            ? $request->prix_fournisseur
+            : ($stock->prix ?? 0));
+        $prixVente = (float) ($ligneServie->prix ?? 0);
+
+        if ($prixVente > 0 && $prixAchat >= $prixVente) {
+            return redirect()->route('orders.traitement.post', $commande)
+                ->with('error', sprintf(
+                    "Vente à perte : ce fournisseur demande %s F l'unité pour "
+                    . "un article facturé %s F au client. Choisissez un autre "
+                    . "fournisseur, saisissez le prix négocié, ou corrigez le "
+                    . "prix d'achat sur sa fiche de stock.",
+                    number_format($prixAchat, 0, ',', ' '),
+                    number_format($prixVente, 0, ',', ' ')
+                ));
+        }
+
+
 
 
         $detailCommande = $commande->detailCommande->where('produit_id', $request->produit)->first();
@@ -816,7 +1126,8 @@ class OrdersController extends Controller
         $nbrlivraison = Livreur::nombreDeVoyages(
             (float) $request->qte,
             (float) ($vehicule->capacite ?? 0),
-            (float) ($conf->tonne_moyenne ?? 0)
+            (float) ($conf->tonne_moyenne ?? 0),
+            $produit->unite_produit_id ?? null
         );
 
         // Tarification du livreur, MULTIPLIÉE PAR LE NOMBRE DE VOYAGES : trois
@@ -825,20 +1136,23 @@ class OrdersController extends Controller
         // voyage ; le livreur n'en touchait qu'un seul. Repli sur le coût global
         // si sa tarification n'est pas configurée. On stocke la décomposition
         // (forfait_base / frais_km / distance_km) pour l'état "dette livreur".
-        $tarif = $livreur->tarificationLivraison(
+        $tarif = $livreur->tarifLivraison(
+            $produit->unite_produit_id ?? null,
+            (float) $request->qte,
             (float) $distance,
             (float) ($distance * $conf->cout_liv_fixe * $nbrlivraison),
             $nbrlivraison
         );
 
         $livraison = Livraison::create([
-            'numero' => uniqid(),
+            'numero' => \Help::genererNumeroUnique('livraison'),
             'livreur_id' => $livreur->id,
             'vehicule_id' => $request->vehicule,
             'client_id' => $commande->client_id,
             'cout_livraison' => $tarif['total'],
             'forfait_base'   => $tarif['forfait_base'],
             'frais_km'       => $tarif['frais_km'],
+            'source_tarif'   => $tarif['source'] ?? null,
             'distance_km'    => round((float) $distance, 2),
             'adresse_livraison_id' => $commande->adresse_livraison_id ,//$commande->adresse_livraison_id,
             'date_livraison' => $request->date,
@@ -868,7 +1182,23 @@ class OrdersController extends Controller
             'livraison_id' => $livraison->id,
             'produit_id' => $request->produit,
             'qte' => $qteEnlevee,
-            'prix_fournisseur' => $request->prix_fournisseur,
+            // LE PRIX D'ACHAT VIENT DU FOURNISSEUR RETENU, il ne se saisit plus.
+            //
+            // Le champ était pré-rempli avec `produit.prix_fournisseur`, qui vaut
+            // zéro sur la quasi-totalité du catalogue : le gestionnaire le
+            // retapait donc de mémoire à chaque bon, et aucun des quatorze bons
+            // émis ne portait le tarif réellement conclu avec son fournisseur.
+            //
+            // On lit désormais le tarif de CE fournisseur pour CE produit. Le
+            // champ reste accepté s'il est transmis — une négociation
+            // ponctuelle garde sa place.
+            'prix_fournisseur' => $request->filled('prix_fournisseur')
+                ? $request->prix_fournisseur
+                : \App\Models\StockProduit::where('produit_id', $request->produit)
+                    ->where('fournisseur_id', $request->fournisseur)
+                    ->where('statut', Help::$STATUT_ACTIF)
+                    ->whereNull('deleted_at')
+                    ->value('prix'),
             'livreur_id' => $request->livreur,
             'code_enleve' => $codeEnlevement,
             'gestionnaire_id' => Auth::id(),
@@ -882,9 +1212,35 @@ class OrdersController extends Controller
         ]);
 
 
-        Mail::send(new receptionCodeLivraison($livraison, $commande, $commande->client, $produit));
+        // L'ENVOI DU CODE NE DOIT PAS POUVOIR CASSER L'AFFECTATION.
+        //
+        // La livraison, le bon d'enlèvement et le décrément de stock viennent
+        // d'être écrits, hors transaction. Une exception ici — serveur de
+        // messagerie injoignable, quota d'envoi de l'hébergeur atteint, adresse
+        // du client invalide — renvoyait une page d'erreur ALORS QUE TOUT ÉTAIT
+        // DÉJÀ ENREGISTRÉ. Le gestionnaire voyait l'affectation faite et le
+        // client ne recevait jamais son code : c'est le cas signalé le
+        // 24/08/2026, à la seconde affectation d'une même commande.
+        //
+        // Désormais l'échec est TRACÉ et DIT. Le message emprunte une clé
+        // propre : Flasher capte « error » et « warning » pour les rejouer en
+        // notification fugace, et l'avertissement se perdrait.
+        $codeEnvoye = true;
 
-        return redirect()->route('orders.traitement', $commande)->with('success', 'Produit traitée');
+        try {
+            Mail::send(new receptionCodeLivraison($livraison, $commande, $commande->client, $produit));
+        } catch (\Throwable $e) {
+            $codeEnvoye = false;
+            \Log::error("Code de livraison non envoyé — commande {$commande->numero} : " . $e->getMessage());
+        }
+
+        return redirect()->route('orders.traitement', $commande)
+            ->with('success', 'Produit traité')
+            ->with('code_non_envoye', $codeEnvoye ? null : (
+                "Le produit est bien traité, mais le code n'a PAS pu être envoyé au client. "
+                . "Communiquez-le-lui directement : il figure sur cette page, dans « Codes à "
+                . "communiquer au client »."
+            ));
     }
     public function traitementItemSansLivraison(Commande $commande, Produit $produit, Request $request){
 
@@ -905,12 +1261,56 @@ class OrdersController extends Controller
             $qteEnlevee = $request->qte;
         }
 
+        // UN BON SANS PRIX D'ACHAT VAUDRAIT UN DÛ DE ZÉRO.
+        //
+        // Le prix vient maintenant de la ligne de stock du fournisseur retenu.
+        // Si elle est à zéro — fournisseur rattaché par erreur, tarif jamais
+        // saisi — le bon partirait avec un dû nul, et le fournisseur ne serait
+        // jamais payé pour cette livraison. Mieux vaut le dire avant.
+        if (!$request->filled('prix_fournisseur') && (float) ($stock->prix ?? 0) <= 0) {
+            return redirect()->route('orders.traitement.sansLivraison', $commande)
+                ->with('error', 'Ce fournisseur n\'a pas de prix d\'achat pour ce produit : le bon vaudrait un dû de 0. Renseignez son prix sur la fiche du produit.');
+        }
+        // ET ON NE PART PAS SERVIR À PERTE SANS LE SAVOIR.
+        //
+        // Le prix facturé au client est figé à la commande ; celui du
+        // fournisseur retenu vit sur sa ligne de stock. Les deux sont
+        // INDÉPENDANTS, et rien ne les comparait : un fournisseur à 7 500 F
+        // sur un article facturé 150 F passait sans un mot, et la perte
+        // n'apparaissait qu'au récapitulatif des ventes, la marchandise déjà
+        // partie.
+        //
+        // On le dit AVANT d'émettre le bon, avec les deux chiffres et ce qu'il
+        // y a à corriger. Le gestionnaire garde la main : prix négocié saisi à
+        // la main, autre fournisseur, ou prix catalogue revu.
+        $ligneServie = $commande->detailCommande
+            ->where('produit_id', $request->produit)
+            ->first();
+
+        $prixAchat = (float) ($request->filled('prix_fournisseur')
+            ? $request->prix_fournisseur
+            : ($stock->prix ?? 0));
+        $prixVente = (float) ($ligneServie->prix ?? 0);
+
+        if ($prixVente > 0 && $prixAchat >= $prixVente) {
+            return redirect()->route('orders.traitement.sansLivraison', $commande)
+                ->with('error', sprintf(
+                    "Vente à perte : ce fournisseur demande %s F l'unité pour "
+                    . "un article facturé %s F au client. Choisissez un autre "
+                    . "fournisseur, saisissez le prix négocié, ou corrigez le "
+                    . "prix d'achat sur sa fiche de stock.",
+                    number_format($prixAchat, 0, ',', ' '),
+                    number_format($prixVente, 0, ',', ' ')
+                ));
+        }
+
+
 
 
         $detailCommande = $commande->detailCommande->where('produit_id', $request->produit)->first();
 
         $livraison = Livraison::create([
-            'numero' => uniqid(),
+            'numero' => \Help::genererNumeroUnique('livraison'),
             'livreur_id' => null,
             'vehicule_id' => null,
             'client_id' => $commande->client_id,
@@ -942,7 +1342,23 @@ class OrdersController extends Controller
             'livraison_id' => $livraison->id,
             'produit_id' => $request->produit,
             'qte' => $qteEnlevee,
-            'prix_fournisseur' => $request->prix_fournisseur,
+            // LE PRIX D'ACHAT VIENT DU FOURNISSEUR RETENU, il ne se saisit plus.
+            //
+            // Le champ était pré-rempli avec `produit.prix_fournisseur`, qui vaut
+            // zéro sur la quasi-totalité du catalogue : le gestionnaire le
+            // retapait donc de mémoire à chaque bon, et aucun des quatorze bons
+            // émis ne portait le tarif réellement conclu avec son fournisseur.
+            //
+            // On lit désormais le tarif de CE fournisseur pour CE produit. Le
+            // champ reste accepté s'il est transmis — une négociation
+            // ponctuelle garde sa place.
+            'prix_fournisseur' => $request->filled('prix_fournisseur')
+                ? $request->prix_fournisseur
+                : \App\Models\StockProduit::where('produit_id', $request->produit)
+                    ->where('fournisseur_id', $request->fournisseur)
+                    ->where('statut', Help::$STATUT_ACTIF)
+                    ->whereNull('deleted_at')
+                    ->value('prix'),
             'livreur_id' => null,
             'code_enleve' => $codeEnlevement,
             'gestionnaire_id' => Auth::id(),
@@ -954,11 +1370,37 @@ class OrdersController extends Controller
         ]);
         $url = "https://www.google.com/maps?q={$enlevement->fournisseur->latitude},{$enlevement->fournisseur->longitude}";
 
-        Mail::send(new receptionCodeEnlevement($enlevement, $commande, $commande->client, $produit, $url));
+        // L'ENVOI DU CODE NE DOIT PAS POUVOIR CASSER L'AFFECTATION.
+        //
+        // La livraison, le bon d'enlèvement et le décrément de stock viennent
+        // d'être écrits, hors transaction. Une exception ici — serveur de
+        // messagerie injoignable, quota d'envoi de l'hébergeur atteint, adresse
+        // du client invalide — renvoyait une page d'erreur ALORS QUE TOUT ÉTAIT
+        // DÉJÀ ENREGISTRÉ. Le gestionnaire voyait l'affectation faite et le
+        // client ne recevait jamais son code : c'est le cas signalé le
+        // 24/08/2026, à la seconde affectation d'une même commande.
+        //
+        // Désormais l'échec est TRACÉ et DIT. Le message emprunte une clé
+        // propre : Flasher capte « error » et « warning » pour les rejouer en
+        // notification fugace, et l'avertissement se perdrait.
+        $codeEnvoye = true;
+
+        try {
+            Mail::send(new receptionCodeEnlevement($enlevement, $commande, $commande->client, $produit, $url));
+        } catch (\Throwable $e) {
+            $codeEnvoye = false;
+            \Log::error("Code d'enlèvement non envoyé — commande {$commande->numero} : " . $e->getMessage());
+        }
 
         // Mail::send(new receptionCodeLivraison($livraison, $commande, $commande->client, $produit));
 
-        return redirect()->route('orders.traitement.sansLivraison', $commande)->with('success', 'Produit traitée');
+        return redirect()->route('orders.traitement.sansLivraison', $commande)
+            ->with('success', 'Produit traité')
+            ->with('code_non_envoye', $codeEnvoye ? null : (
+                "Le produit est bien traité, mais le code d'enlèvement n'a PAS pu être envoyé "
+                . "au client. Communiquez-le-lui directement : il figure sur la fiche de la "
+                . "commande, dans « Codes à communiquer au client »."
+            ));
     }
 
     public function afficherVehicule($id)
@@ -1067,15 +1509,22 @@ class OrdersController extends Controller
             $nbrVoyages  = Livreur::nombreDeVoyages(
                 (float) $qte[$key],
                 (float) ($vehiculeObj->capacite ?? 0),
-                (float) ($conf->tonne_moyenne ?? 0)
+                (float) ($conf->tonne_moyenne ?? 0),
+                optional(Produit::find($detailCommande[$key]->produit_id))->unite_produit_id
             );
             $coutGlobal  = (float) $distanceTraitement * (float) ($conf->cout_liv_fixe ?? 0) * (float) $nbrVoyages;
             $tarif = $livreurObj
-                ? $livreurObj->tarificationLivraison((float) $distanceTraitement, $coutGlobal, $nbrVoyages)
+                ? $livreurObj->tarifLivraison(
+                    optional(Produit::find($detailCommande[$key]->produit_id))->unite_produit_id,
+                    (float) $qte[$key],
+                    (float) $distanceTraitement,
+                    $coutGlobal,
+                    $nbrVoyages
+                )
                 : ['forfait_base' => $coutGlobal, 'frais_km' => 0.0, 'total' => $coutGlobal];
 
             $livraison = Livraison::create([
-                'numero' => uniqid(),
+                'numero' => \Help::genererNumeroUnique('livraison'),
                 'livreur_id' => $livreur[$key],
                 'client_id' => $commande->client_id,
                 'adresse_livraison_id' => $commande->adresse_livraison_id,
@@ -1084,6 +1533,7 @@ class OrdersController extends Controller
                 'cout_livraison' => $tarif['total'],
                 'forfait_base'   => $tarif['forfait_base'],
                 'frais_km'       => $tarif['frais_km'],
+                'source_tarif'   => $tarif['source'] ?? null,
                 'distance_km'    => round((float) $distanceTraitement, 2),
                 'etat_livraison' => Help::$LIVRAISON_EN_ATTENTE,
                 'detail_commande_id' => $detailCommande[$key]->id,
@@ -1192,7 +1642,7 @@ class OrdersController extends Controller
         $detail = DetailCommande::where('id', '=', $idDetailCommande)->first();
 
         $livraisonData = [
-            'numero' => uniqid(5),
+            'numero' => \Help::genererNumeroUnique('livraison'),
             'livreur_id' => $request->livreur,
             'client_id' => $idClient,
             'commande_id' => $idCommande,

@@ -11,7 +11,13 @@ class Configuration extends Model
     protected $table = 'configuration';
     protected $fillable = [
         'tva',
+        // La TVA s'applique-t-elle au transport ? Le reglage se pose sur le
+        // site, l'API le lit : les deux canaux doivent chiffrer pareil.
+        'tva_transport',
+        // Taux de l'AIRSI (10/09/2026).
+        'taux_airsi',
         'montant_point',
+        'montant_minimum_a_payer',
         'devise',
         'raison_sociale',
         'ncc',

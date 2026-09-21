@@ -15,6 +15,9 @@ class Paiement extends Model
     use HasFactory, SoftDeletes;
     protected $table = 'paiement';
     protected $fillable = [
+        // Sans cette entree, l'attribution des points serait ecrite
+        // par un update() qui la laisserait TOMBER en silence.
+        'points_attribues',
         'client_id',
         'devis_id',
         'code',
@@ -23,6 +26,8 @@ class Paiement extends Model
         'montant_restant',
         'statut',
         'facture_id',
+        // Date d'envoi du reçu au client : un seul envoi par règlement.
+        'recu_envoye_le',
     ];
 
     public static function lire($id)

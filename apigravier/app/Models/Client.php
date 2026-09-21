@@ -31,6 +31,8 @@ class Client extends Model
         'dfe',
         'registre_commerce',
         'applique_tva',
+        // TVA sur le transport, retirable par client (10/09/2026).
+        'applique_tva_transport',
         'client_a_terme',
         'parrain_id',
     ];

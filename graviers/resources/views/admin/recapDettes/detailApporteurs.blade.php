@@ -39,7 +39,7 @@
                             <th class="text-center">Apporteur</th>
                             <th class="text-center">N° Cmd</th>
                             <th class="text-center">Client</th>
-                            <th class="text-end">Commission Calculée</th>
+                            <th class="text-end">Commission calculée</th>
                             <th class="text-end">Reste à Payer</th>
                             <th class="text-center">Statut</th>
                         </tr>
@@ -51,7 +51,7 @@
                             @endphp
                             <tr class="{{ $l->statut === 'Annulée' ? 'table-secondary text-muted' : '' }}">
                                 <td class="text-center"><strong>{{ $l->numero_com }}</strong></td>
-                                <td class="text-center">{{ $l->date ? Carbon::parse($l->date)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date ? \Help::dateHeure($l->date) : '-' }}</td>
                                 <td>{{ $l->apporteur_nom }}</td>
                                 <td class="text-center">{{ $l->numero_commande }}</td>
                                 <td>{{ $l->client_nom }}</td>

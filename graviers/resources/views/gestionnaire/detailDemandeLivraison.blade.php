@@ -164,9 +164,13 @@
 
                                     <td> {{$livraison->livreur?->user?->nom.' '.$livraison->livreur?->user?->prenom}} ({{$livraison->livreur?->user?->contact}}) </td> {{-- livreur --}}
 
-                                    <td> {{$livraison->updated_at}}</td> {{-- date livreur--}}
+                                    <td> {{ \Help::dateHeure($livraison->updated_at) }}</td> {{-- date livreur--}}
 
-                                    <td> {{$livraison->user?->nom_prenoms}}</td> {{-- traité par--}}
+                                    {{-- TRAITÉ PAR = le gestionnaire qui a affecté la course
+                                         (livraison.gestionnaire_id). La colonne lisait
+                                         `$livraison->user`, relation sur un `user_id` qui n'existe
+                                         pas dans `livraison` : elle restait vide (10/09/2026). --}}
+                                    <td> {{ $livraison->gestionnaire?->nom_prenoms ?: '—' }}</td> {{-- traité par--}}
 
                                     <td> {{$livraison->etat_livraison}} </td> {{-- statut --}}
 

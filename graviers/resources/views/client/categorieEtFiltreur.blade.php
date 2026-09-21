@@ -1,7 +1,7 @@
 <div class="col-lg-1-5 primary-sidebar sticky-sidebar pt-30">
     {{-- catégorie --}}
     <div class="sidebar-widget widget-category-2 mb-30">
-        <h5 class="section-title style-1 mb-30">Categories</h5>
+        <h5 class="section-title style-1 mb-30">Catégories</h5>
 
             <ul class="categorie-sidebar-list">
                 @php
@@ -86,6 +86,57 @@
             color: #fff;
         }
     </style>
+    {{-- FILTRER PAR PRIX.
+         Le widget d'origine etait commente : un curseur du gabarit, sans
+         formulaire ni traitement. Deux champs et un bouton suffisent, et ils
+         partent vraiment au serveur.
+
+         Le filtre porte sur le prix AFFICHE — prix personnalise s'il y en a un,
+         sinon prix catalogue — et non sur la colonne stockee, qui ne vaut plus
+         le prix de vente depuis la reforme des marges. --}}
+    @if (!empty($filtrePrix))
+        <div class="sidebar-widget mb-30">
+            <h5 class="section-title style-1 mb-20">Filtrer par prix</h5>
+
+            <form method="GET" class="filtre-prix">
+                {{-- Le tri en cours voyage avec le filtre : filtrer ne doit pas
+                     reclasser la liste dans le dos du visiteur. --}}
+                @if (request('tri'))
+                    <input type="hidden" name="tri" value="{{ request('tri') }}">
+                @endif
+
+                <div class="filtre-prix-champs">
+                    <input type="number" name="prix_min" min="0" step="any"
+                           value="{{ request('prix_min') }}" placeholder="Min" aria-label="Prix minimum">
+                    <span>—</span>
+                    <input type="number" name="prix_max" min="0" step="any"
+                           value="{{ request('prix_max') }}" placeholder="Max" aria-label="Prix maximum">
+                </div>
+
+                <button type="submit" class="filtre-prix-valider">Filtrer</button>
+
+                @if (request('prix_min') || request('prix_max'))
+                    <a class="filtre-prix-effacer"
+                       href="{{ request()->fullUrlWithQuery(['prix_min' => null, 'prix_max' => null, 'page' => null]) }}">
+                        Effacer le filtre
+                    </a>
+                @endif
+            </form>
+        </div>
+
+        <style>
+            .filtre-prix-champs{display:flex;align-items:center;gap:8px;}
+            .filtre-prix-champs input{width:100%;min-width:0;padding:8px 10px;
+                border:1px solid #d6dbe4;border-radius:6px;font-size:13.5px;}
+            .filtre-prix-champs span{color:#9aa3ae;}
+            .filtre-prix-valider{width:100%;margin-top:10px;padding:9px;border:0;
+                border-radius:6px;background:#1C57A3;color:#fff;font-weight:600;
+                font-size:13.5px;cursor:pointer;}
+            .filtre-prix-effacer{display:inline-block;margin-top:8px;font-size:12.5px;
+                color:#6b7280;text-decoration:underline;}
+        </style>
+    @endif
+
     <!-- Fillter By Price -->
     {{-- <div class="sidebar-widget price_range range mb-30">
         <h5 class="section-title style-1 mb-30">Filtrer par :</h5>

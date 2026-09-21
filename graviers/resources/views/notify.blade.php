@@ -120,13 +120,14 @@
 
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+    <script src="{{ asset('frontend/assets/leaflet/recherche-lieu.js') }}"></script>
     {{-- <script>
         var map = L.map('map').setView([48.8566, 2.3522], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
 
-        var geocoder = L.Control.geocoder({
+        var geocoder = creerRechercheLieu({
             defaultMarkGeocode: false
         }).addTo(map);
 
@@ -177,7 +178,7 @@
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
 
-        var geocoder = L.Control.geocoder({
+        var geocoder = creerRechercheLieu({
             defaultMarkGeocode: false
         }).addTo(map);
 

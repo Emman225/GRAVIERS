@@ -28,6 +28,8 @@ class DemandeLivraison extends Model
         'date_livraison',
         'date_fin_livraison',
         'remise',
+        // AIRSI figé sur la demande (10/09/2026).
+        'airsi',
         'mode_paiement_id',
         'type_livraison_id',
         'etat_commande',
@@ -52,6 +54,16 @@ class DemandeLivraison extends Model
 
     public function livraisons(){
         return $this->hasManyThrough(Livraison::class,DetailLivraison::class);
+    }
+
+    /**
+     * Les courses acceptées par un livreur (10/09/2026) : celles dont le code
+     * de livraison a un sens pour le client — même règle que la vente et la
+     * location. Une demande de livraison ne produit pas de bon d'enlèvement.
+     */
+    public function coursesAcceptees()
+    {
+        return $this->livraisons->filter(fn (Livraison $l) => (int) $l->accepte === Livraison::ACCEPTEE)->values();
     }
 
     public function TypeLivraison(){
@@ -84,7 +96,8 @@ class DemandeLivraison extends Model
             ->where('statut', Help::$STATUT_ACTIF)
             ->sum('montant');
 
-        $net = (float) $this->montantTotal + $tva - (float) ($this->remise ?? 0);
+        // AIRSI figé sur la demande (10/09/2026).
+        $net = (float) $this->montantTotal + $tva + (float) ($this->airsi ?? 0) - (float) ($this->remise ?? 0);
 
         return $net < 0 ? 0.0 : $net;
     }
@@ -96,6 +109,47 @@ class DemandeLivraison extends Model
      * seconde validation n'a pas encore d'existence comptable, et ne doit donc
      * pas débloquer le traitement de la demande.
      */
+    /**
+     * CETTE DEMANDE EST-ELLE EXPLOITABLE PAR LE GESTIONNAIRE ?
+     *
+     * Une demande est enregistrée AVANT l'ouverture de la passerelle de
+     * paiement. Le client qui referme la passerelle — pour changer de mode, ou
+     * simplement parce qu'il renonce — laisse donc derrière lui une demande
+     * complète, active, et proposée à l'affectation comme les autres.
+     *
+     * Constaté le 25/08/2026 : un client abandonne le paiement en ligne,
+     * recommence en choisissant le règlement en agence, et DEUX demandes
+     * apparaissent. Le gestionnaire affecte les deux — donc deux fois le
+     * camion. La course fantôme n'étant jamais livrée, elle retient le véhicule
+     * pour toujours : terminer la vraie livraison ne le libère pas, puisqu'une
+     * autre course active le tient encore.
+     *
+     * RÈGLE : un règlement EN LIGNE n'engage à rien tant qu'il n'est pas
+     * encaissé. Une telle demande n'est donc exploitable qu'une fois payée. Le
+     * règlement AU GUICHET, lui, est un engagement pris en agence : la demande
+     * est exploitable d'emblée, c'est tout son intérêt.
+     *
+     * On ne SUPPRIME pas la demande non payée : le client peut revenir régler,
+     * et une trace vaut mieux qu'un trou. On la garde simplement hors des
+     * écrans d'affectation.
+     */
+    public function estExploitable(): bool
+    {
+        // Le nom EXACT de la relation : « ModeDePaiement », pas « modePaiement ».
+        // Une relation inexistante rend null en silence — la regle laissait alors
+        // passer toutes les demandes, et le garde-fou ne gardait rien.
+        $mode = $this->ModeDePaiement;
+
+        // Mode inconnu ou hors ligne (guichet, virement) : engagement pris.
+        if (!$mode || (int) ($mode->en_ligne ?? 0) !== 1) {
+            return true;
+        }
+
+        // En ligne : il faut que l'argent soit arrivé.
+        return $this->montantPayeComptant() > 0
+            || $this->montantEnAttenteValidation() > 0;
+    }
+
     public function montantPayeComptant(): float
     {
         return (float) LignePaiement::where('service', Help::$LIVRAISON)
@@ -152,6 +206,40 @@ class DemandeLivraison extends Model
     public function reglementEnAgence(): bool
     {
         return (int) ($this->modeDePaiement?->en_ligne ?? 0) === 0;
+    }
+
+    /**
+     * PUIS-JE ENCAISSER CETTE AFFAIRE AU GUICHET ?
+     *
+     * Ce n'est PAS la même question que « le mode de règlement est-il un mode
+     * d'agence ? ». Le guichet ne s'écartait que devant la passerelle : une
+     * affaire qu'elle a réellement encaissée n'a rien à faire à la caisse.
+     *
+     * Mais une initiation ÉCHOUÉE — le site crée alors l'affaire tout de même —
+     * ou un client qui abandonne la page de paiement laissent une affaire due
+     * portant un mode en ligne. Elle n'était encaissable NULLE PART : ni par la
+     * passerelle, qui n'a rien pris, ni au guichet, qui l'ignorait. Le caissier
+     * ouvrait un sélecteur vide devant un client venu payer. Constaté le
+     * 01/09/2026.
+     *
+     * Les deux questions ont donc chacune leur méthode : confondre les deux
+     * bloquait le traitement d'affaires que rien n'avait à bloquer.
+     *
+     * Aucun risque de double encaissement : `montantEncaissable()` retire déjà
+     * ce qui a été perçu et ce qui attend sa seconde validation.
+     */
+    /** Une demande annulée n'existe plus : elle ne s'encaisse pas. */
+    public function affaireVivante(): bool
+    {
+        return $this->etat_commande !== \Help::$AFFAIRE_ANNULEE;
+    }
+
+    public function encaissableAuGuichet(): bool
+    {
+        // Même correctif que pour les ventes et les locations : l'état de
+        // l'affaire passe avant son mode de règlement.
+        return $this->affaireVivante()
+            && ($this->reglementEnAgence() || $this->montantPayeComptant() <= 0);
     }
 
 

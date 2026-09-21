@@ -44,6 +44,10 @@ class Commande extends Model
         'remise',
         'type_livraison_id',
         'cout_livraison_client',
+        // TVA sur le transport, figée à la commande (Help::tvaSurTransport).
+        'tva_transport',
+        // AIRSI figé sur l'affaire (10/09/2026), comme la TVA du transport.
+        'airsi',
         'mode_paiement',
         'contact1',
         'email',
@@ -267,6 +271,23 @@ class Commande extends Model
     }
 
     /**
+     * CE QUI RESTE À ENLEVER, EN FRANCS : la marchandise HT non encore retirée.
+     *
+     * Signalé le 10/09/2026 : « Mon compte » annonçait 720 F restant à enlever
+     * à un client qui avait tout réglé et tout enlevé. La tuile faisait
+     * « montantAPayer − totalEnleveSurCommande » ; le premier avait reçu la
+     * TVA du transport puis l'AIRSI, le second non — 720 F = 18 % de 4 000 F
+     * de transport, une taxe, pas de la marchandise.
+     *
+     * Le reste à enlever ne dépend que des LIGNES : prix × quantité commandée,
+     * moins prix × quantité servie. Ni taxe, ni transport, ni remise.
+     */
+    public function resteAEnlever(): float
+    {
+        return max(0.0, $this->montantHT() - \Help::marchandiseEnleveeSurCommande($this));
+    }
+
+    /**
      * Total net à payer par le client : HT + TVA + livraison − remise.
      */
     public function montantAPayer(): float
@@ -274,6 +295,9 @@ class Commande extends Model
         return $this->montantHT()
             + (float) ($this->TvaCommande->montant ?? 0)
             + (float) ($this->cout_livraison_client ?? 0)
+            + (float) ($this->tva_transport ?? 0)
+            // AIRSI figé sur la commande (10/09/2026) : fait partie du net à payer.
+            + (float) ($this->airsi ?? 0)
             - (float) ($this->remise ?? 0);
     }
     /**
@@ -363,6 +387,20 @@ class Commande extends Model
      * seulement quand montant_restant <= 0) et divergeait de la page BE
      * -> "En attente paiement" alors que la commande était déjà payée.
      */
+    /**
+     * Encaissements saisis au guichet mais pas encore validés par un second
+     * administrateur (10/09/2026) — même lecture que Location et
+     * DemandeLivraison : ils ne soldent rien encore, mais le client doit les
+     * voir sur son tableau de bord.
+     */
+    public function montantEnAttenteValidation(): float
+    {
+        return (float) LignePaiement::where('service', 'COMMANDE')
+            ->where('service_id', $this->id)
+            ->where('statut', 2)
+            ->sum('montant');
+    }
+
     public function montantPayeComptant(): float
     {
         $lignes = (float) LignePaiement::where('service', 'COMMANDE')
@@ -392,6 +430,34 @@ class Commande extends Model
     {
         $reste = $this->montantAPayer() - $this->montantPayeComptant();
         return $reste < 1 ? 0.0 : $reste;
+    }
+
+    /**
+     * L'AFFAIRE EXISTE-T-ELLE ENCORE ? Une affaire morte ne s'encaisse pas.
+     *
+     * Deux états ne doivent JAMAIS être proposés au guichet :
+     *
+     *   ANNULEE — l'affaire n'existe plus. Le guichet des ventes proposait
+     *   pourtant une commande annulée portant 9 220 fcfa de reste : un caissier
+     *   pouvait encaisser de l'argent pour une commande que plus personne ne
+     *   servirait.
+     *
+     *   EN ATTENTE DE PAIEMENT — la commande est créée mais son règlement en
+     *   ligne n'a jamais abouti. C'est l'état que reçoit une commande passée
+     *   depuis l'application mobile quand le client abandonne la passerelle.
+     *   Elle est volontairement HORS de la file du gestionnaire : elle
+     *   n'apparaît pas dans « Commandes en attente ». L'encaisser au guichet
+     *   créerait une vente que personne ne voit dans sa liste de travail.
+     *
+     * C'est exactement l'écart signalé le 06/09/2026 : la liste des commandes
+     * était vide, et le même écran d'encaissement proposait la commande.
+     */
+    public function affaireVivante(): bool
+    {
+        return !in_array($this->etat_commande, [
+            \Help::$AFFAIRE_ANNULEE,
+            \Help::$COMMANDE_EN_ATTENTE_PAIEMENT,
+        ], true);
     }
 
     /**

@@ -2,81 +2,100 @@ import 'package:flutter/material.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:mon_gravier_com/models/ConfigModel.dart';
 import 'package:mon_gravier_com/screens/home/components/special_offers.dart';
+import 'package:mon_gravier_com/screens/products/products_screen.dart';
 
-import '../../../helper/constants.dart';
+import '../../../constants.dart';
 
-class TopSlider extends StatelessWidget {
+/// CARROUSEL DE TÊTE.
+///
+/// Les points de position étaient écrits puis mis en commentaire : le carrousel
+/// tournait tout seul sans que rien n'indique combien de bannières existaient
+/// ni où l'on se trouvait. Ils sont rétablis, mais dessinés correctement —
+/// l'ancienne version leur donnait 40 px de haut pour 10 de large dans un
+/// `BoxShape.circle`, ce qui ne pouvait pas produire un point rond.
+///
+/// Sans bannière, le bloc disparaît au lieu de laisser 160 px de vide.
+class TopSlider extends StatefulWidget {
   final List<Bannieres> items;
-  const TopSlider({super.key, required this.items });
 
-  // int _current = 0;
+  const TopSlider({super.key, required this.items});
+
+  @override
+  State<TopSlider> createState() => _TopSliderState();
+}
+
+class _TopSliderState extends State<TopSlider> {
+  int _courant = 0;
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        const SizedBox(height: 10),
-        CarouselSlider(
-            items: getItems(context),
+    if (widget.items.isEmpty) return const SizedBox.shrink();
+
+    final double largeur =
+        MediaQuery.of(context).size.width - (kSpaceXl * 2);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: kSpaceMd),
+      child: Column(
+        children: [
+          CarouselSlider(
+            items: [
+              for (final banniere in widget.items)
+                SpecialOfferCard(
+                  image: banniere.image.toString(),
+                  category: banniere.titre.toString(),
+                  sousTitre: banniere.sousTitre.toString(),
+                  online: true,
+                  numOfBrands: 0,
+                  myHeight: 168,
+                  myWidth: largeur,
+                  // Une bannière TOP ouvre les produits les mieux notés (09/09/2026).
+                  press: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ProductsScreen(
+                        titre: (banniere.titre ?? '').trim().isEmpty ? 'Nos meilleurs produits' : banniere.titre!.trim(),
+                        selection: 'top',
+                      ),
+                    ),
+                  ),
+                ),
+            ],
             options: CarouselOptions(
-              height: 160,
-              autoPlay: true,
-              autoPlayInterval: const Duration(seconds: 3),
-              autoPlayAnimationDuration: const Duration(milliseconds: 800),
-              autoPlayCurve: Curves.fastOutSlowIn,
-              onPageChanged: (index, reason) {
-                // setState(() {
-                //   _current = index;
-                // });
-              },
+              height: 168,
+              viewportFraction: 1,
+              autoPlay: widget.items.length > 1,
+              autoPlayInterval: const Duration(seconds: 5),
+              autoPlayAnimationDuration: const Duration(milliseconds: 600),
+              autoPlayCurve: Curves.easeInOutCubic,
               scrollDirection: Axis.horizontal,
-            )
-        ),
-        // Row(
-        //   mainAxisAlignment: mainCenter,
-        //   crossAxisAlignment: crossCenter,
-        //   children: items.map((b) {
-        //     int index = items.indexOf(b);
-        //     return Container(
-        //       width: 10,
-        //       height: 40,
-        //       margin: EdgeInsets.symmetric(
-        //         // vertical: Dimensions.marginSize * 0.1,
-        //         horizontal: 30 * 0.2, vertical: 10
-        //       ),
-        //       decoration: BoxDecoration(
-        //         shape: BoxShape.circle,
-        //         color: _current == index
-        //             ? greenColor
-        //             : primaryColor,
-        //       ),
-        //     );
-        //   }).toList(),
-        // )
-      ],
+              onPageChanged: (index, reason) {
+                if (!mounted) return;
+                setState(() => _courant = index);
+              },
+            ),
+          ),
+          if (widget.items.length > 1) ...[
+            const SizedBox(height: kSpaceMd),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (int i = 0; i < widget.items.length; i++)
+                  AnimatedContainer(
+                    duration: kAnimationDuration,
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    height: 6,
+                    width: _courant == i ? 18 : 6,
+                    decoration: BoxDecoration(
+                      color: _courant == i ? kPrimaryColor : kBorderColor,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
     );
-  }
-
-  getItems(context){
-    List<Widget> datas = [];
-    for (var i in items) {
-      // if (kDebugMode) {
-      //   print(i.image.toString());
-      // }
-      datas.add(
-        SpecialOfferCard(
-          image: i.image.toString(),
-          category: i.titre.toString(),
-          sousTitre: i.sousTitre.toString(),
-          online: true,
-          numOfBrands: 18,
-          myHeight: 160,
-          myWidth: widthOfScreen(context),
-          press: () {
-
-          },
-        ),
-      );
-    }
-    return datas;
   }
 }

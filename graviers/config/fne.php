@@ -82,8 +82,21 @@ return [
 
         // Identifiants point de vente / établissement (configurés
         // côté FNE par la DGI lors de l'inscription de l'entreprise).
+        // Le point de vente doit être le NOM d'un point de vente actif de
+        // l'espace FNE (onglet Paramétrage → Tableau des points de vente),
+        // sinon la DGI répond « Point of sale is not valid ».
         'point_of_sale' => env('FNE_POINT_OF_SALE', 'PDV-01'),
-        'establishment' => env('FNE_ESTABLISHMENT', 'DALAKOUN'),
+        // Établissement : vide = le nom d'établissement de la configuration ;
+        // renseigné = il s'impose (l'environnement de test de la DGI n'accepte
+        // que le nom inscrit sur l'espace FNE).
+        'establishment' => env('FNE_ESTABLISHMENT', ''),
+
+        // Code de taxe des lignes d'un client DISPENSÉ de TVA (15/09/2026,
+        // applique_tva à 0 sur la fiche client) : le document imprime alors
+        // « TVA exo.lég - Pas de TVA sur HT 00,00% - D », d'où TVAD (exonération
+        // légale, 0 %). TVAC (conventionnelle) se règle ici, par le .env.
+        // À FAIRE VALIDER PAR LE COMPTABLE avant d'activer FNE_ENABLED.
+        'exempt_tax' => env('FNE_EXEMPT_TAX', 'TVAD'),
 
         // Messages affichés sur la facture certifiée (facultatifs).
         'commercial_message' => env('FNE_COMMERCIAL_MESSAGE', ''),

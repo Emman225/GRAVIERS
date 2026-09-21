@@ -28,7 +28,7 @@ class confirmationEmail extends Mailable
     {
         return new Envelope(
             to: $this->email,
-            subject: 'GRAVIERCI.COM - Confirmation d\'Email',
+            subject: 'DALAKOUN - Confirmation d\'Email',
         );
     }
 

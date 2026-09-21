@@ -1,0 +1,226 @@
+/* =====================================================================
+   SITE GRAND PUBLIC 100 % RESPONSIVE — DALAKOUN (12/09/2026)
+   Feuille ADDITIVE : toutes les règles sont sous des media queries
+   (< 992 px). Rien ne change sur ordinateur. Chargée en dernier, après
+   premium-responsive.css, pour que ses corrections l'emportent.
+   Mesures faites sur le site servi, en 375 px (téléphone) et 768 px
+   (tablette) : voir le test SiteGrandPublicResponsiveTest.
+   ===================================================================== */
+
+/* Petits écrans d'ordinateur et tablettes en paysage (992 à 1199 px) : le
+   thème fige la boîte du carrousel à 350 px alors que les diapositives font
+   420 px ; les points de navigation se plaçaient au milieu du contenu. La
+   boîte suit ses diapositives, comme au-dessus de 1200 px (inchangé). */
+@media (max-width: 1199.98px) {
+    body .premium-hero-slider .hero-slider-1 {
+        height: auto !important;
+        padding-bottom: 40px !important;   /* bande sous les diapositives pour les points */
+    }
+    body .premium-hero-slider .slick-dots,
+    body .hero-slider-1 .slick-dots {
+        bottom: 8px !important;
+    }
+}
+
+@media (max-width: 991.98px) {
+
+    /* 1. Carrousel d'accueil : les points de navigation (en bas, 12 px)
+          chevauchaient le bouton « Demander une livraison » ; le contenu
+          garde 56 px libres sous lui. */
+    /* La hauteur fixe (420 px, posée en !important dans la page) était plus
+       petite que le contenu : le bouton passait sous les points. La
+       diapositive prend la hauteur de son contenu (sélecteur plus précis
+       que ceux de la page, « body … », pour l'emporter). */
+    body .premium-hero-slider .single-hero-slider {
+        height: auto !important;
+        min-height: 440px !important;
+        padding: 12px 14px !important;
+    }
+    /* Les points sortent des diapositives : ils prennent place dans une
+       bande de 40 px sous le carrousel, plus jamais sur un bouton. */
+    body .premium-hero-slider .hero-slider-1.slick-slider {
+        height: auto !important;   /* le thème fige 350 px sur tablette : les points se plaçaient par rapport à cette hauteur */
+        padding-bottom: 40px !important;
+    }
+    body .premium-hero-slider .slider-content {
+        height: auto !important;
+        padding-bottom: 16px !important;
+        /* le thème centre le contenu par top:50 % + translateY(-50 %),
+           ce qui n'a plus de sens quand la hauteur suit le contenu */
+        top: auto !important;
+        left: auto !important;
+        transform: none !important;
+    }
+    body .premium-hero-slider .slick-dots,
+    body .hero-slider-1 .slick-dots {
+        bottom: 8px !important;
+    }
+
+    /* 2. Fiche produit : la galerie débordait de 10 px de sa colonne. */
+    .product-detail .detail-gallery {
+        overflow: hidden;
+    }
+
+    /* 3. Tableaux DataTables (Mon compte, paiements, devis) : seul le
+          tableau défile de gauche à droite ; la recherche, le nombre de
+          lignes et la pagination restent en place et passent à la ligne
+          au lieu de sortir de l'écran (la pagination faisait 557 px sur
+          un écran de 375). */
+    .dt-container .dt-layout-full {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        max-width: 100%;
+    }
+    .dt-container .row {
+        margin-left: 0;
+        margin-right: 0;
+    }
+    .dt-container .dt-layout-start,
+    .dt-container .dt-layout-end {
+        max-width: 100%;
+        flex-wrap: wrap;
+        padding-left: 0;
+        padding-right: 0;
+    }
+    .dt-container .dt-paging .pagination {
+        flex-wrap: wrap;
+        justify-content: center;
+        row-gap: 4px;
+    }
+    .dt-container .dt-search,
+    .dt-container .dt-search input,
+    .dt-container .dt-length select {
+        max-width: 100%;
+    }
+    .dt-container .dt-info {
+        white-space: normal;
+    }
+
+    /* 4. Indication posée par responsive-dalakoun.js devant un tableau
+          plus large que l'écran. */
+    .indication-defilement {
+        margin: 0 0 6px;
+        font-size: 12px;
+        color: #6b7280;
+    }
+    .indication-defilement::before {
+        content: "\2194\00a0";
+    }
+
+    /* 5. Pied de page : des liens que l'on peut toucher (hauteur ≥ 32 px). */
+    .footer-list li a,
+    .contact-infor a {
+        display: inline-block;
+        padding: 6px 0;
+    }
+
+    /* 6. Fenêtres modales : jamais plus larges que l'écran. */
+    .modal-dialog {
+        max-width: calc(100vw - 16px);
+        margin: 8px auto;
+    }
+}
+
+@media (max-width: 767.98px) {
+
+    /* 7. Panier : le champ « montant » d'une ligne ne force plus une
+          colonne de 300 px. */
+    body .cart-subtotal-wrap {
+        width: auto !important;
+        min-width: 0;
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+    body .cart-subtotal-wrap input.qty-val {
+        width: 120px !important;
+        max-width: 120px;
+    }
+
+    /* 8. Formulaires : champs, listes et boutons pleine largeur, jamais
+          plus larges que leur colonne. */
+    .main form .form-control,
+    .main form .form-select,
+    .main form .select2-container {
+        max-width: 100% !important;
+    }
+
+    /* 9. Titres de page moins hauts sur téléphone. */
+    .page-header .breadcrumb {
+        flex-wrap: wrap;
+    }
+}
+
+@media (max-width: 575.98px) {
+
+    /* 10. Boutons côte à côte : ils passent l'un sous l'autre plutôt que
+           de sortir de l'écran. */
+    .main .d-flex.gap-2 > .btn,
+    .main .btn-group-actions > .btn {
+        white-space: normal;
+    }
+}
+
+/* =====================================================================
+   13/09/2026 — demandes du client après la mise en service sur mongravier.com
+   ===================================================================== */
+@media (max-width: 991.98px) {
+
+    /* 11. Menu mobile : les mêmes entrées que sur ordinateur, « Espace pro »
+           présenté en groupe avec ses trois accès. */
+    .mobile-menu .mobile-menu-titre {
+        display: block;
+        padding: 12px 0 4px;
+        font-weight: 700;
+        color: #0a2540;
+    }
+    .mobile-menu .mobile-menu-sous {
+        list-style: none;
+        margin: 0 0 0 16px;
+        padding: 0;
+    }
+    .mobile-menu .mobile-menu-sous li a {
+        display: block;
+        padding: 6px 0;
+        font-size: 15px;
+    }
+
+    /* 12. Logo de l'en-tête plus grand sur téléphone et tablette (il faisait
+           60 px et débordait d'une barre de 46 px). La barre grandit avec lui. */
+    body .header-bottom .header-wrap > .logo a img {
+        height: 70px !important;
+        max-height: 70px !important;
+        max-width: 170px !important;
+        width: auto !important;
+    }
+    body .header-bottom .header-wrap {
+        min-height: 80px;
+        align-items: center;
+    }
+
+    /* 13. Page de connexion : le contenu prenait la moitié de l'écran à côté du
+           camion décoratif ; il prend toute la largeur, le camion disparaît. */
+    body .hero-login {
+        display: block !important;
+        min-height: 0 !important;
+        padding: 24px 12px 32px !important;
+    }
+    body .hero-login__content {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 auto !important;
+    }
+    body .hero-login__truck,
+    body .hero-login__shape {
+        display: none !important;
+    }
+    body .hero-login__hero-title {
+        font-size: 2rem !important;
+        line-height: 1.15 !important;
+    }
+    body .hero-login__card {
+        max-width: 480px;
+        margin: 0 auto;
+    }
+}

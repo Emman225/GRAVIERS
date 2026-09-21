@@ -126,8 +126,8 @@
                                             {{-- data-order : sans lui, DataTables trierait la date
                                                  comme du texte (« 09/12/2025 » avant « 10/01/2024 »). --}}
                                             <td data-order="{{ Carbon::parse($ticket->created_at)->format('YmdHis') }}">
-                                                {{ Carbon::parse($ticket->created_at)->format('d/m/Y') }}
-                                                <span class="sav-secondaire d-block">{{ Carbon::parse($ticket->created_at)->format('à H:i') }}</span>
+                                                {{ \Help::dateHeure($ticket->created_at) }}
+                                                <span class="sav-secondaire d-block">{{ Carbon::parse($ticket->created_at)->format('à H:i:s') }}</span>
                                             </td>
                                             <td class="text-center">
                                                 @if ($st === 3)

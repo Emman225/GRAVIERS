@@ -5,7 +5,7 @@
     {{-- Adresse absolue en dur, comme dans les autres courriels : dans une boîte
          mail il n'y a pas de page d'origine, et asset() dépend d'APP_URL — mal
          renseigné, l'image ne s'afficherait nulle part. --}}
-    <img src="https://graviers.fneconnect.net/frontend/assets/imgs/logo/dalakoun-blanc.png" class="logo" alt="DALAKOUN">
+    <img src="{{ asset('frontend/assets/imgs/logo/dalakoun-blanc.png') }}" class="logo" alt="DALAKOUN">
 </x-mail::header>
 </x-slot:header>
 

@@ -5,9 +5,13 @@
 {{-- @dump($fournisseur) --}}
 
 
-            <section class="content-main" style="z-index: -2">
+            {{-- Plus de « z-index: -2 » : cette couche négative plaçait tout
+                 l'en-tête SOUS les vignettes positionnées au-dessus, et le
+                 clic sur « Retour » ouvrait l'image de la pièce d'identité
+                 au lieu de revenir en arrière. --}}
+            <section class="content-main">
                 <div class="content-header">
-                    <a href="javascript:history.back()"><i class="material-icons md-arrow_back"></i> Retour </a>
+                    <a href="javascript:history.back()" class="btn btn-light"><i class="material-icons md-arrow_back"></i> Retour</a>
                 </div>
                 <div class="card mb-4">
                     <div class="card-header bg-brand" style="height: 150px"></div>
@@ -24,6 +28,8 @@
                                         <a href="{{ route('show.livreurPiece', ['livreur' => $livreur->id, 'type' => 'recto', 'mode' => 'inline']) }}" target="_blank" rel="noopener">
                                             <img src="{{ route('show.livreurPiece', ['livreur' => $livreur->id, 'type' => 'recto', 'mode' => 'inline']) }}"
                                                  class="center-xy img-fluid"
+                                                 loading="lazy" decoding="async"
+                                                 style="max-height: 180px; max-width: 190px; object-fit: contain;"
                                                  alt="Pièce d'identité (Recto)"
                                                  onerror="this.onerror=null; this.src='{{ $logoFallback }}'; this.style.opacity='0.5';" />
                                         </a>
@@ -38,6 +44,8 @@
                                         <a href="{{ route('show.livreurPiece', ['livreur' => $livreur->id, 'type' => 'verso', 'mode' => 'inline']) }}" target="_blank" rel="noopener">
                                             <img src="{{ route('show.livreurPiece', ['livreur' => $livreur->id, 'type' => 'verso', 'mode' => 'inline']) }}"
                                                  class="center-xy img-fluid"
+                                                 loading="lazy" decoding="async"
+                                                 style="max-height: 180px; max-width: 190px; object-fit: contain;"
                                                  alt="Pièce d'identité (Verso)"
                                                  onerror="this.onerror=null; this.src='{{ $logoFallback }}'; this.style.opacity='0.5';" />
                                         </a>
@@ -101,6 +109,41 @@
                                 </form>
                             </div>
                             <div class="col-sm-4 col-lg-4 col-xl-3 bg-light">
+                                {{-- La grille prime sur le mode de tarification ci-dessous :
+                                     quand une tranche couvre la course, c est elle qui
+                                     fixe le montant. Le mode reste le repli. --}}
+                                @php $nbTranches = $livreur->tranchesRenseignees(); @endphp
+                                <div class="mb-3">
+                                    <label class="mb-1"><h6 class="d-inline">Grille de facturation</h6></label>
+                                    <p class="small mb-2">
+                                        @if ($nbTranches > 0)
+                                            <span class="badge bg-success">{{ $nbTranches }} tranche(s)</span>
+                                            @if ($livreur->part_grille)
+                                                <span class="text-muted">— part livreur {{ rtrim(rtrim(number_format($livreur->part_grille, 2, ',', ' '), '0'), ',') }} %</span>
+                                            @endif
+                                        @else
+                                            <span class="badge bg-secondary">Aucune grille</span>
+                                            <span class="text-muted">— le tarif ci-dessous s'applique</span>
+                                        @endif
+                                    </p>
+                                    <a href="{{ route('show.grilleLivreur', $livreur) }}" class="btn btn-sm btn-outline-primary">
+                                        Ouvrir la grille
+                                    </a>
+                                </div>
+
+                                {{-- L ECRAN MONTRAIT DEUX TARIFICATIONS SANS DIRE LAQUELLE GAGNE.
+                                     La grille prime ; le mode ci-dessous ne sert que lorsque aucune
+                                     tranche ne couvre la course. Sans cette phrase, on peut croire
+                                     que modifier le fixe ou le prix au km change la remuneration
+                                     des courses deja couvertes — ce qui n est pas le cas. --}}
+                                @if ($nbTranches > 0)
+                                    <div class="alert alert-info py-2 px-3 small mb-3">
+                                        <strong>La grille prime.</strong> Le mode ci-dessous ne s'applique
+                                        que si <u>aucune tranche ne couvre la course</u> : unité sans grille,
+                                        ou quantité / distance hors des bornes.
+                                    </div>
+                                @endif
+
                                 <form action="{{route('show.modifierPrixLivraison',$livreur)}}" method="post" class="d-flex">
                                     @csrf
                                     <div class="">
@@ -134,6 +177,7 @@
                                         <div class="d-flex mt-1">
                                             <button class="btn btn-primary me-2" type="submit">Modifier</button>
                                             <button type="button" class="btn btn-outline-secondary btn-open-historique-prix"
+                                                data-bs-toggle="modal" data-bs-target="#modalHistoriquePrix"
                                                 title="Historique des modifications">
                                                 <i class="material-icons md-history align-middle"></i>
                                                 Historique ({{ $historiquesPrix->count() }})
@@ -175,9 +219,15 @@
                     {{-- ass="card mb-4"> --}}
                     @if(!$livraisons->isEmpty())
             <div class="card-body">
-                <h3 class="card-title">Liste des bons d'enlèvement assignés</h3>
+                {{-- Le nom du livreur dans le titre (08/09/2026) : un export ou une
+                     impression de ce tableau dit de qui il s'agit. --}}
+                <h3 class="card-title">Liste des bons d'enlèvement assignés à {{ $livreur->user?->nom_prenoms ?? $livreur->nom_prenoms }}</h3>
                 <div class="row">
                     <div class="card-body">
+                        {{-- Les trois exports, comme sur les autres listes (08/09/2026). --}}
+                        <x-export-buttons table-id="tableLivraisonsLivreur"
+                                          filename="bons-enlevement-livreur-{{ $livreur->id }}"
+                                          title="Bons d'enlèvement assignés à {{ $livreur->user?->nom_prenoms ?? $livreur->nom_prenoms }}" />
                         <div class="table-responsive">
                             <table class="table table-hover text-center" id="tableLivraisonsLivreur">
                                 <thead>
@@ -227,7 +277,10 @@
                  Section "Véhicules" du livreur
                  ============================================================ --}}
             <div class="card-body">
-                <h3 class="card-title">Véhicules du livreur</h3>
+                <h3 class="card-title">Véhicules du livreur {{ $livreur->user?->nom_prenoms ?? $livreur->nom_prenoms }}</h3>
+                <x-export-buttons table-id="tableVehiculesLivreur"
+                                  filename="vehicules-livreur-{{ $livreur->id }}"
+                                  title="Véhicules du livreur {{ $livreur->user?->nom_prenoms ?? $livreur->nom_prenoms }}" />
                 <div class="table-responsive">
                     <table class="table table-hover text-center vehicules-livreur" id="tableVehiculesLivreur">
                         <thead style="background-color: #1c57a3; color: white;">
@@ -304,7 +357,18 @@
                         <button type="submit" class="btn btn-primary w-100">Ajouter</button>
                     </div>
                 </form>
-            </div>
+                    </div>{{-- card-body --}}
+                </div>{{-- card --}}
+            </section>
+
+            {{-- LA FENÊTRE EST HORS DE LA CARTE (08/09/2026, cause enfin établie sur
+                 la page servie). La carte et la section n'étaient jamais refermées :
+                 la fenêtre, écrite après, devenait un descendant de la carte. Or le
+                 thème applique « transform: translateY(-2px) » à toute carte survolée
+                 (main.css, .card:hover) : un élément transformé devient le repère des
+                 positions fixes, et la fenêtre — fond gris compris — se retrouvait
+                 confinée dans la carte (overflow: hidden), dansait au gré du curseur
+                 et ne redevenait normale que lorsque le curseur quittait la page. --}}
             <!--  end section véhicules -->
 
     {{-- ==================================================================
@@ -322,14 +386,24 @@
             padding: 30px 15px;
         }
         .hp-overlay.is-open { display: block; }
+        /* LE CADRE N'A PAS À S'ANIMER (08/09/2026). Le thème applique
+           « transition: all » à tout : le cadre s'ouvrait avec une largeur
+           nulle, le fond gris couvrait l'écran, et le contenu n'était peint
+           qu'au prochain rafraîchissement (déplacement du curseur hors de la
+           page). Aucune transition, une couche d'affichage à part. */
+        .hp-overlay, .hp-overlay * { transition: none !important; animation: none !important; }
         .hp-dialog {
             background: #fff;
             border-radius: 6px;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+            width: 100%;
             max-width: 900px;
             margin: 30px auto;
             overflow: hidden;
             font-family: inherit;
+            position: relative;
+            transform: translateZ(0);
+            will-change: transform;
         }
         .hp-header {
             background: #1c57a3;
@@ -381,16 +455,29 @@
         .hp-btn-close:hover { background: #5a6268; }
     </style>
 
-    <div class="hp-overlay" id="hpOverlay">
-        <div class="hp-dialog">
-            <div class="hp-header">
-                <h5>
-                    Historique du Prix de livraison —
-                    {{ $livreur->user?->nom_prenoms ?? $livreur->nom_prenoms }}
-                </h5>
-                <button type="button" class="hp-close-x hp-close" aria-label="Fermer">&times;</button>
-            </div>
-            <div class="hp-body">
+    {{-- LA FENÊTRE STANDARD DU SITE (08/09/2026). Le cadre maison qui la
+         précédait — un calque fixe écrit dans une carte du thème — restait gris
+         et ne se peignait qu'au prochain rafraîchissement de l'écran. Les
+         fenêtres Bootstrap des guichets, elles, s'affichent partout : c'est
+         la même qui sert ici. --}}
+    {{-- SANS « fade » (08/09/2026) : l'animation d'ouverture (glissement + fondu)
+         laissait sur certains postes deux images fantômes de la fenêtre, l'une
+         à sa position de départ, l'autre à l'arrivée, et la page en dessous
+         restait délavée tant que l'écran n'était pas rafraîchi. La fenêtre
+         apparaît d'un coup. --}}
+    <div class="modal" id="modalHistoriquePrix" tabindex="-1" aria-labelledby="modalHistoriquePrixLabel" aria-hidden="true"
+         style="transition: none;">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="modalHistoriquePrixLabel">
+                        <i class="material-icons md-history"></i>
+                        Historique du prix de livraison — {{ $livreur->user?->nom_prenoms ?? $livreur->nom_prenoms }}
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fermer"></button>
+                </div>
+                <div class="modal-body">
+
                 @if ($historiquesPrix->isEmpty())
                     <p class="hp-empty">Aucune modification enregistrée pour ce livreur.</p>
                 @else
@@ -409,7 +496,7 @@
                             @foreach ($historiquesPrix as $h)
                                 @php $delta = $h->nouveau_prix - $h->ancien_prix; @endphp
                                 <tr>
-                                    <td class="center">{{ \Carbon\Carbon::parse($h->created_at)->format('d/m/Y H:i') }}</td>
+                                    <td class="center">{{ \Carbon\Carbon::parse($h->created_at)->format('d/m/Y H:i:s') }}</td>
                                     <td class="right">{{ number_format($h->ancien_prix, 0, ',', ' ') }} fcfa</td>
                                     <td class="right"><strong>{{ number_format($h->nouveau_prix, 0, ',', ' ') }} fcfa</strong></td>
                                     <td class="right">
@@ -431,9 +518,10 @@
                         {{ $historiquesPrix->count() }} modification(s) — historique limité aux 50 dernières entrées.
                     </p>
                 @endif
-            </div>
-            <div class="hp-footer">
-                <button type="button" class="hp-btn-close hp-close">Fermer</button>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+                </div>
             </div>
         </div>
     </div>
@@ -460,43 +548,14 @@
             safeInit('#tableVehiculesLivreur');
         });
 
-        // ===== Overlay "Historique du Prix de livraison" =====
-        // 100% vanilla JS (pas de jQuery), pas de classe Bootstrap modal,
-        // donc strictement isolé de BS4 et BS5.
-        (function () {
-            var overlay = document.getElementById('hpOverlay');
-            if (!overlay) return;
-
-            function open(e) {
-                if (e) { e.preventDefault(); e.stopPropagation(); }
-                overlay.classList.add('is-open');
-                document.body.style.overflow = 'hidden';
+        // La fenêtre « Historique » est une fenêtre Bootstrap standard (08/09/2026).
+        // Par sûreté, elle est rattachée directement à <body> : aucun ancêtre
+        // transformé (carte survolée, animation) ne peut plus la capturer.
+        document.addEventListener('DOMContentLoaded', function () {
+            var fenetre = document.getElementById('modalHistoriquePrix');
+            if (fenetre && fenetre.parentNode !== document.body) {
+                document.body.appendChild(fenetre);
             }
-            function close(e) {
-                if (e) { e.preventDefault(); e.stopPropagation(); }
-                overlay.classList.remove('is-open');
-                document.body.style.overflow = '';
-            }
-
-            // Bouton "Historique"
-            document.addEventListener('click', function (e) {
-                var trigger = e.target.closest('.btn-open-historique-prix');
-                if (trigger) { open(e); return; }
-
-                // Boutons "Fermer" (croix + bouton)
-                var closer = e.target.closest('.hp-close');
-                if (closer) { close(e); return; }
-
-                // Click sur le fond de l'overlay
-                if (e.target === overlay) { close(e); }
-            });
-
-            // ESC -> fermer
-            document.addEventListener('keydown', function (e) {
-                if (e.key === 'Escape' && overlay.classList.contains('is-open')) {
-                    close(e);
-                }
-            });
-        })();
+        });
     </script>
 @endsection

@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 
@@ -67,7 +66,7 @@ class _ForgotPassFormState extends State<ForgotPassForm> {
               return null;
             },
             decoration: const InputDecoration(
-              labelText: "Email",
+              labelText: "Email *",
               hintText: "Saisir votre adresse mail",
               // If  you are using latest version of flutter then lable text and hint text shown like this
               // if you r using flutter less then 1.20.* then maybe this is not working properly

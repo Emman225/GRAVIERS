@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../components/bouton_retour.dart';
 import '../../constants.dart';
 import 'components/complete_profile_form.dart';
 
@@ -11,6 +12,7 @@ class CompleteProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: const BoutonRetour(),
         title: const Text('Sign Up'),
       ),
       body: SafeArea(

@@ -21,7 +21,7 @@
     <div class="page-inst__corps">
 
         <div class="page-inst__carte">
-            <h2><i class="material-icons md-inventory_2"></i> Comment vos matériaux sont livrés</h2>
+            <h2><i class="material-icons md-assignment"></i> Comment vos matériaux sont livrés</h2>
             <p>Selon le produit commandé, la livraison se fait sous l'un des conditionnements suivants :</p>
             <div class="page-inst__grille">
                 @forelse ($typesLivraison as $type)

@@ -1,7 +1,7 @@
 <x-mail::message>
 
 <div style="text-align:center; margin-bottom: 20px;">
-    <img src="https://graviers.fneconnect.net/frontend/assets/imgs/logo/dalakoun-blanc.png" alt="Logo Granite" width="180" style="max-width:180px; height:auto;">
+    <img src="{{ asset('frontend/assets/imgs/logo/dalakoun-blanc.png') }}" alt="Logo Granite" width="180" style="max-width:180px; height:auto;">
 </div>
 
 Bonjour M./Mme {{ $client->prenom ?: $client->nom }}, votre demande de livraison a été prise en charge. Veuillez communiquer le code ci-dessous au livreur : il en a besoin pour valider la livraison une fois votre marchandise arrivée. <br>

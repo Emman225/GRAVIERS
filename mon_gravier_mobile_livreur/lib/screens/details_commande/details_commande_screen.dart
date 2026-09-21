@@ -2,13 +2,13 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:mon_gravier_com_livreur/globale.dart';
 import 'package:http/http.dart' as http;
 import 'package:mon_gravier_com_livreur/models/Commande.dart';
 import 'package:mon_gravier_com_livreur/models/InformationsCommande.dart';
 
+import '../../../components/bouton_retour.dart';
 import '../../constants.dart';
 import '../../helper/constants.dart';
 import 'components/check_out_card.dart';
@@ -102,7 +102,6 @@ class _DetailsCommandeScreenState extends State<DetailsCommandeScreen> {
           children: [
             const Text(
               "Détails commande",
-              style: TextStyle(color: Colors.black),
             ),
             Text(
               "${lignes.length} article(s)",
@@ -110,27 +109,8 @@ class _DetailsCommandeScreenState extends State<DetailsCommandeScreen> {
             ),
           ],
         ),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              elevation: 0,
-              backgroundColor: Colors.white,
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black,
-              size: 20,
-            ),
-          ),
-        ),
+        leading: const BoutonRetour(),
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 5),
@@ -155,7 +135,7 @@ class _DetailsCommandeScreenState extends State<DetailsCommandeScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF5F6F9),
+                          color: kSurfaceMutedColor,
                           borderRadius: BorderRadius.circular(15),
                         ),
                         child: Image.network(lignes[index].image.toString()),
@@ -175,15 +155,15 @@ class _DetailsCommandeScreenState extends State<DetailsCommandeScreen> {
                         const SizedBox(height: 8),
                         Text.rich(
                           TextSpan(
-                            text: "\$${formaterMontant(lignes[index].prixMoyen!.toDouble())} / ${lignes[index].unite.toString()}",
+                            text: "${formaterMontant(lignes[index].prixMoyen!.toDouble())} / ${lignes[index].unite.toString()}",
                             style: const TextStyle(
                                 fontWeight: FontWeight.w600, color: kPrimaryColor),
                             children: [
                               TextSpan(
-                                  text: " x${lignes[index].qte}",
+                                  text: "   × ${lignes[index].qte}",
                                   style: Theme.of(context).textTheme.bodyLarge),
                               TextSpan(
-                                  text: "\t (${lignes[index].etatLivraison})",
+                                  text: "\nÉtat de livraison : ${lignes[index].etatLivraison}",
                                   style: red14MediumTextStyle),
                             ],
                           ),

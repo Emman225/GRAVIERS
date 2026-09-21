@@ -274,7 +274,7 @@
                             </div>
                             <div>
                                 <div class="legal-contact__label">Email</div>
-                                <a href="mailto:info@fneconnect.net" class="legal-contact__value">info@fneconnect.net</a>
+                                <a href="mailto:{{ \Help::emailContact() }}" class="legal-contact__value">{{ \Help::emailContact() }}</a>
                             </div>
                         </div>
                         <div class="legal-contact">

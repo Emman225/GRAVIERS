@@ -10,7 +10,7 @@
     <div class="content-header">
         <h2 class="content-title">Liste des clients ordinaires- </h2>
         {{-- <div>
-            <a href="{{ route('sellers.register') }}" class="btn btn-primary"><i class="material-icons md-plus"></i> Ajouter Nouveau</a>
+            <a href="{{ route('sellers.register') }}" class="btn btn-primary"><i class="material-icons md-plus"></i> Ajouter nouveau</a>
         </div> --}}
     </div>
 
@@ -53,6 +53,7 @@
                             <th class="text-center">Contact</th>
                             <th class="text-center">Email</th>
                             <th>TVA</th>
+                            <th class="text-end">Avance disponible</th>
                             <th>Bloqué</th>
                             <th class="text-center width-10%">Action</th>
 
@@ -81,10 +82,15 @@
                                 <p> {{ $c->contact2 }} </p>
                             </td>
                             <td class="text-center">{{ $c->user?->email }}</td>
-                            <td>{{ $c->applique_tva == 1 ? 'Appliquée' : 'Non appliquée' }}</td>
+                            <td class="small">
+                                {{-- TVA marchandise et TVA transport, retirables séparément (10/09/2026). --}}
+                                Marchandise : <strong>{{ $c->applique_tva == 1 ? 'appliquée' : 'non appliquée' }}</strong>{{ $c->applique_tva == 1 ? '' : ' — ' . $c->libelleExonerationFne() }}<br>
+                                Transport : <strong>{{ (int) ($c->applique_tva_transport ?? 1) === 1 ? 'appliquée' : 'non appliquée' }}</strong>
+                            </td>
+                            <td class="text-end">{{ ($soldesAvance[$c->id] ?? 0) >= 1 ? Help::formatNombre($soldesAvance[$c->id], true) : '-' }}</td>
                             <td> {{ $c->user?->statut == 1 ? "NON" : "OUI" }} </td>
 
-                            <td>
+                            <td class="text-nowrap">
                                 <div class="dropdown">
                                     <a href="#" data-bs-toggle="dropdown" class="btn btn-light rounded btn-sm font-sm"> <i class="material-icons md-more_horiz"></i> Actions</a>
                                     <div class="dropdown-menu">
@@ -107,7 +113,7 @@
                                                         <i class="material-icons md-visibility" style="font-size:14px;"></i> Voir DFE
                                                     </a>
                                                     <a class="dropdown-item" href="{{ route('show.clientDocument', ['client' => $c->id, 'type' => 'dfe', 'mode' => 'download']) }}">
-                                                        <i class="material-icons md-download" style="font-size:14px;"></i> Télécharger DFE
+                                                        <i class="material-icons md-get_app" style="font-size:14px;"></i> Télécharger DFE
                                                     </a>
                                                 @else
                                                     <span class="dropdown-item text-danger" style="cursor:default;" title="Fichier référencé en BD mais introuvable sur le disque">
@@ -118,10 +124,10 @@
                                             @if(!empty($c->registre_commerce))
                                                 @if($rcExists)
                                                     <a class="dropdown-item" href="{{ route('show.clientDocument', ['client' => $c->id, 'type' => 'rc', 'mode' => 'inline']) }}" target="_blank" rel="noopener">
-                                                        <i class="material-icons md-visibility" style="font-size:14px;"></i> Voir Registre de commerce
+                                                        <i class="material-icons md-visibility" style="font-size:14px;"></i> Voir registre de commerce
                                                     </a>
                                                     <a class="dropdown-item" href="{{ route('show.clientDocument', ['client' => $c->id, 'type' => 'rc', 'mode' => 'download']) }}">
-                                                        <i class="material-icons md-download" style="font-size:14px;"></i> Télécharger Registre de commerce
+                                                        <i class="material-icons md-get_app" style="font-size:14px;"></i> Télécharger registre de commerce
                                                     </a>
                                                 @else
                                                     <span class="dropdown-item text-danger" style="cursor:default;" title="Fichier référencé en BD mais introuvable sur le disque">
@@ -134,7 +140,10 @@
                                             @endif
                                         @endif
                                         <button class="dropdown-item" data-id="{{ $c->id }}" data-nom="{{ $c->nom }}" data-bs-toggle="modal" data-bs-target="#tvaModal-{{ $c->id }}">
-                                            {{ $c->applique_tva == 1 ? 'Retirer la TVA' : 'Appliquer la TVA' }}
+                                            {{ $c->applique_tva == 1 ? 'Retirer la TVA marchandise' : 'Appliquer la TVA marchandise' }}
+                                        </button>
+                                        <button class="dropdown-item" data-id="{{ $c->id }}" data-nom="{{ $c->nom }}" data-bs-toggle="modal" data-bs-target="#tvaTransportModal-{{ $c->id }}">
+                                            {{ (int) ($c->applique_tva_transport ?? 1) === 1 ? 'Retirer la TVA transport' : 'Appliquer la TVA transport' }}
                                         </button>
                                         @switch($c->user?->statut)
                                             @case(1)
@@ -315,8 +324,15 @@
                         <h5 class="fw-bold text-danger" id="deleteNom"></h5>
 
                         <p class="text-muted">
-                            {{ $c->applique_tva == 1 ? 'Il le paiera plus de TVA sur ses commandes' : 'Il devra payer une TVA sur ses commandes.' }}
+                            {{ $c->applique_tva == 1 ? 'Il ne paiera plus de TVA sur ses commandes.' : 'Il devra payer une TVA sur ses commandes.' }}
                         </p>
+                        @if ($c->applique_tva == 1)
+                            <p class="text-muted small">
+                                Précisez le motif : <strong>légale</strong> (prévue par la loi, code DGI TVAD) ou
+                                <strong>conventionnelle</strong> (accordée par convention ou agrément, code DGI TVAC).
+                                Ce code sera porté par ses factures normalisées.
+                            </p>
+                        @endif
                     </div>
 
                     <div class="modal-footer">
@@ -330,11 +346,46 @@
                             </button>
 
 
-                            <a href="{{route('show.appliqueTva',$c)}}"
-                                class="btn btn-sm btn-{{ $c->applique_tva == 1 ? 'danger' : 'warning' }} rounded font-sm mt-15">{{ $c->applique_tva == 1 ? 'Retirer la TVA' : 'Appliquer la TVA' }}</a>
+                            @if ($c->applique_tva == 1)
+                                {{-- Le retrait dit à la DGI POURQUOI ce client n'a pas de TVA (lot 82, 15/09/2026) :
+                                     exonération légale (TVAD) ou conventionnelle (TVAC), code de ses lignes FNE. --}}
+                                <a href="{{ route('show.appliqueTva', $c) }}?code=TVAD"
+                                    class="btn btn-sm btn-danger rounded font-sm mt-15">Retirer : exonération légale (TVAD)</a>
+                                <a href="{{ route('show.appliqueTva', $c) }}?code=TVAC"
+                                    class="btn btn-sm btn-outline-danger rounded font-sm mt-15">Retirer : exonération conventionnelle (TVAC)</a>
+                            @else
+                                <a href="{{ route('show.appliqueTva', $c) }}"
+                                    class="btn btn-sm btn-warning rounded font-sm mt-15">Appliquer la TVA</a>
+                            @endif
                         </form>
                     </div>
 
+                </div>
+            </div>
+        </div>
+         <!-- Modal TVA transport (10/09/2026) -->
+        @php $tvaTransportAppliquee = (int) ($c->applique_tva_transport ?? 1) === 1; @endphp
+        <div class="modal fade" id="tvaTransportModal-{{ $c->id }}" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header bg-{{ $tvaTransportAppliquee ? 'danger' : 'warning' }} text-white">
+                        <h5 class="modal-title text-white">Confirmation</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body text-center">
+                        <p>
+                            Voulez-vous vraiment {{ $tvaTransportAppliquee ? 'retirer la TVA sur le transport' : 'appliquer la TVA sur le transport' }} au client : <span class="fw-bold">{{ $c->display_name }}</span>
+                        </p>
+                        <p class="text-muted">
+                            {{ $tvaTransportAppliquee ? 'Ses prochains transports (ventes, locations, livraisons) seront facturés hors taxe.' : 'Ses prochains transports porteront la TVA, si elle est activée dans Paramètres.' }}
+                            La TVA sur la marchandise n'est pas concernée.
+                        </p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-sm btn-secondary rounded font-sm mt-15" data-bs-dismiss="modal">Annuler</button>
+                        <a href="{{ route('show.appliqueTvaTransport', $c) }}"
+                           class="btn btn-sm btn-{{ $tvaTransportAppliquee ? 'danger' : 'warning' }} rounded font-sm mt-15">{{ $tvaTransportAppliquee ? 'Retirer' : 'Appliquer' }}</a>
+                    </div>
                 </div>
             </div>
         </div>

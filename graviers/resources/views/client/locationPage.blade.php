@@ -77,7 +77,7 @@
                                             </div>
                                             <span class="font-small ml-5 text-muted">({{ round(($produit->meilleur_note * 5) / 100, 1) }})</span>
                                         </div>
-                                        <div class="product-card-bottom">
+                                        <div class="product-card-bottom d-flex flex-column">
                                             <div class="product-price">
                                                 @if(false)
                                                     <span>{{ number_format($prixPerso[$produit->id], 0, '', ' ') }} fcfa</span>

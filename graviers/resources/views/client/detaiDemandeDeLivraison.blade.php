@@ -71,6 +71,7 @@
                                                         @foreach ($detail->livraisons as $livraison)
                                                             <span {{ $livraison->etat_livraison == 'LIVREE' ? 'class=barre-livree' : '' }}>
                                                                 <span class="detail-livraison-num">{{ $livraison->numero }}</span>
+                                                                @include('client._codesLivraison', ['livraison' => $livraison])
                                                                 <span class="text-muted">|</span>
                                                                 <span class="fw-bold">{{ $livraison->qte }}</span>
                                                             </span>

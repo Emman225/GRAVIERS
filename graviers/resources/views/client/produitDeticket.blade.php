@@ -165,8 +165,8 @@
                                             {{-- data-order : sans lui, DataTables trierait « 09/12/2025 »
                                                  comme du texte, donc avant « 10/01/2024 ». --}}
                                             <td data-order="{{ Carbon::parse($detail->updated_at)->format('YmdHis') }}">
-                                                {{ Carbon::parse($detail->updated_at)->format('d/m/Y') }}
-                                                <span class="sav-secondaire d-block">{{ Carbon::parse($detail->updated_at)->format('à H:i') }}</span>
+                                                {{ \Help::dateHeure($detail->updated_at) }}
+                                                <span class="sav-secondaire d-block">{{ Carbon::parse($detail->updated_at)->format('à H:i:s') }}</span>
                                             </td>
                                             <td class="text-center">
                                                 {{-- Statuts alignés sur ce que le code ÉCRIT réellement :

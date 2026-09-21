@@ -507,3 +507,70 @@
     .auth-form-title { font-size: 1.3rem; }
     .auth-form-subtitle { font-size: 0.85rem; }
 }
+
+/* ============================================================
+   RETOUR AU SITE PUBLIC
+   ============================================================
+   Les pages de connexion des espaces (administration, apporteur,
+   fournisseur, livreur) s'affichent SEULES : elles n'ont ni en-tete ni
+   menu. Quelqu'un qui y arrivait par erreur — ou qui renoncait a se
+   connecter — n'avait plus aucun chemin vers la boutique, sauf a
+   retaper l'adresse.
+
+   Le bouton est pose en haut a droite : le coin haut GAUCHE porte deja
+   le logo sur le panneau lateral, et le centre appartient au formulaire,
+   qui reste l'action principale de la page. */
+.auth-retour-site {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    z-index: 5;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 16px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    color: #1f2937;
+    font-size: 0.86rem;
+    font-weight: 600;
+    text-decoration: none;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.10);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
+}
+.auth-retour-site:hover,
+.auth-retour-site:focus {
+    color: #1c57a3;
+    text-decoration: none;
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.16);
+}
+/* Le focus clavier doit rester visible : ce bouton est le seul moyen de
+   quitter la page sans se connecter. */
+.auth-retour-site:focus-visible {
+    outline: 2px solid #1c57a3;
+    outline-offset: 2px;
+}
+.auth-retour-site .material-icons {
+    font-size: 18px;
+}
+
+/* Sur petit ecran, le libelle prendrait la largeur du bandeau : on garde
+   la pastille et l'icone, qui suffisent a se comprendre. */
+@media (max-width: 575px) {
+    .auth-retour-site {
+        top: 10px;
+        right: 10px;
+        padding: 8px 12px;
+        font-size: 0.78rem;
+        /* Reduit a l'icone, la pastille doit rester assez grande pour etre
+           touchee du pouce sans viser. */
+        min-width: 44px;
+        min-height: 44px;
+        justify-content: center;
+    }
+    .auth-retour-site .auth-retour-site__texte {
+        display: none;
+    }
+}

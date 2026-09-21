@@ -119,6 +119,7 @@
                                                             <td class="text-center" data-title="N° Livraison">
                                                                 <span {{ $livraison->etat_livraison == 'LIVREE' ? 'class=barre-livree' : '' }}>
                                                                     <span class="validation-livraison-num">{{ $livraison->numero }}</span>
+                                                                    @include('client._codesLivraison', ['livraison' => $livraison, 'numeroCommande' => $commande->numero])
                                                                 </span>
                                                             </td>
 

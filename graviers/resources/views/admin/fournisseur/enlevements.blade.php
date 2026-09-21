@@ -49,11 +49,11 @@
                 <table class="table table-striped table-sm" id="liste" style="font-size: 0.85rem;">
                     <thead style="background-color: #1c57a3; color: white;">
                         <tr>
-                            <th class="text-center">N° Bon Enlèvement</th>
+                            <th class="text-center">N° Bon enlèvement</th>
                             <th class="text-center">Date Enlèvement</th>
                             <th class="text-center">Code Fournisseur</th>
                             <th class="text-center">Fournisseur</th>
-                            <th class="text-center">N° Cmd Client</th>
+                            <th class="text-center">N° Cmd client</th>
                             <th class="text-center">Client final</th>
                             <th class="text-center">Produit</th>
                             <th class="text-end">Quantité</th>
@@ -63,8 +63,8 @@
                                  la TVA payée par le client revenant alors à l'État. --}}
                             <th class="text-end">TVA fournisseur</th>
                             <th class="text-end">Montant dû</th>
-                            <th class="text-center">Date Échéance</th>
-                            <th class="text-end">Montant Payé</th>
+                            <th class="text-center">Date échéance</th>
+                            <th class="text-end">Montant payé</th>
                             <th class="text-end">Reste à Payer</th>
                             <th class="text-center">Jours retard</th>
                             <th class="text-center">Statut</th>
@@ -80,7 +80,7 @@
                             @endphp
                             <tr class="{{ $alerte ? 'table-danger' : '' }}">
                                 <td class="text-center"><strong>{{ $l->numero_be }}</strong></td>
-                                <td class="text-center">{{ $l->date_enlevement ? Carbon::parse($l->date_enlevement)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date_enlevement ? \Help::dateHeure($l->date_enlevement) : '-' }}</td>
                                 <td class="text-center">{{ $l->code_fournisseur }}</td>
                                 <td>{{ $l->fournisseur_nom }}</td>
                                 <td class="text-center">{{ $l->numero_commande }}</td>
@@ -91,7 +91,7 @@
                                 <td class="text-end">{{ Help::formatNombre($l->montant_ht, true) }}</td>
                                 <td class="text-end">{{ Help::formatNombre($l->tva, true) }}</td>
                                 <td class="text-end"><strong>{{ Help::formatNombre($l->montant_ttc, true) }}</strong></td>
-                                <td class="text-center">{{ $l->date_echeance ? Carbon::parse($l->date_echeance)->format('d/m/Y') : '-' }}</td>
+                                <td class="text-center">{{ $l->date_echeance ? \Help::dateHeure($l->date_echeance) : '-' }}</td>
                                 <td class="text-end text-success">{{ Help::formatNombre($l->montant_paye, true) }}</td>
                                 <td class="text-end text-danger"><strong>{{ Help::formatNombre($l->reste_a_payer, true) }}</strong></td>
                                 <td class="text-center">

@@ -57,7 +57,7 @@
                             <div>
                                 {{-- <span class="font-small text-muted">By <a href="vendor-details-1.html">NestFood</a></span> --}}
                             </div>
-                            <div class="product-card-bottom">
+                            <div class="product-card-bottom d-flex flex-column">
                                 <div class="product-price">
                                     @if(isset($prixPerso[$produit->id]))
                                         <span> {{number_format($prixPerso[$produit->id],0,'','.')}} fcfa </span>
