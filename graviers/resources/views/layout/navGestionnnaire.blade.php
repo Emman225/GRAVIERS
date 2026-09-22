@@ -280,6 +280,7 @@
 {{-- ===================== LE PARAMÉTRAGE ===================== --}}
 @if ($estAdmin)
     @include('layout.navbar.navConfiguration')
+    @include('layout.navbar.navComptabilite')
 @endif
 <hr>
 

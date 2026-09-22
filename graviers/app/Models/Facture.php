@@ -71,6 +71,30 @@ class Facture extends Model
         'date_echeance' => 'date',
     ];
 
+    /**
+     * L'ÉCRITURE COMPTABLE NAÎT AVEC LA CERTIFICATION (lot 117, 21/09/2026).
+     *
+     * Posé sur le modèle et non dans les contrôleurs : une facture devient
+     * certifiée à plusieurs endroits (validation d'une vente, d'une location,
+     * d'un transport, émission d'un avoir). JAMAIS bloquant — une écriture qui
+     * ne se produit pas ne doit pas faire échouer une certification déjà
+     * acquise auprès de la DGI ; la commande comptabilite:produire-ecritures
+     * rattrape ce qui manque.
+     */
+    protected static function booted(): void
+    {
+        static::saved(function (Facture $facture) {
+            if ($facture->fne_status !== 'certified' || !($facture->wasRecentlyCreated || $facture->wasChanged('fne_status'))) {
+                return;
+            }
+            try {
+                \App\Services\Comptabilite\MoteurEcritures::produirePourFacture($facture);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Écriture comptable non produite pour la facture ' . $facture->id . ' : ' . $e->getMessage());
+            }
+        });
+    }
+
     /** Une facture d'avoir : montant négatif, jamais réclamée au client (lot 92). */
     public function estUnAvoir(): bool
     {

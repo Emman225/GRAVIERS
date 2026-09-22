@@ -20,10 +20,12 @@ use Illuminate\Support\Facades\Storage;
 use Cviebrock\EloquentSluggable\Sluggable;
 use Spatie\Permission\Traits\HasRoles;
 use App\Models\Ville;
+// Module « Écritures comptables », phase 4 (lot 121, 22/09/2026) : les jetons de l'API comptable.
+use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable, SoftDeletes, Sluggable,HasRoles;
+    use HasFactory, Notifiable, SoftDeletes, Sluggable, HasRoles, HasApiTokens;
 
 
     protected $fillable = [

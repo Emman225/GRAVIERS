@@ -37,6 +37,10 @@ use App\Http\Controllers\DecisionClientTermeController;
 use App\Http\Controllers\GrilleLivreurController;
 use App\Http\Controllers\RecapVentesLocationsController;
 use App\Http\Controllers\AgenceController;
+use App\Http\Controllers\ParametrageComptableController;
+use App\Http\Controllers\JetonsApiComptableController;
+use App\Http\Controllers\EcrituresComptablesController;
+use App\Http\Controllers\RapportsComptablesController;
 use App\Http\Controllers\RecapCreancesController;
 
 
@@ -371,6 +375,80 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
     Route::get('/audit', [AuditController::class, 'index'])
         ->middleware('admin.seulement')
         ->name('audit.index');
+
+    // Module « Écritures comptables », phase 1 : le paramétrage (lot 116, 21/09/2026).
+    // Réservé aux administrateurs — les écritures sont produites par et pour DALAKOUN.
+    Route::prefix('comptabilite')->name('comptabilite.')->middleware('admin.seulement')
+        ->controller(ParametrageComptableController::class)->group(function () {
+            Route::get('/parametrage', 'index')->name('parametrage');
+
+            Route::get('/comptes/create', 'compteCreate')->name('comptes.create');
+            Route::post('/comptes', 'compteStore')->name('comptes.store');
+            Route::get('/comptes/{compte}/edit', 'compteEdit')->name('comptes.edit');
+            Route::put('/comptes/{compte}', 'compteUpdate')->name('comptes.update');
+            Route::post('/comptes/{compte}/basculer', 'compteBasculer')->name('comptes.basculer');
+            Route::delete('/comptes/{compte}', 'compteDestroy')->name('comptes.destroy');
+
+            Route::get('/journaux/create', 'journalCreate')->name('journaux.create');
+            Route::post('/journaux', 'journalStore')->name('journaux.store');
+            Route::get('/journaux/{journal}/edit', 'journalEdit')->name('journaux.edit');
+            Route::put('/journaux/{journal}', 'journalUpdate')->name('journaux.update');
+            Route::post('/journaux/{journal}/basculer', 'journalBasculer')->name('journaux.basculer');
+            Route::delete('/journaux/{journal}', 'journalDestroy')->name('journaux.destroy');
+
+            Route::post('/parametrage/familles', 'famillesUpdate')->name('familles.update');
+            Route::post('/parametrage/produits', 'produitsUpdate')->name('produits.update');
+            Route::post('/parametrage/produits/en-un-clic', 'produitsEnUnClic')->name('produits.enUnClic');
+            Route::post('/parametrage/rubriques', 'rubriquesUpdate')->name('rubriques.update');
+            Route::post('/parametrage/tiers', 'tiersUpdate')->name('tiers.update');
+            Route::post('/parametrage/tiers/generer', 'tiersGenerer')->name('tiers.generer');
+            Route::post('/parametrage/modes', 'modesUpdate')->name('modes.update');
+            Route::post('/parametrage/reglages', 'reglagesUpdate')->name('reglages.update');
+        });
+
+    // Phase 4 (lot 121, 22/09/2026) : les jetons de l'API comptable et sa documentation.
+    Route::prefix('comptabilite/jetons-api')->name('comptabilite.jetonsApi.')->middleware('admin.seulement')
+        ->controller(JetonsApiComptableController::class)->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::post('/', 'store')->name('store');
+            Route::delete('/{jeton}', 'revoquer')->name('revoquer');
+        });
+
+    // Phase 3 (lot 119, 22/09/2026) : le journal des écritures, les anomalies et la transmission.
+    // La route de détail vient EN DERNIER : « /anomalies » et « /apercu » lui ressemblent,
+    // et un paramètre attrape tout ce qui passe avant lui.
+    Route::prefix('comptabilite/ecritures')->name('comptabilite.ecritures.')->middleware('admin.seulement')
+        ->controller(EcrituresComptablesController::class)->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('/anomalies', 'anomalies')->name('anomalies');
+            Route::post('/reprendre', 'reprendre')->name('reprendre');
+            Route::get('/apercu', 'apercu')->name('apercu');
+            Route::post('/transmettre', 'transmettre')->name('transmettre');
+            Route::get('/telecharger/{format}', 'telecharger')->name('telecharger');
+            Route::get('/deversement-{deversement}/fichier/{format?}', 'telechargerDeversement')->name('telechargerDeversement');
+            Route::post('/deversement-{deversement}/accuser', 'accuser')->name('accuser');
+            Route::post('/deversement-{deversement}/rejeter', 'rejeter')->name('rejeter');
+            Route::get('/{ecriture}', 'detail')->name('detail');
+        });
+
+    // Phase 3b (lot 120, 22/09/2026) : les rapports comptables. Lecture seule.
+    Route::prefix('comptabilite/rapports')->name('comptabilite.rapports.')->middleware('admin.seulement')
+        ->controller(RapportsComptablesController::class)->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('/deversements', 'deversements')->name('deversements');
+            Route::get('/familles', 'familles')->name('familles');
+            Route::get('/soldes', 'soldes')->name('soldes');
+            Route::get('/grand-livre', 'grandLivre')->name('grandLivre');
+            Route::get('/balance', 'balance')->name('balance');
+            Route::get('/consolidee', 'consolidee')->name('consolidee');
+            Route::get('/rapprochement', 'rapprochement')->name('rapprochement');
+            Route::get('/anomalies', 'anomalies')->name('anomalies');
+            Route::get('/ventes', 'ventes')->name('ventes');
+            Route::get('/taxes', 'taxes')->name('taxes');
+            Route::get('/clients', 'clients')->name('clients');
+            Route::get('/tresorerie', 'tresorerie')->name('tresorerie');
+            Route::get('/journal-des-ventes', 'journalDesVentes')->name('journalDesVentes');
+        });
 
     // CRUD Agences
     Route::get('/agences', [AgenceController::class, 'index'])->name('agences.index');

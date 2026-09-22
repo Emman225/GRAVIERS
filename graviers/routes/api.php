@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PaiementEnLigne;
+use App\Http\Controllers\Api\EcrituresComptablesApiController;
 
 /*
 |--------------------------------------------------------------------------
@@ -68,3 +69,21 @@ Route::post('interne/facture/{facture}/pdf', [\App\Http\Controllers\ClientContro
 Route::post('interne/recu-paiement/{paiement}/pdf', [PaiementEnLigne::class, 'recuPdfInterne'])
     ->middleware('throttle:60,1')
     ->name('interne.recuPaiementPdf');
+
+// MODULE « ÉCRITURES COMPTABLES », PHASE 4 (lot 121, 22/09/2026).
+//
+// Réservée à l'administrateur du site DALAKOUN : jeton Sanctum (aptitude
+// « comptabilite:lecture », « comptabilite:ecriture » en plus pour le seul
+// point d'écriture), chaque appel journalisé (journal.appel.api.comptable).
+// La route d'export vient AVANT celle du détail : « export » n'est pas un
+// identifiant d'écriture, mais un paramètre attrape tout ce qui passe avant lui.
+Route::prefix('comptabilite')->name('api.comptabilite.')
+    ->middleware(['auth:sanctum', 'admin.seulement.api', 'journal.appel.api.comptable'])
+    ->controller(EcrituresComptablesApiController::class)->group(function () {
+        Route::get('/ecritures/export', 'export')->middleware('throttle:120,1')->name('ecritures.export');
+        Route::get('/ecritures/{ecriture:identifiant}', 'show')->middleware('throttle:120,1')->name('ecritures.show');
+        Route::get('/ecritures', 'index')->middleware('throttle:120,1')->name('ecritures.index');
+        Route::get('/deversements/{deversement:numero}', 'deversementDetail')->middleware('throttle:120,1')->name('deversements.show');
+        Route::get('/deversements', 'deversements')->middleware('throttle:120,1')->name('deversements.index');
+        Route::post('/deversements', 'accuser')->middleware(['admin.seulement.api:comptabilite:ecriture', 'throttle:10,1'])->name('deversements.store');
+    });

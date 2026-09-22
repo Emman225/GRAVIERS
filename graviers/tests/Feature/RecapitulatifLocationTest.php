@@ -108,7 +108,9 @@ class RecapitulatifLocationTest extends TestCase
         $introuvables = [];
 
         foreach ($sources as $chemin => $code) {
-            preg_match_all('/\\\\App\\\\(Support|Services)\\\\([A-Za-z0-9_]+)/', $code, $m);
+            // Sous-espaces de noms compris (App\Services\Comptabilite, lot 116) : sans cela
+            // l'essai prenait le DOSSIER pour une classe, et ne contrôlait pas la vraie.
+            preg_match_all('/\\\\App\\\\(Support|Services)\\\\((?:[A-Za-z0-9_]+\\\\)*[A-Za-z0-9_]+)/', $code, $m);
 
             foreach ($m[0] as $i => $tout) {
                 $classe = 'App\\' . $m[1][$i] . '\\' . $m[2][$i];

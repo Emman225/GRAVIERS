@@ -28,6 +28,8 @@ class MenusLateraux
         'layout/navbar/navClient.blade.php',
         'layout/navbar/navEtats.blade.php',
         'layout/navbar/navConfiguration.blade.php',
+        // Le module « Écritures comptables » (lot 116, 21/09/2026).
+        'layout/navbar/navComptabilite.blade.php',
         'layout/navFournisseur.blade.php',
         'layout/navLivreur.blade.php',
         'layout/navAgent.blade.php',

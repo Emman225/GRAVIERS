@@ -47,6 +47,12 @@ return [
         //     'cookie' => 'client_session',
         // ]
 
+        // Jetons de l'API comptable (module « Écritures comptables », phase 4, lot 121, 22/09/2026).
+        'sanctum' => [
+            'driver' => 'sanctum',
+            'provider' => 'users',
+        ],
+
     ],
 
     /*

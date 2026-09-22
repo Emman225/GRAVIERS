@@ -78,5 +78,8 @@ class Kernel extends HttpKernel
         'authorizedAuthUser.type' => \App\Http\Middleware\autorizedAuthUser::class,
         'cors' => \App\Http\Middleware\Cors::class,
         'admin.seulement' => \App\Http\Middleware\ReserveAuxAdministrateurs::class,
+        // Module « Écritures comptables », phase 4 (lot 121, 22/09/2026) : l'API.
+        'admin.seulement.api' => \App\Http\Middleware\ReserveAuxAdministrateursApi::class,
+        'journal.appel.api.comptable' => \App\Http\Middleware\JournalerAppelApiComptable::class,
     ];
 }
