@@ -141,13 +141,21 @@ class RapportsComptables
         foreach ($mouvements as $mouvement) {
             $numero = (string) $mouvement->numero_compte;
             $ouverture = (float) ($ouvertures[$numero] ?? 0);
+            $cloture = $ouverture + (float) $mouvement->debit - (float) $mouvement->credit;
             $soldes[] = [
                 'compte'    => $numero ?: '(sans compte)',
                 'libelle'   => $libelles[$numero] ?? '—',
                 'ouverture' => $ouverture,
+                // Un comptable ne lit pas un solde négatif : il lit un solde
+                // créditeur. L'ouverture et la clôture sortent donc en deux
+                // colonnes, comme les mouvements.
+                'ouverture_debit'  => $ouverture > 0 ? $ouverture : 0.0,
+                'ouverture_credit' => $ouverture < 0 ? -$ouverture : 0.0,
                 'debit'     => (float) $mouvement->debit,
                 'credit'    => (float) $mouvement->credit,
-                'cloture'   => $ouverture + (float) $mouvement->debit - (float) $mouvement->credit,
+                'cloture'   => $cloture,
+                'cloture_debit'  => $cloture > 0 ? $cloture : 0.0,
+                'cloture_credit' => $cloture < 0 ? -$cloture : 0.0,
                 'deverse'   => (float) $mouvement->deverse,
                 'attente'   => (float) $mouvement->attente,
             ];
@@ -160,15 +168,20 @@ class RapportsComptables
     /**
      * 4. GRAND LIVRE D'UN COMPTE — toutes ses écritures de la période, dans
      * l'ordre, avec le solde qui avance ligne après ligne.
+     *
+     * Trois déclinaisons, exactement comme la balance : par compte général,
+     * par compte tiers, par compte analytique. Seule la clé change.
      */
-    public static function grandLivre(string $compte, Carbon $du, Carbon $au): array
+    public static function grandLivre(string $compte, Carbon $du, Carbon $au, string $sorte = 'generale'): array
     {
+        $colonne = 'ligne_ecriture_comptable.' . self::colonneDe($sorte);
+
         $ouverture = (float) self::lignes(null, $du->copy()->subDay())
-            ->where('ligne_ecriture_comptable.numero_compte', $compte)
+            ->where($colonne, $compte)
             ->sum(DB::raw('debit - credit'));
 
         $lignes = self::lignes($du, $au)
-            ->where('ligne_ecriture_comptable.numero_compte', $compte)
+            ->where($colonne, $compte)
             ->orderBy('e.date_ecriture')->orderBy('e.id')->orderBy('ligne_ecriture_comptable.rang')
             ->select('ligne_ecriture_comptable.*', 'e.date_ecriture', 'e.piece', 'e.reference_fne', 'e.journal_code',
                      'e.identifiant', 'e.etat', 'e.id AS ecriture_id')
@@ -196,13 +209,18 @@ class RapportsComptables
         }
 
         return [
+            'sorte'      => $sorte,
             'compte'     => $compte,
-            'libelle'    => CompteComptable::withTrashed()->where('numero', $compte)->value('libelle') ?: '—',
+            'libelle'    => self::libelleDeLaCle($sorte, $compte),
             'ouverture'  => $ouverture,
+            'ouverture_debit'  => $ouverture > 0 ? $ouverture : 0.0,
+            'ouverture_credit' => $ouverture < 0 ? -$ouverture : 0.0,
             'mouvements' => $mouvements,
             'debit'      => array_sum(array_column($mouvements, 'debit')),
             'credit'     => array_sum(array_column($mouvements, 'credit')),
             'cloture'    => $solde,
+            'cloture_debit'  => $solde > 0 ? $solde : 0.0,
+            'cloture_credit' => $solde < 0 ? -$solde : 0.0,
         ];
     }
 
@@ -212,7 +230,7 @@ class RapportsComptables
      */
     public static function balance(Carbon $du, Carbon $au, string $sorte = 'generale'): array
     {
-        $colonne = ['generale' => 'numero_compte', 'tiers' => 'compte_tiers', 'analytique' => 'numero_analytique'][$sorte] ?? 'numero_compte';
+        $colonne = self::colonneDe($sorte);
 
         $ouvertures = self::lignes(null, $du->copy()->subDay())
             ->whereNotNull('ligne_ecriture_comptable.' . $colonne)->where('ligne_ecriture_comptable.' . $colonne, '!=', '')
@@ -237,6 +255,8 @@ class RapportsComptables
                 'cle'          => (string) $mouvement->cle,
                 'libelle'      => $libelles[$mouvement->cle] ?? self::libelleDuTiers($sorte, (string) $mouvement->cle),
                 'ouverture'    => $ouverture,
+                'ouverture_debit'  => $ouverture > 0 ? $ouverture : 0.0,
+                'ouverture_credit' => $ouverture < 0 ? -$ouverture : 0.0,
                 'debit'        => (float) $mouvement->debit,
                 'credit'       => (float) $mouvement->credit,
                 'solde_debit'  => $cloture > 0 ? $cloture : 0.0,
@@ -257,9 +277,10 @@ class RapportsComptables
         foreach (self::balance($du, $au, 'generale') as $ligne) {
             $classe = substr($ligne['cle'], 0, 1) ?: '?';
             $classes[$classe] ??= ['classe' => $classe, 'libelle' => self::libelleClasse($classe),
-                'comptes' => 0, 'debit' => 0.0, 'credit' => 0.0, 'solde_debit' => 0.0, 'solde_credit' => 0.0];
+                'comptes' => 0, 'ouverture_debit' => 0.0, 'ouverture_credit' => 0.0,
+                'debit' => 0.0, 'credit' => 0.0, 'solde_debit' => 0.0, 'solde_credit' => 0.0];
             $classes[$classe]['comptes']++;
-            foreach (['debit', 'credit', 'solde_debit', 'solde_credit'] as $champ) {
+            foreach (['ouverture_debit', 'ouverture_credit', 'debit', 'credit', 'solde_debit', 'solde_credit'] as $champ) {
                 $classes[$classe][$champ] += $ligne[$champ];
             }
         }
@@ -409,13 +430,13 @@ class RapportsComptables
             ->get();
 
         $clients = \App\Models\Client::withTrashed()->get()->keyBy('id');
-        $tranches = [30, 60, 90];
         $parTiers = [];
         foreach ($lignes as $ligne) {
             $tiers = (string) $ligne->compte_tiers;
             $parTiers[$tiers] ??= [
                 'compte' => $tiers, 'client' => '—', 'facture' => 0.0, 'encaisse' => 0.0,
-                'solde' => 0.0, 'moins_30' => 0.0, 'de_30_60' => 0.0, 'de_60_90' => 0.0, 'plus_90' => 0.0, 'non_lettre' => 0.0,
+                'solde' => 0.0, 'moins_30' => 0.0, 'de_30_60' => 0.0, 'de_60_90' => 0.0,
+                'de_90_120' => 0.0, 'plus_120' => 0.0, 'non_lettre' => 0.0,
             ];
             if ($ligne->client_id && isset($clients[$ligne->client_id]) && $parTiers[$tiers]['client'] === '—') {
                 $parTiers[$tiers]['client'] = $clients[$ligne->client_id]->display_name ?: ('Client n° ' . $ligne->client_id);
@@ -428,8 +449,7 @@ class RapportsComptables
             $reste = (float) $ligne->debit - (float) $ligne->credit;
             if (!$ligne->lettre && $reste > 0) {
                 $jours = Carbon::parse($ligne->date_ecriture)->diffInDays($au);
-                $champ = $jours < $tranches[0] ? 'moins_30' : ($jours < $tranches[1] ? 'de_30_60' : ($jours < $tranches[2] ? 'de_60_90' : 'plus_90'));
-                $parTiers[$tiers][$champ] += $reste;
+                $parTiers[$tiers][self::trancheDAge((int) $jours)] += $reste;
                 $parTiers[$tiers]['non_lettre'] += $reste;
             }
         }
@@ -476,17 +496,420 @@ class RapportsComptables
 
     // ================================================================== outils
 
-    /** Les comptes qui ont bougé : la liste du choix « grand livre ». */
-    public static function comptesMouvementes(Carbon $du, Carbon $au): Collection
+    /**
+     * 11b. DÉTAIL DES FACTURES DES CLIENTS (demande du 25/09/2026) — une ligne
+     * par facture : ce qu'elle porte, ce qui a été réglé dessus, ce qui reste,
+     * son âge, et le ou les moyens de paiement employés.
+     *
+     * Une écriture de règlement ne désigne pas une facture : elle désigne une
+     * AFFAIRE, qui peut en porter plusieurs (voir la règle « plusieurs factures
+     * par commande »). L'imputation suit donc trois temps :
+     *   1. la facture que le règlement NOMME (paiement.facture_id), si elle doit encore ;
+     *   2. sinon la plus ANCIENNE facture encore due de la même affaire ;
+     *   3. sinon la plus ancienne facture encore due du client.
+     * Un avoir et une annulation sont des crédits comme les autres : ils
+     * s'imputent de la même façon, et portent leur nom en guise de moyen.
+     */
+    public static function facturesDesClients(Carbon $au): array
     {
+        // Le même filtre que la situation des clients, pour que le détail et le
+        // récapitulatif ne puissent pas se contredire.
+        $mouvements = self::lignes(null, $au)
+            ->where('ligne_ecriture_comptable.rubrique', LigneEcritureComptable::CLIENT)
+            ->whereNotNull('ligne_ecriture_comptable.compte_tiers')->where('ligne_ecriture_comptable.compte_tiers', '!=', '')
+            ->orderBy('e.date_ecriture')->orderBy('e.id')
+            ->select('ligne_ecriture_comptable.compte_tiers', 'ligne_ecriture_comptable.debit', 'ligne_ecriture_comptable.credit',
+                     'e.id AS ecriture_id', 'e.origine', 'e.source_type', 'e.source_id', 'e.date_ecriture',
+                     'e.piece', 'e.reference_fne', 'e.numero_affaire', 'e.client_id')
+            ->get();
+
+        $reglements = $mouvements->filter(fn ($m) => (float) $m->credit > 0 && $m->source_type === 'ligne_paiement');
+        $moyens = self::moyensDesReglements($reglements->pluck('source_id')->filter()->unique()->all());
+        $clients = \App\Models\Client::withTrashed()->get()->keyBy('id');
+
+        $parTiers = [];
+        foreach ($mouvements as $m) {
+            $parTiers[(string) $m->compte_tiers][] = $m;
+        }
+
+        $resultat = [];
+        foreach ($parTiers as $tiers => $lignes) {
+            $factures = [];
+            $credits = [];
+            foreach ($lignes as $m) {
+                if ((float) $m->debit > 0) {
+                    $factures[] = [
+                        'compte'      => $tiers,
+                        'client'      => ($m->client_id && isset($clients[$m->client_id]))
+                            ? ($clients[$m->client_id]->display_name ?: 'Client n° ' . $m->client_id) : '—',
+                        'ecriture_id' => (int) $m->ecriture_id,
+                        'facture_id'  => $m->source_type === 'facture' ? (int) $m->source_id : null,
+                        'numero'      => (string) $m->piece,
+                        'reference'   => (string) ($m->reference_fne ?: ''),
+                        'affaire'     => (string) ($m->numero_affaire ?: ''),
+                        'date'        => Carbon::parse($m->date_ecriture),
+                        'montant'     => (float) $m->debit,
+                        'regle'       => 0.0,
+                        'moyens'      => [],
+                    ];
+                } elseif ((float) $m->credit > 0) {
+                    $credits[] = $m;
+                }
+            }
+
+            foreach ($credits as $credit) {
+                $reste = (float) $credit->credit;
+                $moyen = $m2 = null;
+                if ($credit->source_type === 'ligne_paiement' && isset($moyens[(int) $credit->source_id])) {
+                    $moyen = $moyens[(int) $credit->source_id]->mode;
+                    $m2 = $moyens[(int) $credit->source_id]->facture_id;
+                }
+                $moyen = $moyen ?: (EcritureComptable::ORIGINES[$credit->origine] ?? 'Règlement');
+
+                foreach (self::ordreDImputation($factures, $m2, (string) ($credit->numero_affaire ?: '')) as $i) {
+                    if ($reste <= 0.004) {
+                        break;
+                    }
+                    $du = round($factures[$i]['montant'] - $factures[$i]['regle'], 2);
+                    if ($du <= 0.004) {
+                        continue;
+                    }
+                    $impute = min($du, $reste);
+                    $factures[$i]['regle'] += $impute;
+                    $reste -= $impute;
+                    if (!in_array($moyen, $factures[$i]['moyens'], true)) {
+                        $factures[$i]['moyens'][] = $moyen;
+                    }
+                }
+            }
+
+            foreach ($factures as $facture) {
+                $reste = round($facture['montant'] - $facture['regle'], 2);
+                $jours = (int) Carbon::parse($facture['date'])->diffInDays($au);
+                $resultat[] = $facture + [
+                    'reste'  => $reste,
+                    'jours'  => $jours,
+                    'tranche' => $reste > 0.004 ? self::libelleTranche(self::trancheDAge($jours)) : '—',
+                    'moyen'  => $facture['moyens'] ? implode(', ', $facture['moyens']) : '—',
+                ];
+            }
+        }
+
+        return collect($resultat)->sortByDesc('reste')->values()->all();
+    }
+
+    /** L'ordre dans lequel un règlement cherche la facture à solder. */
+    private static function ordreDImputation(array $factures, $factureNommee, string $affaire): array
+    {
+        $nommee = [];
+        $memeAffaire = [];
+        $autres = [];
+        foreach ($factures as $i => $facture) {
+            if ($factureNommee && (int) $facture['facture_id'] === (int) $factureNommee) {
+                $nommee[] = $i;
+            } elseif ($affaire !== '' && $facture['affaire'] === $affaire) {
+                $memeAffaire[] = $i;
+            } else {
+                $autres[] = $i;
+            }
+        }
+
+        // $factures est déjà rangé par date : chaque groupe reste du plus
+        // ancien au plus récent.
+        return array_merge($nommee, $memeAffaire, $autres);
+    }
+
+    /** Le moyen de paiement et la facture nommée de chaque règlement, en une requête. */
+    private static function moyensDesReglements(array $ids)
+    {
+        if (!$ids) {
+            return collect();
+        }
+
+        return DB::table('ligne_paiement')
+            ->leftJoin('mode_paiement', 'mode_paiement.id', '=', 'ligne_paiement.mode_paiement_id')
+            ->leftJoin('paiement', 'paiement.id', '=', 'ligne_paiement.paiement_id')
+            ->whereIn('ligne_paiement.id', $ids)
+            ->select('ligne_paiement.id',
+                     DB::raw('COALESCE(NULLIF(mode_paiement.libelle, \'\'), ligne_paiement.moyen_paiement) AS mode'),
+                     'paiement.facture_id')
+            ->get()->keyBy('id');
+    }
+
+    /** Le nom lisible d'une tranche d'ancienneté. */
+    private static function libelleTranche(string $champ): string
+    {
+        return [
+            'moins_30' => 'Moins de 30 j', 'de_30_60' => '30 à 60 j', 'de_60_90' => '60 à 90 j',
+            'de_90_120' => '90 à 120 j', 'plus_120' => 'Plus de 120 j',
+        ][$champ] ?? $champ;
+    }
+
+    /**
+     * 10b. DÉTAIL DES TAXES, FACTURE PAR FACTURE (demande du 25/09/2026).
+     *
+     * Tout se calcule depuis l'écriture : le HT est la somme des produits, du
+     * transport et de la remise (qui est au débit, donc se retranche) ; le TTC
+     * est le débit du compte client, c'est-à-dire ce que le client doit
+     * vraiment. Les totaux du détail retombent sur ceux du récapitulatif
+     * mensuel — c'est ce qui en fait aussi un contrôle.
+     */
+    public static function detailDesTaxes(Carbon $du, Carbon $au): array
+    {
+        $lignes = self::lignes($du, $au)
+            ->orderBy('e.date_ecriture')->orderBy('e.id')
+            ->select('ligne_ecriture_comptable.rubrique', 'ligne_ecriture_comptable.debit', 'ligne_ecriture_comptable.credit',
+                     'e.id AS ecriture_id', 'e.date_ecriture', 'e.piece', 'e.reference_fne', 'e.origine', 'e.client_id', 'e.numero_affaire')
+            ->get();
+
+        $clients = \App\Models\Client::withTrashed()->get()->keyBy('id');
+        $factures = [];
+        foreach ($lignes as $ligne) {
+            $id = (int) $ligne->ecriture_id;
+            $factures[$id] ??= [
+                'ecriture_id' => $id,
+                'date'        => Carbon::parse($ligne->date_ecriture),
+                'numero'      => (string) $ligne->piece,
+                'reference'   => (string) ($ligne->reference_fne ?: ''),
+                'origine'     => EcritureComptable::ORIGINES[$ligne->origine] ?? $ligne->origine,
+                'client'      => ($ligne->client_id && isset($clients[$ligne->client_id]))
+                    ? ($clients[$ligne->client_id]->display_name ?: 'Client n° ' . $ligne->client_id) : '—',
+                'affaire'     => (string) ($ligne->numero_affaire ?: ''),
+                'ht' => 0.0, 'tva' => 0.0, 'airsi' => 0.0, 'ttc' => 0.0,
+            ];
+            $net = (float) $ligne->credit - (float) $ligne->debit;
+            if (in_array($ligne->rubrique, [LigneEcritureComptable::PRODUIT, LigneEcritureComptable::TRANSPORT, LigneEcritureComptable::REMISE], true)) {
+                $factures[$id]['ht'] += $net;
+            } elseif ($ligne->rubrique === LigneEcritureComptable::TVA) {
+                $factures[$id]['tva'] += $net;
+            } elseif ($ligne->rubrique === LigneEcritureComptable::AIRSI) {
+                $factures[$id]['airsi'] += $net;
+            } elseif ($ligne->rubrique === LigneEcritureComptable::CLIENT) {
+                $factures[$id]['ttc'] -= $net;   // le client est au débit
+            }
+        }
+
+        // Seules les écritures qui portent une taxe : ce sont exactement celles
+        // que compte le récapitulatif mensuel.
+        return collect($factures)
+            ->filter(fn ($f) => abs($f['tva']) > 0.004 || abs($f['airsi']) > 0.004)
+            ->values()->all();
+    }
+
+    /**
+     * 12b. DÉTAIL DES OPÉRATIONS DE TRÉSORERIE (demande du 25/09/2026) — une
+     * ligne par mouvement, avec le bénéficiaire ou le client. Le récapitulatif
+     * par journal reste au-dessus : c'est lui qui donne la vue d'ensemble.
+     */
+    public static function detailDeTresorerie(Carbon $du, Carbon $au): array
+    {
+        $lignes = self::lignes($du, $au)
+            ->where('ligne_ecriture_comptable.rubrique', 'TRESORERIE')
+            ->orderBy('e.date_ecriture')->orderBy('e.id')
+            ->select('ligne_ecriture_comptable.debit', 'ligne_ecriture_comptable.credit', 'ligne_ecriture_comptable.libelle',
+                     'e.id AS ecriture_id', 'e.date_ecriture', 'e.journal_code', 'e.origine', 'e.piece',
+                     'e.tiers_type', 'e.tiers_id', 'e.client_id', 'e.numero_affaire')
+            ->get();
+
+        $journaux = JournalComptable::withTrashed()->pluck('libelle', 'code');
+        $noms = self::nomsDesTiers($lignes);
+
+        return $lignes->map(fn ($ligne) => [
+            'ecriture_id'  => (int) $ligne->ecriture_id,
+            'date'         => Carbon::parse($ligne->date_ecriture),
+            'mois'         => Carbon::parse($ligne->date_ecriture)->format('Y-m'),
+            'journal'      => $ligne->journal_code ?: '—',
+            'nom_journal'  => $journaux[$ligne->journal_code] ?? '—',
+            'beneficiaire' => $noms[$ligne->tiers_type . '|' . $ligne->tiers_id] ?? '—',
+            'nature'       => EcritureComptable::ORIGINES[$ligne->origine] ?? $ligne->origine,
+            'piece'        => (string) $ligne->piece,
+            'affaire'      => (string) ($ligne->numero_affaire ?: ''),
+            'libelle'      => (string) $ligne->libelle,
+            'entree'       => (float) $ligne->debit,
+            'sortie'       => (float) $ligne->credit,
+        ])->all();
+    }
+
+    /**
+     * Le nom de chaque tiers cité, chargé en une fois par famille : une requête
+     * par famille, jamais une par ligne.
+     */
+    private static function nomsDesTiers(Collection $lignes): array
+    {
+        $classes = [
+            'client'      => \App\Models\Client::class,
+            'fournisseur' => \App\Models\Fournisseur::class,
+            'livreur'     => \App\Models\Livreur::class,
+            'apporteur'   => \App\Models\Apporteur::class,
+        ];
+
+        $noms = [];
+        foreach ($classes as $type => $classe) {
+            $ids = $lignes->where('tiers_type', $type)->pluck('tiers_id')->filter()->unique()->all();
+            if (!$ids) {
+                continue;
+            }
+            foreach ($classe::withTrashed()->whereIn('id', $ids)->get() as $tiers) {
+                $noms[$type . '|' . $tiers->id] = $type === 'client'
+                    ? ($tiers->display_name ?: 'Client n° ' . $tiers->id)
+                    : MoteurTresorerie::nomDuPartenaire($type, $tiers);
+            }
+        }
+
+        return $noms;
+    }
+
+    /**
+     * 1b. LE RÉSUMÉ DE CHAQUE DÉVERSEMENT (demande du 25/09/2026) : les
+     * journaux qu'il couvre et le nombre de factures qu'il emporte.
+     *
+     * Un déversement n'a pas UN numéro de facture : c'est un envoi qui couvre
+     * une période, donc autant de factures qu'elle en portait. On donne donc
+     * leur NOMBRE ici, et leur liste s'ouvre au clic.
+     */
+    public static function resumeDesDeversements(array $ids): array
+    {
+        if (!$ids) {
+            return [];
+        }
+
+        $lignes = EcritureComptable::whereIn('deversement_id', $ids)
+            ->groupBy('deversement_id')
+            ->select('deversement_id',
+                     DB::raw("GROUP_CONCAT(DISTINCT journal_code ORDER BY journal_code SEPARATOR ', ') AS journaux"),
+                     DB::raw("COUNT(DISTINCT CASE WHEN source_type = 'facture' THEN source_id END) AS factures"))
+            ->get();
+
+        $resume = [];
+        foreach ($lignes as $ligne) {
+            $resume[(int) $ligne->deversement_id] = [
+                'journaux' => (string) ($ligne->journaux ?: '—'),
+                'factures' => (int) $ligne->factures,
+            ];
+        }
+
+        return $resume;
+    }
+
+    /**
+     * 2b. LE CYCLE D'EXPLOITATION PAR GRANDE FAMILLE (demande du 25/09/2026).
+     *
+     * CE RAPPORT N'EST PAS COMPTABLE, et c'est voulu. « Commandé non livré » et
+     * « livré non facturé » ne sont pas des écritures : une écriture ne naît
+     * que d'une facture certifiée. Ces chiffres-là se lisent dans les commandes
+     * et les bons d'enlèvement.
+     *
+     * Les conventions, arrêtées le 25/09/2026 :
+     *  - tout est en HT, ligne de commande par ligne de commande ;
+     *  - la période se lit sur la DATE DE COMMANDE, pour que les quatre étapes
+     *    suivent la même marchandise ;
+     *  - les commandes annulées sont hors du compte ;
+     *  - « livré » suit la règle du site, celle de Help::marchandiseEnleveeSurCommande :
+     *    ce qui est SERVI sur le bon d'enlèvement, pas ce qui était demandé.
+     */
+    public static function cycleParFamille(Carbon $du, Carbon $au): array
+    {
+        $commandes = DB::table('detail_commande as dc')
+            ->join('commande as c', 'c.id', '=', 'dc.commande_id')
+            ->leftJoin('produit as p', 'p.id', '=', 'dc.produit_id')
+            ->whereNull('dc.deleted_at')->whereNull('c.deleted_at')
+            ->where('c.etat_commande', '!=', \Help::$AFFAIRE_ANNULEE)
+            ->whereDate('c.date_commande', '>=', $du->toDateString())
+            ->whereDate('c.date_commande', '<=', $au->toDateString())
+            ->groupBy('p.categorie_comptable_id')
+            ->select('p.categorie_comptable_id AS famille',
+                     DB::raw('COUNT(*) AS lignes'),
+                     DB::raw('SUM(dc.qte * dc.prix) AS montant'))
+            ->get();
+
+        // Les sorties se totalisent en PHP : une jointure de plus sur les
+        // écritures pourrait compter deux fois un bon dont la facture a été
+        // réécrite (version 2).
+        $sorties = DB::table('enlevement as e')
+            ->join('livraison as l', 'l.id', '=', 'e.livraison_id')
+            ->join('detail_commande as dc', 'dc.id', '=', 'l.detail_commande_id')
+            ->join('commande as c', 'c.id', '=', 'dc.commande_id')
+            ->leftJoin('produit as p', 'p.id', '=', 'dc.produit_id')
+            ->whereNull('e.deleted_at')->whereNull('l.deleted_at')
+            ->whereNull('dc.deleted_at')->whereNull('c.deleted_at')
+            ->where('c.etat_commande', '!=', \Help::$AFFAIRE_ANNULEE)
+            ->whereDate('c.date_commande', '>=', $du->toDateString())
+            ->whereDate('c.date_commande', '<=', $au->toDateString())
+            ->select('p.categorie_comptable_id AS famille', 'dc.prix',
+                     'e.qte', 'e.qte_servi', 'e.fournisseur_validation', 'e.facture_id')
+            ->get();
+
+        $deversees = EcritureComptable::where('source_type', 'facture')
+            ->where('etat', EcritureComptable::ETAT_EXPORTEE)
+            ->pluck('source_id')->map(fn ($id) => (int) $id)->flip();
+
+        $noms = Categorie::withTrashed()->pluck('nom', 'id');
+        $lignes = [];
+        $vide = [
+            'lignes' => 0, 'commande' => 0.0, 'livre' => 0.0, 'facture' => 0.0, 'deverse' => 0.0,
+            'bons' => 0, 'factures' => 0,
+        ];
+
+        foreach ($commandes as $c) {
+            $cle = (int) $c->famille;
+            $lignes[$cle] ??= $vide + ['famille' => $noms[$c->famille] ?? 'Sans grande famille'];
+            $lignes[$cle]['lignes'] = (int) $c->lignes;
+            $lignes[$cle]['commande'] = (float) $c->montant;
+        }
+
+        $facturesVues = [];
+        foreach ($sorties as $s) {
+            $cle = (int) $s->famille;
+            $lignes[$cle] ??= $vide + ['famille' => $noms[$s->famille] ?? 'Sans grande famille'];
+
+            // La convention du site : qte_servi à NULL sur un bon validé par le
+            // fournisseur vaut la quantité demandée ; sinon rien n'est sorti.
+            $servi = $s->qte_servi !== null
+                ? (float) $s->qte_servi
+                : (trim((string) $s->fournisseur_validation) !== '' ? (float) $s->qte : 0.0);
+            $montant = $servi * (float) $s->prix;
+
+            $lignes[$cle]['bons']++;
+            $lignes[$cle]['livre'] += $montant;
+            if ($s->facture_id) {
+                $lignes[$cle]['facture'] += $montant;
+                if (!isset($facturesVues[$cle][(int) $s->facture_id])) {
+                    $facturesVues[$cle][(int) $s->facture_id] = true;
+                    $lignes[$cle]['factures']++;
+                }
+                if ($deversees->has((int) $s->facture_id)) {
+                    $lignes[$cle]['deverse'] += $montant;
+                }
+            }
+        }
+
+        foreach ($lignes as &$ligne) {
+            $ligne['commande_non_livre']  = round($ligne['commande'] - $ligne['livre'], 2);
+            $ligne['livre_non_facture']   = round($ligne['livre'] - $ligne['facture'], 2);
+            $ligne['facture_non_deverse'] = round($ligne['facture'] - $ligne['deverse'], 2);
+        }
+
+        return collect($lignes)->sortByDesc('commande')->values()->all();
+    }
+
+    /** Les clés qui ont bougé : la liste du choix « grand livre », déclinaison comprise. */
+    public static function comptesMouvementes(Carbon $du, Carbon $au, string $sorte = 'generale'): Collection
+    {
+        $colonne = 'ligne_ecriture_comptable.' . self::colonneDe($sorte);
+
         $numeros = self::lignes($du, $au)
-            ->whereNotNull('ligne_ecriture_comptable.numero_compte')->where('ligne_ecriture_comptable.numero_compte', '!=', '')
-            ->distinct()->orderBy('ligne_ecriture_comptable.numero_compte')
-            ->pluck('ligne_ecriture_comptable.numero_compte');
+            ->whereNotNull($colonne)->where($colonne, '!=', '')
+            ->distinct()->orderBy($colonne)
+            ->pluck($colonne);
 
-        $libelles = CompteComptable::withTrashed()->pluck('libelle', 'numero');
+        // Les libellés des comptes se lisent en une fois ; ceux des tiers se
+        // cherchent un par un, mais une liste de choix reste courte.
+        $libelles = $sorte === 'tiers' ? collect() : CompteComptable::withTrashed()->pluck('libelle', 'numero');
 
-        return $numeros->map(fn ($numero) => ['numero' => $numero, 'libelle' => $libelles[$numero] ?? '—']);
+        return $numeros->map(fn ($numero) => [
+            'numero'  => (string) $numero,
+            'libelle' => $sorte === 'tiers' ? self::libelleDuTiers('tiers', (string) $numero) : ($libelles[$numero] ?? '—'),
+        ]);
     }
 
     /** Le total d'un tableau de rapport, colonne par colonne. */
@@ -500,6 +923,44 @@ class RapportsComptables
         }
 
         return $totaux;
+    }
+
+    /**
+     * La colonne qui porte la clé d'une déclinaison. La balance et le grand
+     * livre lisent les trois mêmes : le compte général, le compte tiers, le
+     * compte analytique.
+     */
+    private static function colonneDe(string $sorte): string
+    {
+        return ['generale' => 'numero_compte', 'tiers' => 'compte_tiers', 'analytique' => 'numero_analytique'][$sorte] ?? 'numero_compte';
+    }
+
+    /** Le libellé d'une clé, selon la déclinaison. Une seule clé : une requête suffit. */
+    private static function libelleDeLaCle(string $sorte, string $cle): string
+    {
+        if ($sorte === 'tiers') {
+            return self::libelleDuTiers('tiers', $cle);
+        }
+
+        return CompteComptable::withTrashed()->where('numero', $cle)->value('libelle') ?: '—';
+    }
+
+    /**
+     * Les tranches d'ancienneté d'une créance (demande du 25/09/2026 : cinq
+     * tranches au lieu de quatre). La borne est le nombre de jours SOUS lequel
+     * la tranche s'applique ; au-delà de la dernière, c'est « plus de 120 ».
+     */
+    private const TRANCHES_AGE = [30 => 'moins_30', 60 => 'de_30_60', 90 => 'de_60_90', 120 => 'de_90_120'];
+
+    private static function trancheDAge(int $jours): string
+    {
+        foreach (self::TRANCHES_AGE as $limite => $champ) {
+            if ($jours < $limite) {
+                return $champ;
+            }
+        }
+
+        return 'plus_120';
     }
 
     private static function libelleMois(string $mois): string

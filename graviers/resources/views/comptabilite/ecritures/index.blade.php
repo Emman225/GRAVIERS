@@ -184,8 +184,10 @@
                     <thead>
                         <tr>
                             <th>Date</th>
+                            <th>Mois</th>
+                            <th>Année</th>
                             <th>Journal</th>
-                            <th>Pièce</th>
+                            <th>N° facture / pièce</th>
                             <th>Libellé</th>
                             <th>Origine</th>
                             <th class="text-end">Débit</th>
@@ -198,6 +200,9 @@
                         @forelse ($ecritures as $ecriture)
                             <tr>
                                 <td data-order="{{ $ecriture->date_ecriture?->format('Ymd') }}" class="text-nowrap">{{ $ecriture->date_ecriture?->format('d/m/Y') }}</td>
+                                {{-- Le mois se trie sur son numéro, pas sur son nom : « août » ne vient pas après « avril ». --}}
+                                <td data-order="{{ $ecriture->date_ecriture?->format('m') }}" class="text-nowrap">{{ $ecriture->date_ecriture ? \Help::phrase($ecriture->date_ecriture->locale('fr')->isoFormat('MMMM')) : '-' }}</td>
+                                <td class="text-nowrap">{{ $ecriture->date_ecriture?->format('Y') ?: '-' }}</td>
                                 <td class="text-nowrap">{{ $ecriture->journal_code ?: '-' }}</td>
                                 <td class="text-nowrap">{{ $ecriture->piece }}</td>
                                 <td class="td-texte-long">{{ $ecriture->libelle }}</td>
@@ -221,7 +226,7 @@
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="9" class="text-center text-muted">Aucune écriture sur cette période.</td></tr>
+                            <tr><td colspan="11" class="text-center text-muted">Aucune écriture sur cette période.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -244,8 +249,12 @@
                             <th>Transmis le</th>
                             <th>N°</th>
                             <th>Période</th>
+                            <th>Mois</th>
+                            <th>Année</th>
                             <th>Format</th>
+                            <th>Journaux</th>
                             <th class="text-end">Écritures</th>
+                            <th class="text-end">Factures</th>
                             <th class="text-end">Débit</th>
                             <th>Par</th>
                             <th class="text-center">État</th>
@@ -258,8 +267,23 @@
                                 <td data-order="{{ $deversement->created_at?->format('YmdHis') }}" class="text-nowrap">{{ \Help::dateHeure($deversement->created_at) }}</td>
                                 <td class="text-nowrap"><strong>{{ $deversement->numero }}</strong></td>
                                 <td class="text-nowrap">{{ $deversement->libelle_periode }}</td>
+                                @php
+                                    // Un envoi fait en dates libres peut chevaucher deux mois : on ne
+                                    // lui invente pas un mois, on dit « plusieurs ».
+                                    $memeMois = $deversement->du && $deversement->au
+                                        && $deversement->du->format('Y-m') === $deversement->au->format('Y-m');
+                                    $memeAnnee = $deversement->du && $deversement->au
+                                        && $deversement->du->format('Y') === $deversement->au->format('Y');
+                                    $resumeLigne = $resumeDeversements[$deversement->id] ?? ['journaux' => '—', 'factures' => 0];
+                                @endphp
+                                <td data-order="{{ $memeMois ? $deversement->du->format('m') : '99' }}" class="text-nowrap">
+                                    {{ $memeMois ? \Help::phrase($deversement->du->locale('fr')->isoFormat('MMMM')) : 'Plusieurs' }}
+                                </td>
+                                <td class="text-nowrap">{{ $memeAnnee ? $deversement->du->format('Y') : 'Plusieurs' }}</td>
                                 <td class="text-nowrap">{{ $deversement->libelle_format }}</td>
+                                <td class="text-nowrap">{{ $resumeLigne['journaux'] }}</td>
                                 <td class="text-end">{{ $deversement->nombre_ecritures }}</td>
+                                <td class="text-end">{{ $resumeLigne['factures'] }}</td>
                                 <td class="text-end text-nowrap">{{ $francs($deversement->total_debit) }}</td>
                                 <td class="text-nowrap">{{ $deversement->user?->nom_prenoms ?: '-' }}</td>
                                 <td class="text-center">
@@ -273,6 +297,10 @@
                                     @if ($deversement->motif_rejet) <div><small class="text-muted">{{ $deversement->motif_rejet }}</small></div> @endif
                                 </td>
                                 <td class="text-nowrap text-end">
+                                    <a href="{{ route('show.comptabilite.ecritures.facturesDuDeversement', $deversement) }}"
+                                       class="btn btn-sm btn-light rounded" title="Voir les factures emportées par cet envoi">
+                                        <i class="material-icons md-list"></i>
+                                    </a>
                                     @unless ($deversement->estRejete())
                                         <a href="{{ route('show.comptabilite.ecritures.telechargerDeversement', ['deversement' => $deversement, 'format' => strtolower($deversement->format)]) }}"
                                            class="btn btn-sm btn-primary rounded" title="Retélécharger le fichier transmis">
@@ -295,7 +323,7 @@
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="9" class="text-center text-muted">Aucune transmission enregistrée.</td></tr>
+                            <tr><td colspan="13" class="text-center text-muted">Aucune transmission enregistrée.</td></tr>
                         @endforelse
                     </tbody>
                 </table>

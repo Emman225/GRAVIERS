@@ -11,6 +11,7 @@ use App\Services\Comptabilite\FormatSage;
 use App\Services\Comptabilite\JournalDesEcritures;
 use App\Services\Comptabilite\MoteurEcritures;
 use App\Services\Comptabilite\MoteurTresorerie;
+use App\Services\Comptabilite\RapportsComptables;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Facades\Excel;
@@ -42,6 +43,7 @@ class EcrituresComptablesController extends Controller
     {
         $periode = $this->periode($request);
         $filtres = $this->filtres($request);
+        $deversements = DeversementComptable::with('user')->orderByDesc('id')->limit(50)->get();
 
         return view('comptabilite.ecritures.index', [
             'periode'     => $periode,
@@ -52,11 +54,26 @@ class EcrituresComptablesController extends Controller
             'apercu'      => Deversement::apercu($periode['du'], $periode['au']),
             'journaux'    => JournalComptable::orderBy('code')->get(),
             'moisProposes' => JournalDesEcritures::moisProposes(),
-            'deversements' => DeversementComptable::with('user')->orderByDesc('id')->limit(50)->get(),
+            'deversements' => $deversements,
+            'resumeDeversements' => RapportsComptables::resumeDesDeversements($deversements->pluck('id')->all()),
         ]);
     }
 
     /** Le détail d'une écriture, ligne par ligne. */
+    /**
+     * Les factures emportées par un déversement (demande du 25/09/2026) : un
+     * envoi n'a pas UN numéro de facture, il en couvre autant que la période
+     * en portait. Le suivi en donne le nombre, cet écran en donne la liste.
+     */
+    public function facturesDuDeversement(DeversementComptable $deversement)
+    {
+        return view('comptabilite.ecritures.deversement', [
+            'deversement' => $deversement->load('user'),
+            'ecritures'   => EcritureComptable::where('deversement_id', $deversement->id)
+                ->orderBy('date_ecriture')->orderBy('id')->get(),
+        ]);
+    }
+
     public function detail(EcritureComptable $ecriture)
     {
         $ecriture->load(['lignes.compte', 'lignes.compteAnalytique', 'lignes.famille', 'lignes.produit', 'journal', 'client', 'anomalies', 'annuleePar', 'annulationDe']);

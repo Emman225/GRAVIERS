@@ -341,6 +341,56 @@ class JournalEtTransmissionDesEcrituresTest extends TestCase
 
     // ------------------------------------------------------------------ accès
 
+    public function test_le_suivi_des_deversements_dit_les_journaux_les_factures_et_leur_liste(): void
+    {
+        $ventes = JournalComptable::where('type', JournalComptable::TYPE_VENTES)->first();
+        $caisse = JournalComptable::where('type', JournalComptable::TYPE_CAISSE)->first();
+
+        $this->uneEcriture('2026-09-15', 10000, ['piece' => 'F-D1', 'source_id' => 8001]);
+        $this->uneEcriture('2026-09-16', 6000, ['piece' => 'F-D2', 'source_id' => 8002]);
+        // Un encaissement : il est dans l'envoi, mais ce n'est pas une facture.
+        $this->uneEcriture('2026-09-17', 2000, [
+            'piece' => 'REC-D1', 'origine' => 'ENCAISSEMENT', 'source_type' => 'ligne_paiement', 'source_id' => 9001,
+            'journal_comptable_id' => $caisse?->id, 'journal_code' => $caisse?->code,
+        ]);
+
+        $this->enAdmin()->post('/comptabilite/ecritures/transmettre?mode_periode=MOIS&periode=2026-09', ['format' => 'CSV'])->assertOk();
+        $deversement = DeversementComptable::first();
+        $this->assertNotNull($deversement);
+        $this->assertSame(3, $deversement->nombre_ecritures);
+
+        $resume = \App\Services\Comptabilite\RapportsComptables::resumeDesDeversements([$deversement->id]);
+        $this->assertSame(2, $resume[$deversement->id]['factures'],
+            'Deux factures : l\'encaissement est une écriture, pas une facture.');
+        if ($ventes) {
+            $this->assertStringContainsString($ventes->code, $resume[$deversement->id]['journaux']);
+        }
+        if ($caisse && $caisse->code !== $ventes?->code) {
+            $this->assertStringContainsString($caisse->code, $resume[$deversement->id]['journaux'],
+                'Un envoi couvre plusieurs journaux : la colonne les liste tous.');
+        }
+
+        $this->enAdmin()->get('/comptabilite/ecritures?mode_periode=MOIS&periode=2026-09')
+            ->assertOk()->assertSee('Journaux')->assertSee('Factures');
+
+        // La liste des factures s'ouvre au clic, et porte bien les trois écritures.
+        $this->enAdmin()->get('/comptabilite/ecritures/deversement-' . $deversement->id . '/factures')
+            ->assertOk()
+            ->assertSee($deversement->numero)
+            ->assertSee('F-D1')->assertSee('F-D2')->assertSee('REC-D1');
+    }
+
+    public function test_le_journal_montre_le_mois_et_l_annee_de_chaque_ecriture(): void
+    {
+        $this->uneEcriture('2026-09-15');
+
+        $this->enAdmin()->get('/comptabilite/ecritures?mode_periode=MOIS&periode=2026-09')
+            ->assertOk()
+            ->assertSee('N° facture / pièce')   // la colonne « Pièce » dit enfin ce qu'elle porte
+            ->assertSee('Septembre')            // la colonne « Mois »
+            ->assertSee('2026');                // la colonne « Année »
+    }
+
     public function test_le_journal_est_reserve_aux_administrateurs(): void
     {
         $gestionnaire = User::where('type_user_id', \Help::$USER_GESTIONNAIRE)->where('statut', \Help::$STATUT_ACTIF)->first();

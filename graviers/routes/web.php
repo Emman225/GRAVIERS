@@ -428,6 +428,7 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
             Route::get('/deversement-{deversement}/fichier/{format?}', 'telechargerDeversement')->name('telechargerDeversement');
             Route::post('/deversement-{deversement}/accuser', 'accuser')->name('accuser');
             Route::post('/deversement-{deversement}/rejeter', 'rejeter')->name('rejeter');
+            Route::get('/deversement-{deversement}/factures', 'facturesDuDeversement')->name('facturesDuDeversement');
             Route::get('/{ecriture}', 'detail')->name('detail');
         });
 

@@ -4,8 +4,11 @@
 @php
     $francs = fn ($m) => number_format((float) $m, 0, ',', ' ');
     use App\Services\Comptabilite\RapportsComptables;
-    $totaux = RapportsComptables::totaux($lignes, ['ouverture', 'debit', 'credit', 'solde_debit', 'solde_credit']);
+    $totaux = RapportsComptables::totaux($lignes, ['ouverture_debit', 'ouverture_credit', 'debit', 'credit', 'solde_debit', 'solde_credit']);
     $entete = ['generale' => 'Compte', 'tiers' => 'Compte tiers', 'analytique' => 'Compte analytique'][$sorte];
+    // La déclinaison suit le changement de période : sans cela, régler les
+    // dates ramenait toujours sur la balance générale.
+    $champsConserves = ['sorte' => $sorte];
 @endphp
 
 @section('contenu')
@@ -27,11 +30,12 @@
                         <tr>
                             <th>{{ $entete }}</th>
                             <th>Libellé</th>
-                            <th class="text-end">Solde d'ouverture</th>
-                            <th class="text-end">Débit</th>
-                            <th class="text-end">Crédit</th>
-                            <th class="text-end">Solde débiteur</th>
-                            <th class="text-end">Solde créditeur</th>
+                            <th class="text-end">Ouverture débit</th>
+                            <th class="text-end">Ouverture crédit</th>
+                            <th class="text-end">Mouvement débit</th>
+                            <th class="text-end">Mouvement crédit</th>
+                            <th class="text-end">Solde final débit</th>
+                            <th class="text-end">Solde final crédit</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -39,21 +43,23 @@
                             <tr>
                                 <td><strong>{{ $ligne['cle'] }}</strong></td>
                                 <td class="td-texte-long">{{ $ligne['libelle'] }}</td>
-                                <td class="text-end">{{ $francs($ligne['ouverture']) }}</td>
-                                <td class="text-end">{{ $francs($ligne['debit']) }}</td>
-                                <td class="text-end">{{ $francs($ligne['credit']) }}</td>
-                                <td class="text-end">{{ $ligne['solde_debit'] > 0 ? $francs($ligne['solde_debit']) : '' }}</td>
-                                <td class="text-end">{{ $ligne['solde_credit'] > 0 ? $francs($ligne['solde_credit']) : '' }}</td>
+                                <td class="text-end text-nowrap">{{ $ligne['ouverture_debit'] > 0 ? $francs($ligne['ouverture_debit']) : '' }}</td>
+                                <td class="text-end text-nowrap">{{ $ligne['ouverture_credit'] > 0 ? $francs($ligne['ouverture_credit']) : '' }}</td>
+                                <td class="text-end text-nowrap">{{ $francs($ligne['debit']) }}</td>
+                                <td class="text-end text-nowrap">{{ $francs($ligne['credit']) }}</td>
+                                <td class="text-end text-nowrap">{{ $ligne['solde_debit'] > 0 ? $francs($ligne['solde_debit']) : '' }}</td>
+                                <td class="text-end text-nowrap">{{ $ligne['solde_credit'] > 0 ? $francs($ligne['solde_credit']) : '' }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="7" class="text-center text-muted">Aucun mouvement sur cette période.</td></tr>
+                            <tr><td colspan="8" class="text-center text-muted">Aucun mouvement sur cette période.</td></tr>
                         @endforelse
                     </tbody>
                     @if (count($lignes))
                         <tfoot>
                             <tr>
                                 <th colspan="2" class="text-end">Totaux</th>
-                                <th class="text-end">{{ $francs($totaux['ouverture']) }}</th>
+                                <th class="text-end">{{ $francs($totaux['ouverture_debit']) }}</th>
+                                <th class="text-end">{{ $francs($totaux['ouverture_credit']) }}</th>
                                 <th class="text-end">{{ $francs($totaux['debit']) }}</th>
                                 <th class="text-end">{{ $francs($totaux['credit']) }}</th>
                                 <th class="text-end">{{ $francs($totaux['solde_debit']) }}</th>

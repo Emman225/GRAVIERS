@@ -19,10 +19,12 @@
                         <tr>
                             <th>Compte</th>
                             <th>Libellé</th>
-                            <th class="text-end">Solde d'ouverture</th>
-                            <th class="text-end">Débit</th>
-                            <th class="text-end">Crédit</th>
-                            <th class="text-end">Solde de clôture</th>
+                            <th class="text-end">Ouverture débit</th>
+                            <th class="text-end">Ouverture crédit</th>
+                            <th class="text-end">Mouvement débit</th>
+                            <th class="text-end">Mouvement crédit</th>
+                            <th class="text-end">Solde final débit</th>
+                            <th class="text-end">Solde final crédit</th>
                             <th class="text-end">Déversé</th>
                             <th class="text-end">En attente</th>
                         </tr>
@@ -32,15 +34,17 @@
                             <tr>
                                 <td><strong>{{ $ligne['compte'] }}</strong></td>
                                 <td class="td-texte-long">{{ $ligne['libelle'] }}</td>
-                                <td class="text-end">{{ $francs($ligne['ouverture']) }}</td>
-                                <td class="text-end">{{ $francs($ligne['debit']) }}</td>
-                                <td class="text-end">{{ $francs($ligne['credit']) }}</td>
-                                <td class="text-end"><strong>{{ $francs($ligne['cloture']) }}</strong></td>
-                                <td class="text-end">{{ $francs($ligne['deverse']) }}</td>
-                                <td class="text-end">{{ $francs($ligne['attente']) }}</td>
+                                <td class="text-end text-nowrap">{{ $ligne['ouverture_debit'] > 0 ? $francs($ligne['ouverture_debit']) : '' }}</td>
+                                <td class="text-end text-nowrap">{{ $ligne['ouverture_credit'] > 0 ? $francs($ligne['ouverture_credit']) : '' }}</td>
+                                <td class="text-end text-nowrap">{{ $francs($ligne['debit']) }}</td>
+                                <td class="text-end text-nowrap">{{ $francs($ligne['credit']) }}</td>
+                                <td class="text-end text-nowrap"><strong>{{ $ligne['cloture_debit'] > 0 ? $francs($ligne['cloture_debit']) : '' }}</strong></td>
+                                <td class="text-end text-nowrap"><strong>{{ $ligne['cloture_credit'] > 0 ? $francs($ligne['cloture_credit']) : '' }}</strong></td>
+                                <td class="text-end text-nowrap">{{ $francs($ligne['deverse']) }}</td>
+                                <td class="text-end text-nowrap">{{ $francs($ligne['attente']) }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="8" class="text-center text-muted">Aucun mouvement sur cette période.</td></tr>
+                            <tr><td colspan="10" class="text-center text-muted">Aucun mouvement sur cette période.</td></tr>
                         @endforelse
                     </tbody>
                     @if (count($lignes))
