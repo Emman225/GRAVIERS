@@ -65,14 +65,11 @@
                     <thead>
                         <tr>
                             <th>Grande famille</th>
-                            <th class="text-end">Lignes</th>
                             <th class="text-end">Commandé</th>
                             <th class="text-end">Livré</th>
                             <th class="text-end">Commandé non livré</th>
-                            <th class="text-end">Bons</th>
                             <th class="text-end">Facturé</th>
                             <th class="text-end">Livré non facturé</th>
-                            <th class="text-end">Factures</th>
                             <th class="text-end">Déversé</th>
                             <th class="text-end">Facturé non déversé</th>
                         </tr>
@@ -81,33 +78,28 @@
                         @forelse ($cycle as $c)
                             <tr>
                                 <td><strong>{{ $c['famille'] }}</strong></td>
-                                <td class="text-end text-nowrap">{{ $c['lignes'] }}</td>
-                                <td class="text-end text-nowrap">{{ $francs($c['commande']) }}</td>
-                                <td class="text-end text-nowrap">{{ $francs($c['livre']) }}</td>
+                                {{-- Les nombres entre parenthèses, derrière leur montant : l'usage du tableau du dessus. --}}
+                                <td class="text-end text-nowrap">{{ $francs($c['commande']) }} <small class="text-muted">({{ $c['lignes'] }} lignes)</small></td>
+                                <td class="text-end text-nowrap">{{ $francs($c['livre']) }} <small class="text-muted">({{ $c['bons'] }} bons)</small></td>
                                 <td class="text-end text-nowrap {{ $c['commande_non_livre'] > 0 ? 'text-warning fw-bold' : 'text-muted' }}">{{ $francs($c['commande_non_livre']) }}</td>
-                                <td class="text-end text-nowrap">{{ $c['bons'] }}</td>
-                                <td class="text-end text-nowrap">{{ $francs($c['facture']) }}</td>
+                                <td class="text-end text-nowrap">{{ $francs($c['facture']) }} <small class="text-muted">({{ $c['factures'] }})</small></td>
                                 <td class="text-end text-nowrap {{ $c['livre_non_facture'] > 0 ? 'text-danger fw-bold' : 'text-muted' }}">{{ $francs($c['livre_non_facture']) }}</td>
-                                <td class="text-end text-nowrap">{{ $c['factures'] }}</td>
                                 <td class="text-end text-nowrap">{{ $francs($c['deverse']) }}</td>
                                 <td class="text-end text-nowrap {{ $c['facture_non_deverse'] > 0 ? 'fw-bold' : 'text-muted' }}">{{ $francs($c['facture_non_deverse']) }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="11" class="text-center text-muted">Aucune commande sur cette période.</td></tr>
+                            <tr><td colspan="8" class="text-center text-muted">Aucune commande sur cette période.</td></tr>
                         @endforelse
                     </tbody>
                     @if (count($cycle))
                         <tfoot>
                             <tr>
                                 <th class="text-end">Totaux</th>
-                                <th class="text-end">{{ $totauxCycle['lignes'] }}</th>
-                                <th class="text-end">{{ $francs($totauxCycle['commande']) }}</th>
-                                <th class="text-end">{{ $francs($totauxCycle['livre']) }}</th>
+                                <th class="text-end">{{ $francs($totauxCycle['commande']) }} <small>({{ $totauxCycle['lignes'] }})</small></th>
+                                <th class="text-end">{{ $francs($totauxCycle['livre']) }} <small>({{ $totauxCycle['bons'] }})</small></th>
                                 <th class="text-end">{{ $francs($totauxCycle['commande_non_livre']) }}</th>
-                                <th class="text-end">{{ $totauxCycle['bons'] }}</th>
-                                <th class="text-end">{{ $francs($totauxCycle['facture']) }}</th>
+                                <th class="text-end">{{ $francs($totauxCycle['facture']) }} <small>({{ $totauxCycle['factures'] }})</small></th>
                                 <th class="text-end">{{ $francs($totauxCycle['livre_non_facture']) }}</th>
-                                <th class="text-end">{{ $totauxCycle['factures'] }}</th>
                                 <th class="text-end">{{ $francs($totauxCycle['deverse']) }}</th>
                                 <th class="text-end">{{ $francs($totauxCycle['facture_non_deverse']) }}</th>
                             </tr>
