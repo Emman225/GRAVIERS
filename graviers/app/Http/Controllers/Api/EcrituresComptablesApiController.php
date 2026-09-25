@@ -123,7 +123,9 @@ class EcrituresComptablesApiController extends Controller
     public function accuser(Request $request)
     {
         $donnees = $request->validate([
-            'mode_periode' => ['required', Rule::in([JournalDesEcritures::PAR_DATES, JournalDesEcritures::PAR_MOIS])],
+            // Les trois modes de l'écran, sans exception : ce que le site peut
+            // transmettre, l'API doit pouvoir l'accuser.
+            'mode_periode' => ['required', Rule::in([JournalDesEcritures::PAR_DATES, JournalDesEcritures::PAR_MOIS, JournalDesEcritures::PAR_ANNEE])],
         ], [], ['mode_periode' => 'mode de période']);
         $format = $this->format($request);
 

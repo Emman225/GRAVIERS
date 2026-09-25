@@ -165,6 +165,27 @@ class ApiComptableTest extends TestCase
 
         $this->getJson('/api/comptabilite/ecritures?mode_periode=MOIS&periode=2026-08')
             ->assertOk()->assertJsonPath('donnees.0.identifiant', $aout->identifiant);
+
+        // Le mode « année » de l'écran vaut aussi pour l'API : août et
+        // septembre sont dans la même année.
+        $this->getJson('/api/comptabilite/ecritures?mode_periode=ANNEE&periode=2026')
+            ->assertOk()->assertJsonCount(3, 'donnees')
+            ->assertJsonPath('periode.du', '2026-01-01')
+            ->assertJsonPath('periode.au', '2026-12-31');
+    }
+
+    public function test_l_accuse_de_reception_accepte_les_trois_modes_de_periode(): void
+    {
+        Sanctum::actingAs($this->admin, [JetonsApiComptableController::APTITUDE_LECTURE, JetonsApiComptableController::APTITUDE_ECRITURE]);
+        $ecriture = $this->uneEcriture('2026-07-15', 8000);
+
+        // Ce que le site peut transmettre, l'API doit pouvoir l'accuser : le
+        // mode « année » ne doit pas être refusé à la validation.
+        $this->postJson('/api/comptabilite/deversements', ['mode_periode' => 'ANNEE', 'periode' => '2026', 'format' => 'CSV'])
+            ->assertCreated()
+            ->assertJsonPath('donnees.mode_periode', 'ANNEE');
+
+        $this->assertSame(\App\Models\EcritureComptable::ETAT_EXPORTEE, $ecriture->fresh()->etat);
     }
 
     public function test_le_detail_se_lit_par_l_identifiant_stable(): void
