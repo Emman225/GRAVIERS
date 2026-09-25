@@ -334,8 +334,15 @@ class JournalEtTransmissionDesEcrituresTest extends TestCase
         $this->assertTrue($ecritures->contains('id', $decembre->id));
         $this->assertFalse($ecritures->contains('id', $autreAnnee->id), "L'année d'avant reste dehors.");
 
-        // L'année en cours est toujours proposée, et les années où il y a des écritures aussi.
-        $this->assertContains(2026, JournalDesEcritures::anneesProposees());
+        // Dix années en arrière au minimum, même sans écriture dedans : on doit
+        // pouvoir ouvrir un exercice avant d'y avoir écrit quoi que ce soit.
+        $annees = JournalDesEcritures::anneesProposees();
+        $courante = (int) now()->year;
+        $this->assertContains($courante, $annees);
+        $this->assertContains($courante - JournalDesEcritures::ANNEES_EN_ARRIERE, $annees);
+        $this->assertGreaterThanOrEqual(JournalDesEcritures::ANNEES_EN_ARRIERE + 1, count($annees));
+        $this->assertSame($courante, $annees[0], 'La plus récente en tête.');
+        $this->assertContains(2025, $annees, "L'année d'une écriture plus ancienne y figure aussi.");
 
         // L'écran offre le troisième mode et son sélecteur.
         $this->enAdmin()->get('/comptabilite/ecritures?mode_periode=ANNEE&periode=2026')

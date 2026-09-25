@@ -145,21 +145,26 @@ class JournalDesEcritures
     }
 
     /** Les douze derniers mois, pour le choix « par mois ». */
+    /** Le nombre d'années toujours offertes en arrière, même sans écriture. */
+    public const ANNEES_EN_ARRIERE = 10;
+
     /**
-     * Les années proposées : celles où il y a des écritures, et l'année en
-     * cours. Une liste courte, qui ne propose pas des exercices vides.
+     * Les années proposées : DIX ANNÉES EN ARRIÈRE au minimum, et davantage si
+     * des écritures sont plus anciennes. Un exercice peut se lire avant d'avoir
+     * la moindre écriture dedans — c'est pourquoi la liste ne se limite pas à
+     * ce que la base porte.
      */
     public static function anneesProposees(): array
     {
         $bornes = EcritureComptable::selectRaw('MIN(YEAR(date_ecriture)) AS debut, MAX(YEAR(date_ecriture)) AS fin')->first();
         $courante = (int) Carbon::today()->year;
-        $debut = (int) ($bornes->debut ?? $courante);
-        $fin   = max($courante, (int) ($bornes->fin ?? $courante));
-        $debut = ($debut >= 2000 && $debut <= 2100) ? $debut : $courante;
 
-        $annees = range($fin, max($debut, $fin - 10));
+        $fin = max($courante, (int) ($bornes->fin ?? $courante));
+        $plusAncienne = (int) ($bornes->debut ?: $fin);
+        $debut = min($fin - self::ANNEES_EN_ARRIERE, $plusAncienne);
+        $debut = max(2000, $debut);
 
-        return array_values($annees);
+        return range($fin, $debut);
     }
 
     public static function moisProposes(): array
