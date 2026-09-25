@@ -279,26 +279,35 @@ class JournalEtTransmissionDesEcrituresTest extends TestCase
         $ecriture = $this->uneEcriture('2026-09-15', 10000);
         $ecritures = collect([$ecriture->fresh('lignes')]);
 
+        // Les treize colonnes de l'écran « Description des champs » du Sage de
+        // DALAKOUN, dans SON ordre (gabarit fourni le 26/09/2026).
         $entetes = FormatSage::entetes();
-        $this->assertSame(array_keys(FormatSage::COLONNES), $entetes);
-        foreach (['Journal', 'Date', 'Compte général', 'Compte tiers', 'Libellé', 'Débit', 'Crédit', 'Code analytique'] as $colonne) {
-            $this->assertContains($colonne, $entetes);
-        }
+        $this->assertSame([
+            "Type d'écriture", 'Code journal', 'Date de pièce', 'N° pièce', 'Référence',
+            'N° compte général', 'Intitulé compte général', 'N° section 1', 'N° compte tiers',
+            'Libellé écriture', 'Montant débit', 'Montant crédit', 'N° plan analytique',
+        ], $entetes);
 
         $lignes = FormatSage::lignes($ecritures);
-        $this->assertCount(2, $lignes, 'Une ligne de fichier par ligne d\'écriture.');
+        $this->assertCount(2, $lignes, "Une ligne de fichier par ligne d’écriture.");
         $this->assertSame(count($entetes), count($lignes[0]));
         $premiere = array_combine($entetes, $lignes[0]);
-        $this->assertSame('15/09/2026', $premiere['Date']);
-        $this->assertSame('411000', $premiere['Compte général']);
-        $this->assertSame('411REC', $premiere['Compte tiers']);
-        $this->assertSame(10000.0, $premiere['Débit'], 'Les montants partent en nombres, pas en texte.');
-        $this->assertSame(0.0, $premiere['Crédit']);
-        $this->assertSame($ecriture->identifiant, $premiere['Pièce interne']);
+        $this->assertSame('15/09/2026', $premiere['Date de pièce']);
+        $this->assertSame('411000', $premiere['N° compte général']);
+        $this->assertSame('Recette 411000', $premiere['Intitulé compte général'], "Sage veut l’intitulé à côté du numéro.");
+        $this->assertSame('411REC', $premiere['N° compte tiers']);
+        $this->assertSame(10000.0, $premiere['Montant débit'], 'Les montants partent en nombres, pas en texte.');
+        $this->assertSame(0.0, $premiere['Montant crédit']);
+        $this->assertSame(FormatSage::PLAN_ANALYTIQUE, $premiere['N° plan analytique'], 'Valeur imposée par Sage.');
+
+        // Le plan comptable a son propre gabarit : quatre colonnes.
+        $this->assertSame(['Numéro compte', 'Intitulé', 'Type', 'Type de compte'], FormatSage::entetesDuPlan());
+        $plan = FormatSage::plan(\App\Models\CompteComptable::generaux()->where('numero', '411000')->get());
+        $this->assertSame(['411000', 'Recette 411000', '', FormatSage::TYPE_DE_COMPTE], $plan[0]);
 
         $csv = FormatSage::csv($ecritures);
         $this->assertStringStartsWith("\xEF\xBB\xBF", $csv, 'Le BOM : Excel ouvre le fichier sans rien demander.');
-        $this->assertStringContainsString('Compte général', $csv);
+        $this->assertStringContainsString('N° compte général', $csv);
         $this->assertStringContainsString('10000,00', $csv, 'Virgule décimale, comme l\'attend un tableur français.');
 
         $json = FormatSage::json($ecritures);

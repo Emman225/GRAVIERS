@@ -15,6 +15,7 @@ use App\Models\ModePaiement;
 use App\Models\Produit;
 use App\Models\RubriqueComptable;
 use App\Services\Comptabilite\MoteurTresorerie;
+use App\Services\Comptabilite\ImportParametrage;
 use App\Services\Comptabilite\ParametrageComptable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -27,7 +28,77 @@ use Illuminate\Validation\Rule;
  */
 class ParametrageComptableController extends Controller
 {
-    public const ONGLETS = ['comptes', 'familles', 'produits', 'rubriques', 'tiers', 'journaux', 'reglages', 'controle', 'historique'];
+    public const ONGLETS = ['comptes', 'familles', 'produits', 'rubriques', 'tiers', 'journaux', 'reglages', 'import', 'controle', 'historique'];
+
+    /**
+     * Le plan comptable au format d'import de Sage (gabarit du 26/09/2026).
+     * Les comptes généraux seulement : dans Sage, les comptes tiers et les
+     * sections analytiques s'importent par d'autres fichiers.
+     */
+    /**
+     * Le classeur de paramétrage, DÉJÀ REMPLI de ce qui est réglé aujourd'hui :
+     * l'entreprise corrige au lieu de tout taper, et le même fichier sert de
+     * sauvegarde du paramétrage.
+     */
+    public function modeleImport()
+    {
+        return \Maatwebsite\Excel\Facades\Excel::download(
+            new \App\Exports\ModeleParametrageExport(),
+            'parametrage-comptable-' . now()->format('Y-m-d') . '.xlsx'
+        );
+    }
+
+    /** Premier temps : on lit le fichier et on dit ce qu'il ferait. Rien n'est écrit. */
+    public function analyserImport(Request $request)
+    {
+        $request->validate([
+            'fichier' => ['required', 'file', 'mimes:xlsx,xls,csv', 'max:8192'],
+        ], [], ['fichier' => 'classeur de paramétrage']);
+
+        $chemin = $request->file('fichier')->store('imports-comptables');
+        $rapport = ImportParametrage::analyser(storage_path('app/' . $chemin));
+
+        return view('comptabilite.parametrage.import', [
+            'rapport' => $rapport,
+            'resume'  => ImportParametrage::resume($rapport),
+            'fichier' => $chemin,
+            'applique' => false,
+        ]);
+    }
+
+    /** Second temps : le même parcours, en écrivant. Le fichier est ensuite retiré. */
+    public function appliquerImport(Request $request)
+    {
+        $request->validate(['fichier' => ['required', 'string']]);
+        $chemin = storage_path('app/' . $request->input('fichier'));
+
+        // Le chemin vient d'un champ caché : on refuse tout ce qui sort du
+        // dossier des imports.
+        if (!str_starts_with($request->input('fichier'), 'imports-comptables/') || !is_file($chemin)) {
+            return back()->with('erreurImport', "Le fichier analysé n’est plus disponible : recommencer l’import.");
+        }
+
+        $rapport = ImportParametrage::appliquer($chemin);
+        @unlink($chemin);
+        ParametrageComptable::journaliser('import', null, basename($chemin), 'IMPORT', [], ImportParametrage::resume($rapport));
+
+        return view('comptabilite.parametrage.import', [
+            'rapport' => $rapport,
+            'resume'  => ImportParametrage::resume($rapport),
+            'fichier' => null,
+            'applique' => true,
+        ]);
+    }
+
+    public function exporterPlanSage()
+    {
+        $comptes = CompteComptable::generaux()->orderBy('numero')->get();
+
+        return \Maatwebsite\Excel\Facades\Excel::download(
+            new \App\Exports\PlanComptableSageExport($comptes),
+            'plan-comptable-sage-' . now()->format('Y-m-d') . '.xlsx'
+        );
+    }
 
     public function index(Request $request)
     {

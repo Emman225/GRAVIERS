@@ -402,6 +402,10 @@ Route::name('show.')->controller(UserController::class)->middleware('auth.type:A
             Route::post('/parametrage/rubriques', 'rubriquesUpdate')->name('rubriques.update');
             Route::post('/parametrage/tiers', 'tiersUpdate')->name('tiers.update');
             Route::post('/parametrage/tiers/generer', 'tiersGenerer')->name('tiers.generer');
+            Route::get('/parametrage/plan-sage', 'exporterPlanSage')->name('plan.sage');
+            Route::get('/parametrage/modele-import', 'modeleImport')->name('import.modele');
+            Route::post('/parametrage/import/analyser', 'analyserImport')->name('import.analyser');
+            Route::post('/parametrage/import/appliquer', 'appliquerImport')->name('import.appliquer');
             Route::post('/parametrage/modes', 'modesUpdate')->name('modes.update');
             Route::post('/parametrage/reglages', 'reglagesUpdate')->name('reglages.update');
         });

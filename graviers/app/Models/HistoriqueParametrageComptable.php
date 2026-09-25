@@ -15,6 +15,7 @@ class HistoriqueParametrageComptable extends Model
         'SUPPRESSION'   => 'Suppression',
         'ACTIVATION'    => 'Activation',
         'DESACTIVATION' => 'Désactivation',
+        'IMPORT'        => 'Import',
     ];
 
     public const OBJETS = [
@@ -29,6 +30,7 @@ class HistoriqueParametrageComptable extends Model
         'apporteur' => 'Compte tiers apporteur',
         'mode'      => 'Mode de règlement',
         'reglage'   => 'Réglage',
+        'import'    => 'Import du paramétrage',
     ];
 
     protected $table = 'historique_parametrage_comptable';

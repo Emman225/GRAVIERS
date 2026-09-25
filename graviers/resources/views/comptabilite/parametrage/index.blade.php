@@ -13,6 +13,7 @@
         'tiers'      => 'Comptes tiers',
         'journaux'   => 'Journaux et règlements',
         'reglages'   => 'Réglages',
+        'import'     => 'Import du paramétrage',
         'controle'   => 'Contrôle',
         'historique' => 'Historique',
     ];
@@ -684,6 +685,63 @@
                             <button type="submit" class="btn btn-primary"><i class="material-icons md-save"></i> Enregistrer les réglages</button>
                         </div>
                     </form>
+                </div>
+
+                {{-- ============================================================ IMPORT --}}
+                <div class="tab-pane fade {{ $onglet === 'import' ? 'show active' : '' }}" id="onglet-import" role="tabpanel">
+                    <p class="text-muted">
+                        Tout ce paramétrage se pose aussi d'un fichier. Le classeur part DÉJÀ REMPLI de ce qui est
+                        réglé aujourd'hui : on corrige et on complète au lieu de tout taper, puis on le renvoie ici.
+                        Le même fichier sert de sauvegarde du paramétrage.
+                    </p>
+
+                    <div class="row g-3">
+                        <div class="col-lg-5">
+                            <div class="border rounded p-3 h-100">
+                                <h6 class="form-label fw-bold mb-2">1. Prendre le classeur</h6>
+                                <p class="text-muted small">
+                                    Huit feuilles : le mode d'emploi, puis les comptes, les grandes familles, les
+                                    produits, les rubriques, les comptes tiers, les journaux et les modes de règlement.
+                                    Ne pas déplacer les colonnes ni renommer les feuilles.
+                                </p>
+                                <a href="{{ route('show.comptabilite.import.modele') }}" class="btn btn-primary btn-sm">
+                                    <i class="material-icons md-get_app"></i> Télécharger le classeur
+                                </a>
+                            </div>
+                        </div>
+                        <div class="col-lg-7">
+                            <div class="border rounded p-3 h-100">
+                                <h6 class="form-label fw-bold mb-2">2. Le renvoyer rempli</h6>
+                                @if (session('erreurImport'))
+                                    <div class="alert alert-warning py-2">{{ session('erreurImport') }}</div>
+                                @endif
+                                <form method="POST" action="{{ route('show.comptabilite.import.analyser') }}" enctype="multipart/form-data" class="row g-2 align-items-end">
+                                    @csrf
+                                    <div class="col-md-8">
+                                        <label class="form-label" for="fichier">Classeur rempli <span class="text-danger">*</span></label>
+                                        <input type="file" name="fichier" id="fichier" class="form-control form-control-sm" accept=".xlsx,.xls,.csv" required>
+                                        @error('fichier') <small class="text-danger">{{ $message }}</small> @enderror
+                                    </div>
+                                    <div class="col-md-4">
+                                        <button type="submit" class="btn btn-sm btn-primary w-100">
+                                            <i class="material-icons md-visibility"></i> Analyser
+                                        </button>
+                                    </div>
+                                </form>
+                                <small class="text-muted d-block mt-2">
+                                    L'analyse n'écrit rien : elle dit ligne à ligne ce que le classeur ferait. On
+                                    applique ensuite, si tout est juste.
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info mt-4 mb-0">
+                        <strong>Trois règles.</strong> L'import ne SUPPRIME jamais rien : il crée ce qui manque et
+                        corrige ce que le classeur nomme ; ce qu'il ne nomme pas reste tel quel. Une ligne qu'on ne
+                        sait pas rattacher est REFUSÉE avec sa cause, et le reste du classeur passe quand même. Et
+                        une feuille laissée vide, ou retirée du classeur, n'est pas touchée du tout.
+                    </div>
                 </div>
 
                 {{-- ============================================================ CONTRÔLE --}}

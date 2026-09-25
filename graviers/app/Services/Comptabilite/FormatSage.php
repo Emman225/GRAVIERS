@@ -7,32 +7,52 @@ use App\Models\LigneEcritureComptable;
 use Illuminate\Support\Collection;
 
 /**
- * LA MISE EN FORME DES ÉCRITURES POUR LE LOGICIEL COMPTABLE.
+ * LA MISE EN FORME POUR LE LOGICIEL COMPTABLE — SAGE.
  *
- * Une ligne du fichier = une ligne d'écriture. Les colonnes ci-dessous sont
- * celles d'un import Sage courant ; le gabarit exact du logiciel de DALAKOUN
- * n'a pas encore été fourni (question 4 du 21/09/2026).
+ * Les colonnes, leur ordre et leurs intitulés sont ceux des deux écrans
+ * « Description des champs » du Sage de DALAKOUN, fournis le 26/09/2026 :
+ * celui des ÉCRITURES et celui du PLAN COMPTABLE. Une ligne du fichier
+ * d'écritures = une ligne d'écriture.
  *
- * QUAND LE GABARIT ARRIVERA, TOUT SE RÈGLE ICI : l'ordre, les intitulés et le
- * contenu des colonnes se lisent et se modifient dans le seul tableau
- * COLONNES. Rien d'autre dans le module ne connaît la forme du fichier.
+ * TOUT SE RÈGLE ICI : rien d'autre dans le module ne connaît la forme du
+ * fichier. Dans Sage, « * » marque un champ obligatoire et le triangle un
+ * champ à valeur imposée — ces deux valeurs-là sont les constantes
+ * PLAN_ANALYTIQUE et TYPE_DE_COMPTE ci-dessous.
  */
 class FormatSage
 {
+    /**
+     * Le numéro du plan analytique, imposé par Sage (triangle, valeur 1).
+     * Un seul plan analytique est employé.
+     */
+    public const PLAN_ANALYTIQUE = '1';
+
+    /** Le type de compte du plan comptable : G comme général (triangle, valeur G). */
+    public const TYPE_DE_COMPTE = 'G';
+
     /** intitulé de la colonne => comment la remplir pour une ligne d'écriture */
     public const COLONNES = [
-        'Journal'           => 'journal',
-        'Date'              => 'date',
-        'N° pièce'          => 'piece',
-        'Compte général'    => 'compte',
-        'Compte tiers'      => 'tiers',
-        'Libellé'           => 'libelle',
-        'Débit'             => 'debit',
-        'Crédit'            => 'credit',
-        'Code analytique'   => 'analytique',
-        'Référence'         => 'reference',
-        'Lettrage'          => 'lettre',
-        'Pièce interne'     => 'identifiant',
+        "Type d'écriture"         => 'type_ecriture',
+        'Code journal'            => 'journal',
+        'Date de pièce'           => 'date',
+        'N° pièce'                => 'piece',
+        'Référence'               => 'reference',
+        'N° compte général'       => 'compte',
+        'Intitulé compte général' => 'intitule_compte',
+        'N° section 1'            => 'analytique',
+        'N° compte tiers'         => 'tiers',
+        'Libellé écriture'        => 'libelle',
+        'Montant débit'           => 'debit',
+        'Montant crédit'          => 'credit',
+        'N° plan analytique'      => 'plan_analytique',
+    ];
+
+    /** intitulé de la colonne => comment la remplir pour un compte du plan */
+    public const COLONNES_PLAN = [
+        'Numéro compte'  => 'numero',
+        'Intitulé'       => 'libelle',
+        'Type'           => 'type',
+        'Type de compte' => 'type_de_compte',
     ];
 
     public static function entetes(): array
@@ -40,36 +60,73 @@ class FormatSage
         return array_keys(self::COLONNES);
     }
 
+    public static function entetesDuPlan(): array
+    {
+        return array_keys(self::COLONNES_PLAN);
+    }
+
+    /**
+     * Le plan comptable au format d'import de Sage. Les comptes GÉNÉRAUX
+     * seulement : dans Sage, les comptes tiers et les sections analytiques
+     * s'importent par d'autres fichiers.
+     */
+    public static function plan(Collection $comptes): array
+    {
+        $fichier = [];
+        foreach ($comptes as $compte) {
+            $valeurs = [
+                'numero'         => (string) $compte->numero,
+                'libelle'        => (string) $compte->libelle,
+                'type'           => '',
+                'type_de_compte' => self::TYPE_DE_COMPTE,
+            ];
+            $ligne = [];
+            foreach (self::COLONNES_PLAN as $champ) {
+                $ligne[] = $valeurs[$champ] ?? '';
+            }
+            $fichier[] = $ligne;
+        }
+
+        return $fichier;
+    }
+
     /** Toutes les lignes du fichier, écriture après écriture, dans l'ordre. */
     public static function lignes(Collection $ecritures): array
     {
+        // Les intitulés des comptes en UNE requête : aller les chercher ligne
+        // par ligne en ferait une par ligne du fichier.
+        $intitules = \App\Models\CompteComptable::withTrashed()->pluck('libelle', 'numero');
+
         $fichier = [];
         foreach ($ecritures as $ecriture) {
             foreach ($ecriture->lignes as $ligne) {
-                $fichier[] = self::ligne($ecriture, $ligne);
+                $fichier[] = self::ligne($ecriture, $ligne, $intitules);
             }
         }
 
         return $fichier;
     }
 
-    private static function ligne(EcritureComptable $ecriture, LigneEcritureComptable $ligne): array
+    private static function ligne(EcritureComptable $ecriture, LigneEcritureComptable $ligne, $intitules = null): array
     {
         $valeurs = [
-            'journal'     => (string) $ecriture->journal_code,
-            'date'        => $ecriture->date_ecriture?->format('d/m/Y') ?? '',
-            'piece'       => (string) $ecriture->piece,
-            'compte'      => (string) $ligne->numero_compte,
-            'tiers'       => (string) $ligne->compte_tiers,
-            'libelle'     => (string) $ligne->libelle,
+            // Sage laisse ce champ libre : il n'est pas obligatoire, et aucune
+            // valeur ne nous a été imposée.
+            'type_ecriture'   => '',
+            'journal'         => (string) $ecriture->journal_code,
+            'date'            => $ecriture->date_ecriture?->format('d/m/Y') ?? '',
+            'piece'           => (string) $ecriture->piece,
+            'reference'       => (string) ($ecriture->reference_fne ?: $ecriture->numero_affaire),
+            'compte'          => (string) $ligne->numero_compte,
+            'intitule_compte' => (string) ($intitules[$ligne->numero_compte] ?? ''),
+            'analytique'      => (string) $ligne->numero_analytique,
+            'tiers'           => (string) $ligne->compte_tiers,
+            'libelle'         => (string) $ligne->libelle,
             // Les montants partent en nombres, avec deux décimales : un montant
             // devenu texte est refusé à l'import, ou pire, importé à zéro.
-            'debit'       => round((float) $ligne->debit, 2),
-            'credit'      => round((float) $ligne->credit, 2),
-            'analytique'  => (string) $ligne->numero_analytique,
-            'reference'   => (string) ($ecriture->reference_fne ?: $ecriture->numero_affaire),
-            'lettre'      => (string) $ligne->lettre,
-            'identifiant' => (string) $ecriture->identifiant,
+            'debit'           => round((float) $ligne->debit, 2),
+            'credit'          => round((float) $ligne->credit, 2),
+            'plan_analytique' => self::PLAN_ANALYTIQUE,
         ];
 
         $sortie = [];
