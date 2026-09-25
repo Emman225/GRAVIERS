@@ -49,6 +49,7 @@ class RapportsComptablesController extends Controller
             'titre'        => self::RAPPORTS[$rapport][0],
             'explication'  => self::RAPPORTS[$rapport][1],
             'moisProposes' => JournalDesEcritures::moisProposes(),
+            'anneesProposees' => JournalDesEcritures::anneesProposees(),
             'rubriquesSansCompte' => RapportsComptables::rubriquesSansCompte(),
         ];
     }
@@ -62,6 +63,7 @@ class RapportsComptablesController extends Controller
             'periode'      => $periode,
             'rapports'     => self::RAPPORTS,
             'moisProposes' => JournalDesEcritures::moisProposes(),
+            'anneesProposees' => JournalDesEcritures::anneesProposees(),
             'deversements' => DeversementComptable::orderByDesc('id')->limit(5)->get(),
             'rubriquesSansCompte' => RapportsComptables::rubriquesSansCompte(),
         ]);

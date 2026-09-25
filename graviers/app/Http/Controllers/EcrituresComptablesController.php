@@ -54,6 +54,7 @@ class EcrituresComptablesController extends Controller
             'apercu'      => Deversement::apercu($periode['du'], $periode['au']),
             'journaux'    => JournalComptable::orderBy('code')->get(),
             'moisProposes' => JournalDesEcritures::moisProposes(),
+            'anneesProposees' => JournalDesEcritures::anneesProposees(),
             'deversements' => $deversements,
             'resumeDeversements' => RapportsComptables::resumeDesDeversements($deversements->pluck('id')->all()),
         ]);
@@ -102,6 +103,7 @@ class EcrituresComptablesController extends Controller
             'etat'         => $ouvertes,
             'anomalies'    => $requete->orderByDesc('id')->get(),
             'moisProposes' => JournalDesEcritures::moisProposes(),
+            'anneesProposees' => JournalDesEcritures::anneesProposees(),
         ]);
     }
 

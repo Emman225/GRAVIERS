@@ -126,9 +126,11 @@ class Deversement
 
     public static function nomDuFichier(Carbon $du, Carbon $au, string $mode, string $format): string
     {
-        $periode = $mode === JournalDesEcritures::PAR_MOIS
-            ? $du->format('Y-m')
-            : $du->format('Y-m-d') . '_' . $au->format('Y-m-d');
+        $periode = match ($mode) {
+            JournalDesEcritures::PAR_MOIS  => $du->format('Y-m'),
+            JournalDesEcritures::PAR_ANNEE => $du->format('Y'),
+            default => $du->format('Y-m-d') . '_' . $au->format('Y-m-d'),
+        };
         $extension = ['SAGE' => 'xlsx', 'CSV' => 'csv', 'JSON' => 'json'][$format] ?? 'txt';
 
         return 'ecritures-comptables-' . $periode . '.' . $extension;

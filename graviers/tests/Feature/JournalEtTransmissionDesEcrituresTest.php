@@ -316,6 +316,42 @@ class JournalEtTransmissionDesEcrituresTest extends TestCase
         $this->assertSame(10000.0, $json[0]['total_debit']);
     }
 
+    public function test_la_periode_se_choisit_aussi_par_annee(): void
+    {
+        // Deux écritures aux deux bouts de l'année : un mois seul n'en verrait
+        // qu'une, l'année les prend toutes les deux.
+        $janvier = $this->uneEcriture('2026-01-12', 4000);
+        $decembre = $this->uneEcriture('2026-12-28', 6000);
+        $autreAnnee = $this->uneEcriture('2025-06-10', 9000);
+
+        $periode = JournalDesEcritures::periode(['mode_periode' => JournalDesEcritures::PAR_ANNEE, 'periode' => '2026']);
+        $this->assertSame(JournalDesEcritures::PAR_ANNEE, $periode['mode']);
+        $this->assertSame('2026-01-01', $periode['du']->toDateString());
+        $this->assertSame('2026-12-31', $periode['au']->toDateString());
+
+        $ecritures = JournalDesEcritures::ecritures($periode['du'], $periode['au'], []);
+        $this->assertTrue($ecritures->contains('id', $janvier->id));
+        $this->assertTrue($ecritures->contains('id', $decembre->id));
+        $this->assertFalse($ecritures->contains('id', $autreAnnee->id), "L'année d'avant reste dehors.");
+
+        // L'année en cours est toujours proposée, et les années où il y a des écritures aussi.
+        $this->assertContains(2026, JournalDesEcritures::anneesProposees());
+
+        // L'écran offre le troisième mode et son sélecteur.
+        $this->enAdmin()->get('/comptabilite/ecritures?mode_periode=ANNEE&periode=2026')
+            ->assertOk()->assertSee('Par année')->assertSee('2026');
+
+        // Un envoi par année porte l'année dans son nom et dans son libellé.
+        $reponse = $this->enAdmin()->post('/comptabilite/ecritures/transmettre?mode_periode=ANNEE&periode=2026', ['format' => 'CSV']);
+        $reponse->assertOk();
+        $this->assertStringContainsString('ecritures-comptables-2026.csv', (string) $reponse->headers->get('content-disposition'));
+
+        $deversement = DeversementComptable::first();
+        $this->assertSame('ANNEE', $deversement->mode_periode);
+        $this->assertSame('année 2026', $deversement->libelle_periode);
+        $this->assertSame(2, $deversement->nombre_ecritures, "Les deux de 2026, et pas celle de 2025.");
+    }
+
     public function test_le_controle_rend_le_gabarit_meme_sur_une_periode_vide(): void
     {
         // Avant la mise en service, aucune écriture n'existe : c'est pourtant le

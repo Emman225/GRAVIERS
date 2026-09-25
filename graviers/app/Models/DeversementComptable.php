@@ -65,6 +65,9 @@ class DeversementComptable extends Model
         if ($this->mode_periode === 'MOIS') {
             return \Help::phrase($this->du->locale('fr')->isoFormat('MMMM YYYY'));
         }
+        if ($this->mode_periode === 'ANNEE') {
+            return 'année ' . $this->du->format('Y');
+        }
 
         return 'du ' . $this->du->format('d/m/Y') . ' au ' . $this->au->format('d/m/Y');
     }

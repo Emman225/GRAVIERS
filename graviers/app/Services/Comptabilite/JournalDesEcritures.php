@@ -19,6 +19,7 @@ class JournalDesEcritures
 {
     public const PAR_DATES = 'DATES';
     public const PAR_MOIS  = 'MOIS';
+    public const PAR_ANNEE = 'ANNEE';
 
     /**
      * Lit la période demandée. Rend le mode, les deux bornes et les valeurs à
@@ -30,10 +31,18 @@ class JournalDesEcritures
     {
         $memorise = Configuration::first()?->periode_transmission_comptable;
         $mode = $entrees['mode_periode'] ?? $memorise ?? self::PAR_MOIS;
-        $mode = in_array($mode, [self::PAR_DATES, self::PAR_MOIS], true) ? $mode : self::PAR_MOIS;
+        $mode = in_array($mode, [self::PAR_DATES, self::PAR_MOIS, self::PAR_ANNEE], true) ? $mode : self::PAR_MOIS;
 
         $aujourdhui = Carbon::today();
-        if ($mode === self::PAR_MOIS) {
+        if ($mode === self::PAR_ANNEE) {
+            // Une année entière, pour lire un exercice d'un coup. Le formulaire
+            // envoie « AAAA » dans le même champ « periode » que le mois.
+            $annee = (int) ($entrees['periode'] ?? $entrees['annee'] ?? $aujourdhui->year);
+            $annee = ($annee >= 2000 && $annee <= 2100) ? $annee : $aujourdhui->year;
+            $du = Carbon::create($annee, 1, 1)->startOfDay();
+            $au = $du->copy()->endOfYear();
+            $mois = 1;
+        } elseif ($mode === self::PAR_MOIS) {
             // Le formulaire envoie « AAAA-MM » en un seul champ : deux champs séparés
             // se désaccordent dès qu'on change de mois sans changer d'année.
             if (preg_match('/^(\d{4})-(\d{2})$/', (string) ($entrees['periode'] ?? ''), $trouve)) {
@@ -136,6 +145,23 @@ class JournalDesEcritures
     }
 
     /** Les douze derniers mois, pour le choix « par mois ». */
+    /**
+     * Les années proposées : celles où il y a des écritures, et l'année en
+     * cours. Une liste courte, qui ne propose pas des exercices vides.
+     */
+    public static function anneesProposees(): array
+    {
+        $bornes = EcritureComptable::selectRaw('MIN(YEAR(date_ecriture)) AS debut, MAX(YEAR(date_ecriture)) AS fin')->first();
+        $courante = (int) Carbon::today()->year;
+        $debut = (int) ($bornes->debut ?? $courante);
+        $fin   = max($courante, (int) ($bornes->fin ?? $courante));
+        $debut = ($debut >= 2000 && $debut <= 2100) ? $debut : $courante;
+
+        $annees = range($fin, max($debut, $fin - 10));
+
+        return array_values($annees);
+    }
+
     public static function moisProposes(): array
     {
         $mois = [];

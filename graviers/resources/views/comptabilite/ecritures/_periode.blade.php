@@ -1,12 +1,14 @@
-{{-- Le choix de la période : par dates, ou par mois. Le dernier mode choisi est
-     mémorisé (réponse du responsable, question 8). Partagé par le journal et
-     le rapport d'anomalies.
+{{-- Le choix de la période : par mois, par année, ou par dates. Le dernier mode
+     choisi est mémorisé (réponse du responsable, question 8). Partagé par le
+     journal, le rapport d'anomalies et les treize rapports.
 
-     Le mois est un seul champ « AAAA-MM » : deux champs séparés (mois, année)
-     se désaccordent dès qu'on change de mois sans changer d'année. --}}
+     Le mois est un seul champ « AAAA-MM », et l'année un seul champ « AAAA » :
+     deux champs séparés (mois, année) se désaccordent dès qu'on change de mois
+     sans changer d'année. --}}
 @php
     use App\Services\Comptabilite\JournalDesEcritures;
-    $parMois = $periode['mode'] === JournalDesEcritures::PAR_MOIS;
+    $parMois  = $periode['mode'] === JournalDesEcritures::PAR_MOIS;
+    $parAnnee = $periode['mode'] === JournalDesEcritures::PAR_ANNEE;
 @endphp
 
 <form method="get" action="{{ $action }}" class="row g-2 align-items-end">
@@ -20,8 +22,11 @@
             <input type="radio" class="btn-check" name="mode_periode" id="mode-mois" value="{{ JournalDesEcritures::PAR_MOIS }}"
                    {{ $parMois ? 'checked' : '' }} onchange="this.form.submit()">
             <label class="btn btn-sm btn-outline-primary" for="mode-mois">Par mois</label>
+            <input type="radio" class="btn-check" name="mode_periode" id="mode-annee" value="{{ JournalDesEcritures::PAR_ANNEE }}"
+                   {{ $parAnnee ? 'checked' : '' }} onchange="this.form.submit()">
+            <label class="btn btn-sm btn-outline-primary" for="mode-annee">Par année</label>
             <input type="radio" class="btn-check" name="mode_periode" id="mode-dates" value="{{ JournalDesEcritures::PAR_DATES }}"
-                   {{ $parMois ? '' : 'checked' }} onchange="this.form.submit()">
+                   {{ ($parMois || $parAnnee) ? '' : 'checked' }} onchange="this.form.submit()">
             <label class="btn btn-sm btn-outline-primary" for="mode-dates">Par dates</label>
         </div>
     </div>
@@ -36,6 +41,15 @@
                             {{ sprintf('%04d-%02d', $periode['annee'], $periode['mois']) === $valeur ? 'selected' : '' }}>
                         {{ $option['libelle'] }}
                     </option>
+                @endforeach
+            </select>
+        </div>
+    @elseif ($parAnnee)
+        <div class="col-auto">
+            <label class="form-label" for="periode-annee">Année</label>
+            <select name="periode" id="periode-annee" class="form-select form-select-sm" onchange="this.form.submit()">
+                @foreach ($anneesProposees as $annee)
+                    <option value="{{ $annee }}" {{ (int) $periode['annee'] === (int) $annee ? 'selected' : '' }}>{{ $annee }}</option>
                 @endforeach
             </select>
         </div>
