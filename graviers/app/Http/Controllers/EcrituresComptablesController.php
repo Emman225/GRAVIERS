@@ -181,10 +181,9 @@ class EcrituresComptablesController extends Controller
         $periode = $this->periode($request);
         $ecritures = JournalDesEcritures::ecritures($periode['du'], $periode['au'], $this->filtres($request));
 
-        if ($ecritures->isEmpty()) {
-            return back()->with('error', 'Aucune écriture sur cette période.');
-        }
-
+        // Une période vide rend quand même le fichier, avec ses seuls en-têtes :
+        // c'est ainsi qu'on fait valider le gabarit au comptable AVANT d'avoir
+        // la moindre écriture. Seule la transmission, elle, refuse le vide.
         return $this->fichier($ecritures, $format, 'controle-' . Deversement::nomDuFichier($periode['du'], $periode['au'], $periode['mode'], $format));
     }
 

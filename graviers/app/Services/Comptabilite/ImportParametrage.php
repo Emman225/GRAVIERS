@@ -269,10 +269,15 @@ class ImportParametrage
     /** Code | Rubrique | Compte général | Compte analytique */
     private static function rubriques(array $corps, bool $ecrire): array
     {
+        // RubriqueComptable::toutes() CRÉE les rubriques qui manquent : sur une
+        // base neuve, la table est vide tant que personne n'a ouvert l'onglet.
+        // Une requête directe aurait refusé les quatorze lignes du classeur.
+        $rubriques = RubriqueComptable::toutes()->keyBy('code');
+
         $sortie = [];
         foreach ($corps as $ligne) {
             $code = mb_strtoupper(self::col($ligne['valeurs'], 0));
-            $rubrique = RubriqueComptable::where('code', $code)->first();
+            $rubrique = $rubriques[$code] ?? null;
             if (!$rubrique) {
                 $sortie[] = self::resultat($ligne['rang'], self::REFUS, $code ?: '(sans code)',
                     'Code de rubrique inconnu. Les codes sont ceux du modèle, ils ne s\'inventent pas.');

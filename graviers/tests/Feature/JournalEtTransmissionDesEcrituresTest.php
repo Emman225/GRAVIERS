@@ -316,6 +316,28 @@ class JournalEtTransmissionDesEcrituresTest extends TestCase
         $this->assertSame(10000.0, $json[0]['total_debit']);
     }
 
+    public function test_le_controle_rend_le_gabarit_meme_sur_une_periode_vide(): void
+    {
+        // Avant la mise en service, aucune écriture n'existe : c'est pourtant le
+        // moment où l'on a besoin de montrer les colonnes au comptable.
+        $this->assertSame(0, EcritureComptable::count());
+
+        $reponse = $this->enAdmin()->get('/comptabilite/ecritures/telecharger/csv?mode_periode=MOIS&periode=2026-09');
+        $reponse->assertOk();
+        $contenu = $reponse->streamedContent();
+        foreach (FormatSage::entetes() as $colonne) {
+            $this->assertStringContainsString($colonne, $contenu, "La colonne « {$colonne} » doit figurer dans le fichier de contrôle.");
+        }
+
+        // Le fichier ne porte QUE ses en-têtes, et la transmission, elle, reste
+        // impossible : un lot vide n'a rien à faire chez le comptable.
+        $this->assertCount(1, array_filter(explode("
+", trim($contenu))));
+        $this->enAdmin()->post('/comptabilite/ecritures/transmettre?mode_periode=MOIS&periode=2026-09', ['format' => 'CSV'])
+            ->assertRedirect();
+        $this->assertSame(0, DeversementComptable::count(), "Rien ne part quand il n'y a rien.");
+    }
+
     public function test_le_telechargement_de_controle_ne_change_rien(): void
     {
         $ecriture = $this->uneEcriture('2026-09-15', 10000);
