@@ -83,6 +83,7 @@ Route::prefix('comptabilite')->name('api.comptabilite.')
         Route::get('/ecritures/export', 'export')->middleware('throttle:120,1')->name('ecritures.export');
         Route::get('/ecritures/{ecriture:identifiant}', 'show')->middleware('throttle:120,1')->name('ecritures.show');
         Route::get('/ecritures', 'index')->middleware('throttle:120,1')->name('ecritures.index');
+        Route::get('/deversements/{deversement:numero}/fichier/{format?}', 'deversementFichier')->middleware('throttle:120,1')->name('deversements.fichier');
         Route::get('/deversements/{deversement:numero}', 'deversementDetail')->middleware('throttle:120,1')->name('deversements.show');
         Route::get('/deversements', 'deversements')->middleware('throttle:120,1')->name('deversements.index');
         Route::post('/deversements', 'accuser')->middleware(['admin.seulement.api:comptabilite:ecriture', 'throttle:10,1'])->name('deversements.store');

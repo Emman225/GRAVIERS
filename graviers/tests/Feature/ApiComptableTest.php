@@ -258,6 +258,61 @@ class ApiComptableTest extends TestCase
         $this->assertSame(1, \App\Models\DeversementComptable::count());
     }
 
+    /**
+     * LE FICHIER D'UN DÉVERSEMENT NE BOUGE PLUS (lot 133).
+     *
+     * L'invariant qui mord : une écriture NAIT dans la période après la
+     * transmission. L'export de la période en voit trois ; le fichier de
+     * l'envoi doit continuer à n'en porter que deux — sinon la passerelle
+     * déposerait dans Sage autre chose que ce qui est parti.
+     */
+    public function test_le_fichier_d_un_deversement_ne_porte_que_ses_ecritures(): void
+    {
+        Sanctum::actingAs($this->admin, [JetonsApiComptableController::APTITUDE_LECTURE, JetonsApiComptableController::APTITUDE_ECRITURE]);
+        $this->uneEcriture('2026-09-10', 10000);
+        $this->uneEcriture('2026-09-15', 6000);
+
+        $numero = $this->postJson('/api/comptabilite/deversements', ['mode_periode' => 'MOIS', 'periode' => '2026-09', 'format' => 'sage'])
+            ->assertCreated()->json('donnees.numero');
+
+        // Une troisième écriture arrive APRÈS coup, dans la même période.
+        $this->uneEcriture('2026-09-20', 4000);
+
+        $this->getJson('/api/comptabilite/ecritures/export?mode_periode=MOIS&periode=2026-09&format=json')
+            ->assertOk()->assertJsonCount(3, 'donnees');
+
+        $this->getJson('/api/comptabilite/deversements/' . $numero . '/fichier/json')
+            ->assertOk()->assertJsonCount(2, 'donnees');
+
+        // Le format de l'envoi par défaut (SAGE), et un autre sur demande.
+        $sage = $this->get('/api/comptabilite/deversements/' . $numero . '/fichier');
+        $sage->assertOk();
+        $this->assertStringContainsString('spreadsheetml', (string) $sage->headers->get('content-type'));
+
+        $csv = $this->get('/api/comptabilite/deversements/' . $numero . '/fichier/csv');
+        $csv->assertOk();
+        $this->assertSame('text/csv; charset=UTF-8', $csv->headers->get('content-type'));
+    }
+
+    public function test_le_fichier_d_un_deversement_rejete_le_dit(): void
+    {
+        Sanctum::actingAs($this->admin, [JetonsApiComptableController::APTITUDE_LECTURE, JetonsApiComptableController::APTITUDE_ECRITURE]);
+        $this->uneEcriture('2026-09-10', 10000);
+
+        $numero = $this->postJson('/api/comptabilite/deversements', ['mode_periode' => 'MOIS', 'periode' => '2026-09'])
+            ->assertCreated()->json('donnees.numero');
+
+        \App\Services\Comptabilite\Deversement::rejeter(
+            \App\Models\DeversementComptable::where('numero', $numero)->first(), 'Refusé par Sage');
+
+        // Un programme qui redéposerait ce fichier réinjecterait des écritures
+        // reparties à « à exporter » : refus net, avec la cause.
+        $this->getJson('/api/comptabilite/deversements/' . $numero . '/fichier')
+            ->assertStatus(409)->assertJsonPath('message', function ($message) {
+                return str_contains($message, 'rejeté');
+            });
+    }
+
     public function test_une_periode_en_anomalie_refuse_l_accuse_de_reception(): void
     {
         Sanctum::actingAs($this->admin, [JetonsApiComptableController::APTITUDE_LECTURE, JetonsApiComptableController::APTITUDE_ECRITURE]);

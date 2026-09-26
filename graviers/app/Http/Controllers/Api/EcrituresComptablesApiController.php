@@ -112,6 +112,41 @@ class EcrituresComptablesApiController extends Controller
     }
 
     /**
+     * GET /api/comptabilite/deversements/{numero}/fichier — LE fichier de CET envoi.
+     *
+     * Pas « les écritures de la période », qui peuvent avoir bougé depuis :
+     * celles qui sont rattachées au déversement, et elles seules. C'est ce qui
+     * permet à un programme de transmettre puis de déposer dans le dossier
+     * d'import exactement ce qui est parti — sans pari sur l'intervalle.
+     * Le format par défaut est celui de l'envoi ; on peut en demander un autre.
+     */
+    public function deversementFichier(DeversementComptable $deversement, ?string $format = null)
+    {
+        $format = $format && array_key_exists(strtoupper($format), DeversementComptable::FORMATS)
+            ? strtoupper($format) : $deversement->format;
+
+        $ecritures = EcritureComptable::with('lignes')->where('deversement_id', $deversement->id)
+            ->orderBy('date_ecriture')->orderBy('id')->get();
+
+        if ($ecritures->isEmpty()) {
+            return response()->json(['message' => "Ce déversement ne porte plus d'écriture : il a été rejeté, "
+                . "et elles sont reparties à « à exporter »."], 409);
+        }
+
+        $nom = Deversement::nomDuFichier($deversement->du, $deversement->au, $deversement->mode_periode, $format);
+
+        if ($format === 'SAGE') {
+            return Excel::download(new \App\Exports\EcrituresComptablesExport($ecritures), $nom);
+        }
+        if ($format === 'CSV') {
+            return ReponseFacade::streamDownload(fn () => print(FormatSage::csv($ecritures)), $nom,
+                ['Content-Type' => 'text/csv; charset=UTF-8']);
+        }
+
+        return response()->json(['donnees' => FormatSage::json($ecritures)]);
+    }
+
+    /**
      * POST /api/comptabilite/deversements — LE SEUL POINT D'ÉCRITURE DE L'API.
      *
      * Confirme la réception d'un lot par le logiciel comptable : les écritures
