@@ -118,8 +118,10 @@
                 Un jeton absent ou révoqué répond <strong>401</strong> ; un compte non administrateur, ou un jeton sans l'aptitude requise, répond <strong>403</strong>.
             </p>
             <p>
-                La période se choisit par mois (<code>mode_periode=MOIS&amp;periode=2026-09</code>) ou par dates
+                La période se choisit par mois (<code>mode_periode=MOIS&amp;periode=2026-09</code>), par année
+                (<code>mode_periode=ANNEE&amp;periode=2026</code>) ou par dates
                 (<code>mode_periode=DATES&amp;du=2026-09-01&amp;au=2026-09-30</code>) ; sans rien préciser, le mois en cours est pris.
+                Ces trois modes sont ceux de l'écran : ce que le site peut transmettre, l'API peut l'accuser.
             </p>
 
             <div class="table-responsive mb-3">
